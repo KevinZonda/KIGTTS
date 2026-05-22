@@ -551,7 +551,7 @@ class MainViewModel(
         private set
     var drawingManualRotationQuarterTurns by mutableIntStateOf(0)
         private set
-    private var quickSubtitleNextGroupId = 4L
+    private var quickSubtitleNextGroupId = 10L
     private var quickSubtitleSaving = false
     private var lastAppliedQuickSubtitleRequestId = 0L
     private var lastAppliedRecognizedSubtitleId = Long.MIN_VALUE
@@ -562,6 +562,7 @@ class MainViewModel(
     private var pendingSoundboardGroupSelectionId: Long? = null
     private var quickCardsNextId = 1L
     private var quickCardsSaving = false
+    private var onboardingCompleting = false
 
     init {
         viewModelScope.launch(Dispatchers.IO) {
@@ -1218,20 +1219,12 @@ class MainViewModel(
                 runCatching { readQuickSubtitlePresetPackage(appContext, uri) }
             }
             result.onSuccess { imported ->
-                if (imported.isEmpty()) {
+                val importedCount = appendQuickSubtitlePresetGroups(imported)
+                if (importedCount <= 0) {
                     uiState = uiState.copy(status = "便捷字幕预设包没有可导入分组")
                     return@onSuccess
                 }
-                val existingTitles = quickSubtitleGroups.map { it.title }.toMutableSet()
-                val remapped = imported.map { group ->
-                    val title = uniqueQuickSubtitleGroupTitle(group.title, existingTitles)
-                    existingTitles += title
-                    group.copy(id = quickSubtitleNextGroupId++, title = title)
-                }
-                quickSubtitleGroups = quickSubtitleGroups + remapped
-                quickSubtitleSelectedGroupId = remapped.first().id
-                saveQuickSubtitleConfig()
-                val message = "便捷字幕预设已安装：${remapped.size} 个分组"
+                val message = "便捷字幕预设已安装：$importedCount 个分组"
                 uiState = uiState.copy(status = message)
                 if (openEditorOnSuccess) {
                     requestPresetInstallNavigation(PresetInstallTarget.QuickSubtitle, message)
@@ -1240,6 +1233,58 @@ class MainViewModel(
                 uiState = uiState.copy(status = "便捷字幕预设导入失败：${e.message ?: "未知错误"}")
             }
         }
+    }
+
+    fun installDefaultQuickSubtitlePresetGroups(groupIds: Collection<Long>) {
+        val selectedIds = groupIds.toSet()
+        val groups = defaultQuickSubtitlePresetGroups().filter { it.id in selectedIds }
+        val importedCount = appendQuickSubtitlePresetGroups(groups)
+        uiState = if (importedCount > 0) {
+            uiState.copy(status = "便捷字幕预设已安装：$importedCount 个分组")
+        } else {
+            uiState.copy(status = "请选择要添加的文本预设分组")
+        }
+    }
+
+    private fun appendQuickSubtitlePresetGroups(
+        imported: List<QuickSubtitleGroup>,
+        replaceUntouchedDefaults: Boolean = false
+    ): Int {
+        val cleaned = imported.mapNotNull { group ->
+            val items = group.items.map { it.trim() }.filter { it.isNotEmpty() }
+            if (items.isEmpty()) {
+                null
+            } else {
+                group.copy(
+                    title = group.title.trim().ifBlank { "未命名分组" },
+                    icon = group.icon.ifBlank { "sentiment_satisfied" },
+                    items = items
+                )
+            }
+        }
+        if (cleaned.isEmpty()) return 0
+
+        val replaceCurrentGroups = replaceUntouchedDefaults &&
+            quickSubtitleGroups == defaultQuickSubtitleGroups()
+        val baseGroups = if (replaceCurrentGroups) emptyList() else quickSubtitleGroups
+        val existingTitles = baseGroups.map { it.title }.toMutableSet()
+        var nextId = maxOf(
+            if (replaceCurrentGroups) 1L else quickSubtitleNextGroupId,
+            (baseGroups.maxOfOrNull { it.id } ?: 0L) + 1L
+        )
+        val remapped = cleaned.map { group ->
+            val title = uniqueQuickSubtitleGroupTitle(group.title, existingTitles)
+            existingTitles += title
+            group.copy(id = nextId++, title = title)
+        }
+        quickSubtitleGroups = baseGroups + remapped
+        quickSubtitleSelectedGroupId = remapped.first().id
+        quickSubtitleNextGroupId = maxOf(
+            nextId,
+            (quickSubtitleGroups.maxOfOrNull { it.id } ?: 0L) + 1L
+        )
+        saveQuickSubtitleConfig()
+        return remapped.size
     }
 
     fun requestRecordAudioPermission(startRealtimeOnGrant: Boolean = false) {
@@ -3834,10 +3879,35 @@ class MainViewModel(
         }
     }
 
-    fun completeOnboarding() {
-        uiState = uiState.copy(onboardingCompleted = true)
+    fun completeOnboarding(selectedQuickSubtitlePresetGroups: List<QuickSubtitleGroup> = emptyList()) {
+        if (onboardingCompleting || uiState.onboardingCompleted) return
+        onboardingCompleting = true
         viewModelScope.launch {
-            UserPrefs.setOnboardingCompleted(appContext, true)
+            try {
+                val presetsAlreadyInstalled = withContext(Dispatchers.IO) {
+                    UserPrefs.isOnboardingQuickSubtitlePresetsInstalled(appContext)
+                }
+                if (!presetsAlreadyInstalled) {
+                    val hasNoSavedQuickSubtitleConfig = withContext(Dispatchers.IO) {
+                        UserPrefs.getQuickSubtitleConfig(appContext).isNullOrBlank()
+                    }
+                    if (selectedQuickSubtitlePresetGroups.isNotEmpty() && hasNoSavedQuickSubtitleConfig) {
+                        appendQuickSubtitlePresetGroups(
+                            selectedQuickSubtitlePresetGroups,
+                            replaceUntouchedDefaults = true
+                        )
+                    }
+                    withContext(Dispatchers.IO) {
+                        UserPrefs.setOnboardingQuickSubtitlePresetsInstalled(appContext, true)
+                    }
+                }
+                uiState = uiState.copy(onboardingCompleted = true)
+                withContext(Dispatchers.IO) {
+                    UserPrefs.setOnboardingCompleted(appContext, true)
+                }
+            } finally {
+                onboardingCompleting = false
+            }
         }
     }
 

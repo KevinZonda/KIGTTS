@@ -1,0 +1,4 @@
+<resources>
+    <dimen name="kigtts_startup_logo_width">280dp</dimen>
+    <dimen name="kigtts_startup_logo_height">70dp</dimen>
+</resources>

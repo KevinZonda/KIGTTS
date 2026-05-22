@@ -9,6 +9,7 @@ import android.os.Build
 import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.ExperimentalAnimationApi
 import androidx.compose.animation.fadeIn
@@ -18,6 +19,7 @@ import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -39,7 +41,6 @@ import androidx.compose.foundation.text.ClickableText
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.Card
 import androidx.compose.material.Checkbox
-import androidx.compose.material.CircularProgressIndicator
 import androidx.compose.material.Divider
 import androidx.compose.material.IconButton
 import androidx.compose.material.MaterialTheme
@@ -63,6 +64,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.res.dimensionResource
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -79,35 +81,31 @@ import com.lhtstudio.kigtts.app.R
 
 @Composable
 internal fun KigttsStartupLoadingScreen() {
+    val dark = currentAppDarkTheme()
+    val logoWidth = dimensionResource(R.dimen.kigtts_startup_logo_width)
+    val logoHeight = dimensionResource(R.dimen.kigtts_startup_logo_height)
+    val splashBackground = if (dark) Color(0xFF1D2023) else Color.White
+    val logoRes = if (dark) R.drawable.logo_white else R.drawable.logo_black
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background),
-        contentAlignment = Alignment.Center
+            .background(splashBackground)
     ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(18.dp)
-        ) {
-            Image(
-                painter = painterResource(
-                    id = if (currentAppDarkTheme()) R.drawable.logo_white else R.drawable.logo_black
-                ),
-                contentDescription = "KIGTTS Logo",
-                contentScale = ContentScale.Fit,
-                modifier = Modifier
-                    .fillMaxWidth(0.48f)
-                    .height(58.dp)
-            )
-            CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
-        }
+        Image(
+            painter = painterResource(id = logoRes),
+            contentDescription = "KIGTTS Logo",
+            contentScale = ContentScale.Fit,
+            modifier = Modifier
+                .align(Alignment.Center)
+                .size(width = logoWidth, height = logoHeight)
+        )
     }
 }
 
 @OptIn(ExperimentalAnimationApi::class)
 @Composable
 internal fun KigttsOnboardingScreen(
-    onComplete: () -> Unit
+    onComplete: (List<QuickSubtitleGroup>) -> Unit
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -117,7 +115,12 @@ internal fun KigttsOnboardingScreen(
     var privacyOpen by rememberSaveable { mutableStateOf(false) }
     var agreementOpen by rememberSaveable { mutableStateOf(false) }
     var refreshToken by remember { mutableIntStateOf(0) }
-    val pageCount = 3
+    val presetGroups = remember { defaultQuickSubtitlePresetGroups() }
+    var selectedPresetGroupIds by rememberSaveable {
+        mutableStateOf(defaultSelectedQuickSubtitlePresetGroupIds())
+    }
+    var expandedPresetGroupIds by rememberSaveable { mutableStateOf(listOf<Long>()) }
+    val pageCount = 4
 
     val micPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -175,12 +178,17 @@ internal fun KigttsOnboardingScreen(
                 page = targetPage,
                 pageCount = pageCount,
                 canGoBack = targetPage > 0,
-                canGoNext = targetPage != 0 || privacyAccepted,
+                canGoNext = when (targetPage) {
+                    0 -> privacyAccepted
+                    2 -> selectedPresetGroupIds.isNotEmpty()
+                    else -> true
+                },
                 nextLabel = if (targetPage == pageCount - 1) "开始使用" else "下一步",
                 onBack = { page = (page - 1).coerceAtLeast(0) },
                 onNext = {
                     if (page == pageCount - 1) {
-                        currentOnComplete()
+                        val selectedGroups = presetGroups.filter { it.id in selectedPresetGroupIds.toSet() }
+                        currentOnComplete(selectedGroups)
                     } else {
                         page = (page + 1).coerceAtMost(pageCount - 1)
                     }
@@ -203,6 +211,25 @@ internal fun KigttsOnboardingScreen(
                             }
                         },
                         onOpenOverlaySettings = { openOverlayPermissionSettings(context) }
+                    )
+                    2 -> OnboardingQuickTextPresetPage(
+                        groups = presetGroups,
+                        selectedGroupIds = selectedPresetGroupIds,
+                        expandedGroupIds = expandedPresetGroupIds,
+                        onToggleSelected = { groupId ->
+                            selectedPresetGroupIds = if (groupId in selectedPresetGroupIds) {
+                                selectedPresetGroupIds - groupId
+                            } else {
+                                selectedPresetGroupIds + groupId
+                            }
+                        },
+                        onToggleExpanded = { groupId ->
+                            expandedPresetGroupIds = if (groupId in expandedPresetGroupIds) {
+                                expandedPresetGroupIds - groupId
+                            } else {
+                                expandedPresetGroupIds + groupId
+                            }
+                        }
                     )
                     else -> OnboardingDonePage()
                 }
@@ -430,6 +457,125 @@ private fun OnboardingPermissionPage(
 }
 
 @Composable
+private fun OnboardingQuickTextPresetPage(
+    groups: List<QuickSubtitleGroup>,
+    selectedGroupIds: List<Long>,
+    expandedGroupIds: List<Long>,
+    onToggleSelected: (Long) -> Unit,
+    onToggleExpanded: (Long) -> Unit
+) {
+    OnboardingCard {
+        OnboardingHeroIcon(
+            name = "text_snippet",
+            contentDescription = null
+        )
+        Text(
+            text = "添加快捷文本预设",
+            style = MaterialTheme.typography.h5,
+            fontWeight = FontWeight.Bold,
+            textAlign = TextAlign.Center
+        )
+        Text(
+            text = "选择常用分组后，进入主界面会按导入预设的方式添加。点按分组可以展开或折叠预览；之后也可以在设置里继续添加这些预设。",
+            style = MaterialTheme.typography.body2,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center
+        )
+        QuickSubtitlePresetGroupSelectionList(
+            groups = groups,
+            selectedGroupIds = selectedGroupIds,
+            expandedGroupIds = expandedGroupIds,
+            onToggleSelected = onToggleSelected,
+            onToggleExpanded = onToggleExpanded
+        )
+    }
+}
+
+@Composable
+internal fun QuickSubtitlePresetGroupSelectionList(
+    groups: List<QuickSubtitleGroup>,
+    selectedGroupIds: Collection<Long>,
+    expandedGroupIds: Collection<Long>,
+    onToggleSelected: (Long) -> Unit,
+    onToggleExpanded: (Long) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        groups.forEach { group ->
+            val selected = group.id in selectedGroupIds
+            val expanded = group.id in expandedGroupIds
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(UiTokens.Radius))
+                    .background(
+                        if (selected) {
+                            MaterialTheme.colorScheme.primary.copy(alpha = 0.10f)
+                        } else {
+                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+                        }
+                    )
+                    .clickable { onToggleExpanded(group.id) }
+                    .padding(horizontal = 10.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Checkbox(
+                        checked = selected,
+                        onCheckedChange = { onToggleSelected(group.id) }
+                    )
+                    MsIcon(
+                        name = group.icon,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = group.title,
+                            style = MaterialTheme.typography.body1,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Text(
+                            text = "${group.items.size} 条快捷文本",
+                            style = MaterialTheme.typography.caption,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    MsIcon(
+                        name = if (expanded) "expand_less" else "expand_more",
+                        contentDescription = if (expanded) "折叠预览" else "展开预览",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                AnimatedVisibility(visible = expanded) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(start = 44.dp, end = 4.dp, bottom = 4.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        group.items.forEach { item ->
+                            Text(
+                                text = "• $item",
+                                style = MaterialTheme.typography.body2,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
 private fun OnboardingDonePage() {
     OnboardingCard {
         OnboardingLogo()
@@ -547,6 +693,7 @@ private fun OnboardingCard(content: @Composable ColumnScope.() -> Unit) {
 
 @Composable
 private fun OnboardingLogo() {
+    val logoHeight = dimensionResource(R.dimen.kigtts_startup_logo_height)
     Image(
         painter = painterResource(
             id = if (currentAppDarkTheme()) R.drawable.logo_white else R.drawable.logo_black
@@ -554,8 +701,8 @@ private fun OnboardingLogo() {
         contentDescription = "KIGTTS Logo",
         contentScale = ContentScale.Fit,
         modifier = Modifier
-            .fillMaxWidth(0.62f)
-            .height(72.dp)
+            .fillMaxWidth()
+            .height(logoHeight)
     )
 }
 

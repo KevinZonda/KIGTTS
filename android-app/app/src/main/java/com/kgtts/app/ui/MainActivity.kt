@@ -431,7 +431,9 @@ class MainActivity : ComponentActivity() {
                                         !state.settingsLoaded -> KigttsStartupLoadingScreen()
                                         !state.onboardingCompleted -> {
                                             KigttsOnboardingScreen(
-                                                onComplete = { viewModel.completeOnboarding() }
+                                                onComplete = { selectedPresetGroups ->
+                                                    viewModel.completeOnboarding(selectedPresetGroups)
+                                                }
                                             )
                                         }
                                         else -> AppScaffold(viewModel)

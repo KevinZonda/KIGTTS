@@ -114,6 +114,8 @@ object UserPrefs {
     private val KEY_FONT_SCALE_BLOCK_MODE = intPreferencesKey("font_scale_block_mode")
     private val KEY_HAPTIC_FEEDBACK_ENABLED = booleanPreferencesKey("haptic_feedback_enabled")
     private val KEY_ONBOARDING_COMPLETED = booleanPreferencesKey("onboarding_completed")
+    private val KEY_ONBOARDING_QUICK_SUBTITLE_PRESETS_INSTALLED =
+        booleanPreferencesKey("onboarding_quick_subtitle_presets_installed")
     private val KEY_FORCE_FULL_WIDTH_TABS_ON_PHONE =
         booleanPreferencesKey("force_full_width_tabs_on_phone")
     private val KEY_SOUNDBOARD_GRID_FULL_WIDTH =
@@ -736,6 +738,17 @@ object UserPrefs {
     suspend fun setOnboardingCompleted(context: Context, completed: Boolean) {
         context.dataStore.edit { prefs ->
             prefs[KEY_ONBOARDING_COMPLETED] = completed
+        }
+    }
+
+    suspend fun isOnboardingQuickSubtitlePresetsInstalled(context: Context): Boolean {
+        val prefs = context.dataStore.data.first()
+        return prefs[KEY_ONBOARDING_QUICK_SUBTITLE_PRESETS_INSTALLED] ?: false
+    }
+
+    suspend fun setOnboardingQuickSubtitlePresetsInstalled(context: Context, installed: Boolean) {
+        context.dataStore.edit { prefs ->
+            prefs[KEY_ONBOARDING_QUICK_SUBTITLE_PRESETS_INSTALLED] = installed
         }
     }
 

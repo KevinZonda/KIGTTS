@@ -531,6 +531,11 @@ fun SettingsScreen(
     var overlayThemeModeExpanded by remember { mutableStateOf(false) }
     var fontScaleBlockModeExpanded by remember { mutableStateOf(false) }
     var internalWebViewWarningVisible by remember { mutableStateOf(false) }
+    var restoreQuickTextPresetDialogVisible by remember { mutableStateOf(false) }
+    var restoreQuickTextSelectedGroupIds by rememberSaveable {
+        mutableStateOf(defaultSelectedQuickSubtitlePresetGroupIds())
+    }
+    var restoreQuickTextExpandedGroupIds by rememberSaveable { mutableStateOf(listOf<Long>()) }
     var inputTypeExpanded by remember { mutableStateOf(false) }
     var outputTypeExpanded by remember { mutableStateOf(false) }
     var denoiserModeExpanded by remember { mutableStateOf(false) }
@@ -682,6 +687,66 @@ fun SettingsScreen(
             },
             dismissButton = {
                 Md2TextButton(onClick = { internalWebViewWarningVisible = false }) {
+                    Text("取消")
+                }
+            }
+        )
+    }
+
+    if (restoreQuickTextPresetDialogVisible) {
+        val presetGroups = remember { defaultQuickSubtitlePresetGroups() }
+        AlertDialog(
+            onDismissRequest = { restoreQuickTextPresetDialogVisible = false },
+            title = { Text("恢复文本预设分组") },
+            text = {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 520.dp)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Text(
+                        "选择要添加的分组。同名分组会作为新的导入分组添加，不会合并到现有分组。",
+                        style = MaterialTheme.typography.body2,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    QuickSubtitlePresetGroupSelectionList(
+                        groups = presetGroups,
+                        selectedGroupIds = restoreQuickTextSelectedGroupIds,
+                        expandedGroupIds = restoreQuickTextExpandedGroupIds,
+                        onToggleSelected = { groupId ->
+                            restoreQuickTextSelectedGroupIds =
+                                if (groupId in restoreQuickTextSelectedGroupIds) {
+                                    restoreQuickTextSelectedGroupIds - groupId
+                                } else {
+                                    restoreQuickTextSelectedGroupIds + groupId
+                                }
+                        },
+                        onToggleExpanded = { groupId ->
+                            restoreQuickTextExpandedGroupIds =
+                                if (groupId in restoreQuickTextExpandedGroupIds) {
+                                    restoreQuickTextExpandedGroupIds - groupId
+                                } else {
+                                    restoreQuickTextExpandedGroupIds + groupId
+                                }
+                        }
+                    )
+                }
+            },
+            confirmButton = {
+                Md2TextButton(
+                    onClick = {
+                        viewModel.installDefaultQuickSubtitlePresetGroups(restoreQuickTextSelectedGroupIds)
+                        restoreQuickTextPresetDialogVisible = false
+                    },
+                    enabled = restoreQuickTextSelectedGroupIds.isNotEmpty()
+                ) {
+                    Text("添加")
+                }
+            },
+            dismissButton = {
+                Md2TextButton(onClick = { restoreQuickTextPresetDialogVisible = false }) {
                     Text("取消")
                 }
             }
@@ -1701,6 +1766,41 @@ fun SettingsScreen(
             }
             Md2StaggeredFloatIn(index = 3) {
                 Md2SettingsCard(title = "便捷字幕显示") {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(4.dp))
+                            .clickable {
+                                restoreQuickTextSelectedGroupIds = defaultSelectedQuickSubtitlePresetGroupIds()
+                                restoreQuickTextExpandedGroupIds = emptyList()
+                                restoreQuickTextPresetDialogVisible = true
+                            }
+                            .padding(horizontal = 2.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        MsIcon(
+                            name = "restore",
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "恢复文本预设分组",
+                                style = MaterialTheme.typography.bodyLarge
+                            )
+                            Text(
+                                text = "从内置文本预设中选择分组添加；同名分组不会合并。",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        MsIcon(
+                            name = "chevron_right",
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                     Md2SettingSwitchRow(
                         title = "便捷字幕字体大小自适应",
                         checked = state.quickSubtitleAutoFit,
