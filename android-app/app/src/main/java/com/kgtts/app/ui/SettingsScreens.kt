@@ -426,6 +426,9 @@ internal fun SettingsNavHost(
                 onOpenPrivacy = {
                     navController.navigate(SettingsRoutes.Privacy) { launchSingleTop = true }
                 },
+                onOpenAgreement = {
+                    navController.navigate(SettingsRoutes.Agreement) { launchSingleTop = true }
+                },
                 onOpenRecognitionResourceSources = onOpenRecognitionResourceSources,
                 onPickRecognitionResourcePackage = onPickRecognitionResourcePackage,
                 onDownloadRecognitionResources = onDownloadRecognitionResources,
@@ -448,6 +451,11 @@ internal fun SettingsNavHost(
                 assetPath = "legal/privacy_policy.md"
             )
         }
+        composable(SettingsRoutes.Agreement) {
+            LegalDocumentScreen(
+                assetPath = "legal/user_agreement.md"
+            )
+        }
     }
 }
 
@@ -458,6 +466,7 @@ fun SettingsScreen(
     state: UiState,
     onOpenLicenses: () -> Unit,
     onOpenPrivacy: () -> Unit,
+    onOpenAgreement: () -> Unit,
     onOpenRecognitionResourceSources: () -> Unit,
     onPickRecognitionResourcePackage: () -> Unit,
     onDownloadRecognitionResources: () -> Unit,
@@ -522,6 +531,11 @@ fun SettingsScreen(
     var overlayThemeModeExpanded by remember { mutableStateOf(false) }
     var fontScaleBlockModeExpanded by remember { mutableStateOf(false) }
     var internalWebViewWarningVisible by remember { mutableStateOf(false) }
+    var restoreQuickTextPresetDialogVisible by remember { mutableStateOf(false) }
+    var restoreQuickTextSelectedGroupIds by rememberSaveable {
+        mutableStateOf(defaultSelectedQuickSubtitlePresetGroupIds())
+    }
+    var restoreQuickTextExpandedGroupIds by rememberSaveable { mutableStateOf(listOf<Long>()) }
     var inputTypeExpanded by remember { mutableStateOf(false) }
     var outputTypeExpanded by remember { mutableStateOf(false) }
     var denoiserModeExpanded by remember { mutableStateOf(false) }
@@ -659,7 +673,7 @@ fun SettingsScreen(
             onDismissRequest = { internalWebViewWarningVisible = false },
             title = { Text("启用内置 WebView") },
             text = {
-                Text("开启后将允许在软件内置浏览器中访问网页。\n其内容、安全性与本软件无关，相关风险由您自行承担。")
+                Text("开启后，软件内置浏览器仅允许访问 lhtstudio.com 及其子域名。\n其它第三方网页仍会通过外部浏览器打开，其内容、安全性与本软件无关，相关风险由您自行承担。")
             },
             confirmButton = {
                 Md2TextButton(
@@ -673,6 +687,66 @@ fun SettingsScreen(
             },
             dismissButton = {
                 Md2TextButton(onClick = { internalWebViewWarningVisible = false }) {
+                    Text("取消")
+                }
+            }
+        )
+    }
+
+    if (restoreQuickTextPresetDialogVisible) {
+        val presetGroups = remember { defaultQuickSubtitlePresetGroups() }
+        AlertDialog(
+            onDismissRequest = { restoreQuickTextPresetDialogVisible = false },
+            title = { Text("恢复文本预设分组") },
+            text = {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 520.dp)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Text(
+                        "选择要添加的分组。同名分组会作为新的导入分组添加，不会合并到现有分组。",
+                        style = MaterialTheme.typography.body2,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    QuickSubtitlePresetGroupSelectionList(
+                        groups = presetGroups,
+                        selectedGroupIds = restoreQuickTextSelectedGroupIds,
+                        expandedGroupIds = restoreQuickTextExpandedGroupIds,
+                        onToggleSelected = { groupId ->
+                            restoreQuickTextSelectedGroupIds =
+                                if (groupId in restoreQuickTextSelectedGroupIds) {
+                                    restoreQuickTextSelectedGroupIds - groupId
+                                } else {
+                                    restoreQuickTextSelectedGroupIds + groupId
+                                }
+                        },
+                        onToggleExpanded = { groupId ->
+                            restoreQuickTextExpandedGroupIds =
+                                if (groupId in restoreQuickTextExpandedGroupIds) {
+                                    restoreQuickTextExpandedGroupIds - groupId
+                                } else {
+                                    restoreQuickTextExpandedGroupIds + groupId
+                                }
+                        }
+                    )
+                }
+            },
+            confirmButton = {
+                Md2TextButton(
+                    onClick = {
+                        viewModel.installDefaultQuickSubtitlePresetGroups(restoreQuickTextSelectedGroupIds)
+                        restoreQuickTextPresetDialogVisible = false
+                    },
+                    enabled = restoreQuickTextSelectedGroupIds.isNotEmpty()
+                ) {
+                    Text("添加")
+                }
+            },
+            dismissButton = {
+                Md2TextButton(onClick = { restoreQuickTextPresetDialogVisible = false }) {
                     Text("取消")
                 }
             }
@@ -886,6 +960,11 @@ fun SettingsScreen(
                         AboutDocumentRow(
                             title = "隐私政策",
                             onClick = onOpenPrivacy,
+                            showDivider = false
+                        )
+                        AboutDocumentRow(
+                            title = "用户协议",
+                            onClick = onOpenAgreement,
                             showDivider = false
                         )
                     }
@@ -1681,12 +1760,47 @@ fun SettingsScreen(
                                 viewModel.setInternalWebViewEnabled(false)
                             }
                         },
-                        supportingText = "关闭时，二维码扫描得到的第三方网页链接会优先使用 Chrome Custom Tabs；不可用时显示外部链接提示页。"
+                        supportingText = "默认关闭。开启后，内置 WebView 也仅允许访问 lhtstudio.com 及其子域名；其它网页链接仍会优先使用 Chrome Custom Tabs 或外部浏览器。"
                     )
                 }
             }
             Md2StaggeredFloatIn(index = 3) {
                 Md2SettingsCard(title = "便捷字幕显示") {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(4.dp))
+                            .clickable {
+                                restoreQuickTextSelectedGroupIds = defaultSelectedQuickSubtitlePresetGroupIds()
+                                restoreQuickTextExpandedGroupIds = emptyList()
+                                restoreQuickTextPresetDialogVisible = true
+                            }
+                            .padding(horizontal = 2.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        MsIcon(
+                            name = "restore",
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "恢复文本预设分组",
+                                style = MaterialTheme.typography.bodyLarge
+                            )
+                            Text(
+                                text = "从内置文本预设中选择分组添加；同名分组不会合并。",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        MsIcon(
+                            name = "chevron_right",
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                     Md2SettingSwitchRow(
                         title = "便捷字幕字体大小自适应",
                         checked = state.quickSubtitleAutoFit,
@@ -1719,7 +1833,7 @@ fun SettingsScreen(
                         title = "蓝牙媒体标题字幕",
                         checked = state.bluetoothMediaTitleSubtitle,
                         onCheckedChange = { viewModel.setBluetoothMediaTitleSubtitle(it) },
-                        supportingText = "实验性兼容模式。开启后会把当前字幕写入系统媒体标题，部分蓝牙歌词屏、车机或小屏会把它显示为歌名；可能覆盖其它媒体标题。"
+                        supportingText = "实验性兼容模式。开启后会在前台、后台或息屏时把当前上屏大字幕写入系统媒体会话标题，用于蓝牙歌词屏、车机或小屏显示；可能覆盖其它媒体标题，关闭后停止同步。"
                     )
                     Md2SettingSwitchRow(
                         title = "实时通知",
@@ -1739,7 +1853,7 @@ fun SettingsScreen(
                                 viewModel.setLiveSubtitleNotificationEnabled(enabled)
                             }
                         },
-                        supportingText = "开启后通知会显示当前上屏的大字幕，短状态同步顶部状态面板，并提供播放文本、打开便捷字幕和关闭实时通知操作；支持 Android 16+ Live Updates 请求。"
+                        supportingText = "开启后会在前台、后台或锁屏时通过系统通知显示当前上屏大字幕和短状态，并提供播放文本、打开便捷字幕和关闭实时通知操作；关闭后停止更新。"
                     )
                 }
             }

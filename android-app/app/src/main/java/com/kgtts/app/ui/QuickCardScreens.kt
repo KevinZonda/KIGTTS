@@ -2,7 +2,6 @@
 
 package com.lhtstudio.kigtts.app.ui
 
-import android.annotation.SuppressLint
 import android.Manifest
 import android.animation.Animator
 import android.animation.AnimatorListenerAdapter
@@ -254,6 +253,7 @@ import com.lhtstudio.kigtts.app.data.SYSTEM_TTS_VOICE_NAME
 import com.lhtstudio.kigtts.app.data.VoicePackInfo
 import com.lhtstudio.kigtts.app.data.UserPrefs
 import com.lhtstudio.kigtts.app.data.VoicePackMeta
+import com.lhtstudio.kigtts.app.data.ResourceStorageCleaner
 import com.lhtstudio.kigtts.app.data.defaultSoundboardGroups
 import com.lhtstudio.kigtts.app.data.isKokoroVoiceDir
 import com.lhtstudio.kigtts.app.data.isSystemTtsVoiceDir
@@ -608,6 +608,7 @@ internal fun QuickCardMainScreen(
     }
     val onCreateCardState = rememberUpdatedState(onCreateCard)
     val onOpenScannerState = rememberUpdatedState(onOpenScanner)
+    var cameraPermissionDialogOpen by rememberSaveable { mutableStateOf(false) }
     val cameraPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (granted) {
             onOpenScannerState.value()
@@ -625,7 +626,31 @@ internal fun QuickCardMainScreen(
                 if (granted) {
                     onOpenScannerState.value()
                 } else {
-                    cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+                    cameraPermissionDialogOpen = true
+                }
+            }
+        )
+    }
+    if (cameraPermissionDialogOpen) {
+        AlertDialog(
+            onDismissRequest = { cameraPermissionDialogOpen = false },
+            title = { Text("需要相机权限") },
+            text = {
+                Text("扫一扫需要使用相机预览画面来识别二维码。识别过程在本机完成，KIGTTS 不会上传相机画面或二维码截图。")
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        cameraPermissionDialogOpen = false
+                        cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+                    }
+                ) {
+                    Text("允许并继续")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { cameraPermissionDialogOpen = false }) {
+                    Text("取消")
                 }
             }
         )
@@ -1475,6 +1500,20 @@ internal fun QuickCardScannerScreen(
     val lifecycleOwner = LocalLifecycleOwner.current
     val configuration = LocalConfiguration.current
     val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+    var cameraPermissionGranted by remember {
+        mutableStateOf(
+            ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) ==
+                PackageManager.PERMISSION_GRANTED
+        )
+    }
+    var cameraPermissionDialogOpen by rememberSaveable { mutableStateOf(!cameraPermissionGranted) }
+    val cameraPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        cameraPermissionGranted = granted
+        if (!granted) {
+            toast(context, "未授予相机权限")
+            onOpenFailed()
+        }
+    }
     val previewView = remember(context) {
         PreviewView(context).apply {
             implementationMode = PreviewView.ImplementationMode.COMPATIBLE
@@ -1517,6 +1556,46 @@ internal fun QuickCardScannerScreen(
         onTopBarActionsChange(null)
     }
 
+    DisposableEffect(scanner, analyzerExecutor) {
+        onDispose {
+            runCatching { scanner.close() }
+            analyzerExecutor.shutdown()
+        }
+    }
+
+    if (cameraPermissionDialogOpen && !cameraPermissionGranted) {
+        AlertDialog(
+            onDismissRequest = {
+                cameraPermissionDialogOpen = false
+                onOpenFailed()
+            },
+            title = { Text("需要相机权限") },
+            text = {
+                Text("扫一扫需要使用相机预览画面来识别二维码。识别过程在本机完成，KIGTTS 不会上传相机画面或二维码截图。")
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        cameraPermissionDialogOpen = false
+                        cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+                    }
+                ) {
+                    Text("允许并继续")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        cameraPermissionDialogOpen = false
+                        onOpenFailed()
+                    }
+                ) {
+                    Text("取消")
+                }
+            }
+        )
+    }
+
     DisposableEffect(previewView, scaleDetector) {
         previewView.setOnTouchListener { _, event ->
             scaleDetector.onTouchEvent(event)
@@ -1527,7 +1606,10 @@ internal fun QuickCardScannerScreen(
         }
     }
 
-    DisposableEffect(previewView, lifecycleOwner) {
+    DisposableEffect(previewView, lifecycleOwner, cameraPermissionGranted) {
+        if (!cameraPermissionGranted) {
+            onDispose {}
+        } else {
         disposed.set(false)
         scanned.set(false)
         analyzing.set(false)
@@ -1637,8 +1719,7 @@ internal fun QuickCardScannerScreen(
                 }
             }
             analyzing.set(false)
-            runCatching { scanner.close() }
-            analyzerExecutor.shutdown()
+        }
         }
     }
 
@@ -1954,7 +2035,6 @@ internal fun QuickCardScanTextScreen(
     }
 }
 
-@SuppressLint("SetJavaScriptEnabled")
 @Composable
 internal fun QuickCardWebViewScreen(
     url: String,
@@ -1962,6 +2042,33 @@ internal fun QuickCardWebViewScreen(
     onTopBarActionsChange: (QuickCardTopBarActions?) -> Unit
 ) {
     if (!internalWebViewEnabled) {
+        DisposableEffect(Unit) {
+            onTopBarActionsChange(null)
+            onDispose { onTopBarActionsChange(null) }
+        }
+        QuickCardExternalLinkPage(url = url)
+        return
+    }
+    if (!isHttpWebUrl(url)) {
+        DisposableEffect(Unit) {
+            onTopBarActionsChange(null)
+            onDispose { onTopBarActionsChange(null) }
+        }
+        QuickCardWebErrorPage(
+            error = QuickCardWebError(
+                url = url,
+                detail = "内置 WebView 仅允许打开 http/https 页面。"
+            ),
+            onRetry = {},
+            onOpenExternal = {
+                if (!openExternalBrowser(it, url)) {
+                    toast(it, "无法打开系统浏览器")
+                }
+            }
+        )
+        return
+    }
+    if (!isWebViewAllowedUrl(url)) {
         DisposableEffect(Unit) {
             onTopBarActionsChange(null)
             onDispose { onTopBarActionsChange(null) }
@@ -2017,17 +2124,42 @@ internal fun QuickCardWebViewScreen(
             factory = { context ->
                 WebView(context).apply {
                     webViewRef.value = this
-                    settings.javaScriptEnabled = true
-                    settings.domStorageEnabled = true
+                    settings.javaScriptEnabled = false
+                    settings.javaScriptCanOpenWindowsAutomatically = false
+                    settings.domStorageEnabled = false
+                    settings.databaseEnabled = false
+                    settings.allowFileAccess = false
+                    settings.allowContentAccess = false
+                    settings.allowFileAccessFromFileURLs = false
+                    settings.allowUniversalAccessFromFileURLs = false
+                    settings.setSupportMultipleWindows(false)
+                    settings.mediaPlaybackRequiresUserGesture = true
                     settings.builtInZoomControls = true
                     settings.displayZoomControls = false
                     settings.loadWithOverviewMode = true
                     settings.useWideViewPort = true
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                        settings.mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_NEVER_ALLOW
+                        android.webkit.CookieManager.getInstance()
+                            .setAcceptThirdPartyCookies(this, false)
+                    }
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        settings.safeBrowsingEnabled = true
+                    }
                     webViewClient = object : WebViewClient() {
                         override fun shouldOverrideUrlLoading(
                             view: WebView?,
                             request: WebResourceRequest?
-                        ): Boolean = false
+                        ): Boolean {
+                            val targetUrl = request?.url?.toString().orEmpty()
+                            if (targetUrl.isBlank() || isWebViewAllowedUrl(targetUrl)) {
+                                return false
+                            }
+                            if (!openExternalBrowser(context, targetUrl)) {
+                                toast(context, "无法打开外部链接")
+                            }
+                            return true
+                        }
 
                         override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
                             loading = true
@@ -2088,7 +2220,19 @@ internal fun QuickCardWebViewScreen(
                 if (!url.equals(webView.url.orEmpty(), ignoreCase = true)) {
                     loading = true
                     webError = null
-                    webView.loadUrl(url)
+                    if (isWebViewAllowedUrl(url)) {
+                        webView.loadUrl(url)
+                    } else {
+                        webView.stopLoading()
+                        webError = QuickCardWebError(
+                            url = url,
+                            detail = if (isHttpWebUrl(url)) {
+                                "该网址不在内置 WebView 白名单中，请使用外部浏览器打开。"
+                            } else {
+                                "内置 WebView 仅允许打开 http/https 页面。"
+                            }
+                        )
+                    }
                 }
             }
         )
@@ -2118,6 +2262,23 @@ internal fun QuickCardWebViewScreen(
             )
         }
     }
+}
+
+internal fun isWebViewAllowedUrl(url: String): Boolean {
+    val uri = runCatching { Uri.parse(url) }.getOrNull() ?: return false
+    val scheme = uri.scheme?.lowercase()
+    if (scheme != "https" && scheme != "http") return false
+    val host = uri.host
+        ?.trim()
+        ?.trimEnd('.')
+        ?.lowercase()
+        ?: return false
+    return host == "lhtstudio.com" || host.endsWith(".lhtstudio.com")
+}
+
+internal fun isHttpWebUrl(url: String): Boolean {
+    val scheme = runCatching { Uri.parse(url).scheme?.lowercase() }.getOrNull()
+    return scheme == "https" || scheme == "http"
 }
 
 internal data class QuickCardWebError(
@@ -4035,6 +4196,7 @@ internal fun shareQuickCard(context: Context, card: QuickCard, landscape: Boolea
             val source = if (imagePath.isBlank()) null else File(imagePath)
             if (source != null && source.exists()) {
                 val shareDir = File(context.cacheDir, "share")
+                ResourceStorageCleaner.cleanupShareCache(context)
                 if (!shareDir.exists()) shareDir.mkdirs()
                 val out = File(shareDir, "quick_card_${System.currentTimeMillis()}.png")
                 source.copyTo(out, overwrite = true)

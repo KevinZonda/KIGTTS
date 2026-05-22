@@ -427,7 +427,17 @@ class MainActivity : ComponentActivity() {
                                 color = MaterialTheme.colorScheme.background
                             ) {
                                 Box(Modifier.fillMaxSize()) {
-                                    AppScaffold(viewModel)
+                                    when {
+                                        !state.settingsLoaded -> KigttsStartupLoadingScreen()
+                                        !state.onboardingCompleted -> {
+                                            KigttsOnboardingScreen(
+                                                onComplete = { selectedPresetGroups ->
+                                                    viewModel.completeOnboarding(selectedPresetGroups)
+                                                }
+                                            )
+                                        }
+                                        else -> AppScaffold(viewModel)
+                                    }
                                     KigttsTextToolbarPopup(
                                         state = textToolbarState,
                                         darkTheme = dark

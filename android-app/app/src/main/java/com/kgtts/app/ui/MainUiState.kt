@@ -345,6 +345,7 @@ import kotlin.math.roundToInt
 
 
 data class UiState(
+    val settingsLoaded: Boolean = false,
     val asrDir: File? = null,
     val voiceDir: File? = null,
     val voicePacks: List<VoicePackInfo> = emptyList(),
@@ -401,6 +402,7 @@ data class UiState(
     val overlayThemeMode: Int = UserPrefs.THEME_MODE_FOLLOW_SYSTEM,
     val fontScaleBlockMode: Int = UserPrefs.FONT_SCALE_BLOCK_ICONS_ONLY,
     val hapticFeedbackEnabled: Boolean = true,
+    val onboardingCompleted: Boolean = false,
     val forceFullWidthTabsOnPhone: Boolean = false,
     val soundboardGridFullWidth: Boolean = false,
     val internalWebViewEnabled: Boolean = false,
@@ -578,43 +580,178 @@ data class DrawingSaveResult(
     val fullPath: String
 )
 
-internal fun defaultQuickSubtitleGroups(): List<QuickSubtitleGroup> = listOf(
+internal fun defaultQuickSubtitlePresetGroups(): List<QuickSubtitleGroup> = listOf(
     QuickSubtitleGroup(
         id = 1L,
-        title = "常用",
-        icon = "sentiment_satisfied",
+        title = "通用",
+        icon = "emoji_emotions",
         items = listOf(
-            "您好，我现在不太方便说话",
-            "您好，可以加个好友吗",
-            "稍等一下，我马上回复您",
-            "感谢理解，辛苦了"
+            "你好呀~",
+            "谢谢！太感谢了！",
+            "不好意思，我不太方便说话",
+            "稍等一下哈",
+            "没事没事，不用客气",
+            "对对对，就是这个意思",
+            "哈哈哈哈哈",
+            "好的好的",
+            "没问题",
+            "抱歉抱歉",
+            "太可爱了！",
+            "好棒！",
+            "嗯嗯"
         )
     ),
     QuickSubtitleGroup(
         id = 2L,
-        title = "游戏",
-        icon = "sports_esports",
+        title = "扩列",
+        icon = "person_add",
         items = listOf(
-            "我在组队，语音不方便",
-            "请跟我走这边",
-            "注意右侧有人",
-            "这把打得很好"
+            "扩列吗？加个联系方式~",
+            "你出的是XX吗？好还原！太好看了！",
+            "刚刚是你出的XX吗？太好看了！",
+            "求个关注，这是我的账号",
+            "可以集个邮吗？",
+            "这个送你~小小心意",
+            "交换一下无料吗？",
+            "加个好友吧，我拉你进同好群",
+            "你有出过XX吗？我超喜欢那个角色",
+            "你这个道具做得好精致啊！",
+            "我们之前是不是在哪个展子见过？"
         )
     ),
     QuickSubtitleGroup(
         id = 3L,
-        title = "办公",
-        icon = "work",
+        title = "拍照",
+        icon = "photo_camera",
         items = listOf(
-            "我在开会，稍后回复",
-            "请把需求再发我一份",
-            "这个我今天内处理",
-            "收到，谢谢"
+            "可以合影哦~",
+            "麻烦等一下，我摆个姿势",
+            "拍好了吗？",
+            "可以再拍一张吗？",
+            "手机给我，我帮你们拍",
+            "可以帮我拍个全身吗？",
+            "你站那边就好，我OK的",
+            "等一下我整理一下衣服/头壳",
+            "麻烦开个闪光灯可以吗？",
+            "可以比个心吗？",
+            "谢谢！拍得真好",
+            "大家一起看镜头~",
+            "麻烦让一下，挡住后面的人了"
+        )
+    ),
+    QuickSubtitleGroup(
+        id = 4L,
+        title = "后勤",
+        icon = "support_agent",
+        items = listOf(
+            "后勤！！！速来！！！",
+            "我要中暑了！快带我去休息！",
+            "快帮我摘头壳！喘不过气了！",
+            "带我去厕所！快憋不住了！",
+            "我渴了，帮我拿一下水",
+            "头壳歪了没？帮我看一下",
+            "太热了，帮我拿一下小风扇",
+            "帮我整理一下后面的衣服/假发",
+            "我手机在哪？帮我拿一下",
+            "帮我把包拿过来一下",
+            "帮我递张纸巾",
+            "我走不动了，歇一下吧",
+            "帮我看看假发乱了没",
+            "帮我擦擦汗"
+        )
+    ),
+    QuickSubtitleGroup(
+        id = 5L,
+        title = "视野受限",
+        icon = "visibility",
+        items = listOf(
+            "我视野很差，麻烦让一下谢谢",
+            "前面有人吗？我可能要撞到了",
+            "能带我走一段吗？我看不太清路",
+            "这里有台阶/门槛/水坑吗？",
+            "帮忙确认一下前面安全吗",
+            "我的头壳起雾了，什么都看不见",
+            "你在我左边还是右边？",
+            "小心！别撞到我！",
+            "后面有人吗？我要往后退了",
+            "地上有东西吗？我怕踩到",
+            "麻烦帮我挡一下，我要调整头壳"
+        )
+    ),
+    QuickSubtitleGroup(
+        id = 6L,
+        title = "问路找人",
+        icon = "location_on",
+        items = listOf(
+            "请问卫生间在哪？",
+            "请问摄影区在哪边？",
+            "XX的摊位怎么走啊？",
+            "请问休息区/医务室在哪？",
+            "XX集合点在哪儿？",
+            "请问这里能出去吗？",
+            "出口在哪边？",
+            "你有没有看到一个出XX的人？穿XX颜色衣服的",
+            "请问签售区怎么走？",
+            "请问存包处在哪？"
+        )
+    ),
+    QuickSubtitleGroup(
+        id = 7L,
+        title = "排队闲聊",
+        icon = "format_list_bulleted",
+        items = listOf(
+            "这是排什么的队啊？",
+            "你排了多久了？",
+            "大概还要等多久啊？",
+            "要不要我帮你占着位置？",
+            "我出去一趟马上回来",
+            "太热了，你是不是也快融化了",
+            "今天人也太多了吧",
+            "你今天还去看哪个舞台吗？",
+            "你今天集了多少邮了？"
+        )
+    ),
+    QuickSubtitleGroup(
+        id = 8L,
+        title = "道别休息",
+        icon = "night_shelter",
+        items = listOf(
+            "我太热了，先去休息一下",
+            "我先脱头休息一会，马上回来",
+            "我去喝口水/吹会风",
+            "今天差不多了，我先撤了",
+            "你们继续玩，我先回去换装了",
+            "今天辛苦了，回头联系",
+            "拜拜~下次展子见！",
+            "感谢今天的后勤！没有你我真的不行",
+            "今天玩得太开心了！",
+            "路上注意安全哦"
+        )
+    ),
+    QuickSubtitleGroup(
+        id = 9L,
+        title = "突发应急",
+        icon = "warning",
+        items = listOf(
+            "不好意思，撞到你了",
+            "我的东西掉了，麻烦帮我捡一下",
+            "麻烦让一下，我要过去",
+            "不要碰我的头壳/道具谢谢",
+            "不好意思，我现在不方便合影",
+            "有人吗？能帮我一下吗？",
+            "麻烦帮我叫一下我的后勤，谢谢"
         )
     )
 )
 
+internal fun defaultQuickSubtitleGroups(): List<QuickSubtitleGroup> =
+    defaultQuickSubtitlePresetGroups()
+
+internal fun defaultSelectedQuickSubtitlePresetGroupIds(): List<Long> =
+    defaultQuickSubtitlePresetGroups().take(4).map { it.id }
+
 internal val QuickSubtitleGroupIconChoices = listOf(
+    "emoji_emotions",
     "sentiment_satisfied",
     "sentiment_very_satisfied",
     "sentiment_neutral",
@@ -626,9 +763,12 @@ internal val QuickSubtitleGroupIconChoices = listOf(
     "alternate_email",
     "emoji_people",
     "person",
+    "person_add",
     "groups",
     "accessibility_new",
     "support_agent",
+    "photo_camera",
+    "visibility",
     "translate",
     "work",
     "school",
@@ -640,8 +780,10 @@ internal val QuickSubtitleGroupIconChoices = listOf(
     "train",
     "flight",
     "location_on",
+    "format_list_bulleted",
     "schedule",
     "event",
+    "night_shelter",
     "payments",
     "sports_esports",
     "favorite",
