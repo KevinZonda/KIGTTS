@@ -427,16 +427,21 @@ class MainActivity : ComponentActivity() {
                                 color = MaterialTheme.colorScheme.background
                             ) {
                                 Box(Modifier.fillMaxSize()) {
-                                    when {
-                                        !state.settingsLoaded -> KigttsStartupLoadingScreen()
-                                        !state.onboardingCompleted -> {
-                                            KigttsOnboardingScreen(
+                                    val appPhase = when {
+                                        !state.settingsLoaded -> 0
+                                        !state.onboardingCompleted -> 1
+                                        else -> 2
+                                    }
+                                    Crossfade(targetState = appPhase) { phase ->
+                                        when (phase) {
+                                            0 -> KigttsStartupLoadingScreen()
+                                            1 -> KigttsOnboardingScreen(
                                                 onComplete = { selectedPresetGroups ->
                                                     viewModel.completeOnboarding(selectedPresetGroups)
                                                 }
                                             )
+                                            else -> AppScaffold(viewModel)
                                         }
-                                        else -> AppScaffold(viewModel)
                                     }
                                     KigttsTextToolbarPopup(
                                         state = textToolbarState,
