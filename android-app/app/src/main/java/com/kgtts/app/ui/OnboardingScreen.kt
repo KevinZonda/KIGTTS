@@ -82,22 +82,21 @@ import com.lhtstudio.kigtts.app.R
 @Composable
 internal fun KigttsStartupLoadingScreen() {
     val dark = currentAppDarkTheme()
-    val logoWidth = dimensionResource(R.dimen.kigtts_startup_logo_width)
-    val logoHeight = dimensionResource(R.dimen.kigtts_startup_logo_height)
     val splashBackground = if (dark) Color(0xFF1D2023) else Color.White
     val logoRes = if (dark) R.drawable.logo_white else R.drawable.logo_black
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(splashBackground)
+            .background(splashBackground),
+        contentAlignment = Alignment.Center
     ) {
         Image(
             painter = painterResource(id = logoRes),
             contentDescription = "KIGTTS Logo",
             contentScale = ContentScale.Fit,
             modifier = Modifier
-                .align(Alignment.Center)
-                .size(width = logoWidth, height = logoHeight)
+                .fillMaxWidth(0.48f)
+                .height(58.dp)
         )
     }
 }
