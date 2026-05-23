@@ -530,7 +530,6 @@ fun SettingsScreen(
     var themeModeExpanded by remember { mutableStateOf(false) }
     var overlayThemeModeExpanded by remember { mutableStateOf(false) }
     var fontScaleBlockModeExpanded by remember { mutableStateOf(false) }
-    var internalWebViewWarningVisible by remember { mutableStateOf(false) }
     var restoreQuickTextPresetDialogVisible by remember { mutableStateOf(false) }
     var restoreQuickTextSelectedGroupIds by rememberSaveable {
         mutableStateOf(defaultSelectedQuickSubtitlePresetGroupIds())
@@ -666,31 +665,6 @@ fun SettingsScreen(
 
     LaunchedEffect(selectedCategory) {
         scroll.animateScrollTo(0)
-    }
-
-    if (internalWebViewWarningVisible) {
-        AlertDialog(
-            onDismissRequest = { internalWebViewWarningVisible = false },
-            title = { Text("启用内置 WebView") },
-            text = {
-                Text("开启后，软件内置浏览器仅允许访问 lhtstudio.com 及其子域名。\n其它第三方网页仍会通过外部浏览器打开，其内容、安全性与本软件无关，相关风险由您自行承担。")
-            },
-            confirmButton = {
-                Md2TextButton(
-                    onClick = {
-                        internalWebViewWarningVisible = false
-                        viewModel.setInternalWebViewEnabled(true)
-                    }
-                ) {
-                    Text("开启")
-                }
-            },
-            dismissButton = {
-                Md2TextButton(onClick = { internalWebViewWarningVisible = false }) {
-                    Text("取消")
-                }
-            }
-        )
     }
 
     if (restoreQuickTextPresetDialogVisible) {
@@ -1825,21 +1799,19 @@ fun SettingsScreen(
                     )
                 }
             }
+            if (false) {
             Md2StaggeredFloatIn(index = 2) {
                 Md2SettingsCard(title = "外部网页") {
                     Md2SettingSwitchRow(
                         title = "启用内置 WebView",
                         checked = state.internalWebViewEnabled,
                         onCheckedChange = { enabled ->
-                            if (enabled) {
-                                internalWebViewWarningVisible = true
-                            } else {
-                                viewModel.setInternalWebViewEnabled(false)
-                            }
+                            // Internal WebView always enabled
                         },
                         supportingText = "默认关闭。开启后，内置 WebView 也仅允许访问 lhtstudio.com 及其子域名；其它网页链接仍会优先使用 Chrome Custom Tabs 或外部浏览器。"
                     )
                 }
+            }
             }
             Md2StaggeredFloatIn(index = 3) {
                 Md2SettingsCard(title = "便捷字幕显示") {

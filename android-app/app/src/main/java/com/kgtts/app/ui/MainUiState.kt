@@ -405,7 +405,7 @@ data class UiState(
     val onboardingCompleted: Boolean = false,
     val forceFullWidthTabsOnPhone: Boolean = false,
     val soundboardGridFullWidth: Boolean = false,
-    val internalWebViewEnabled: Boolean = false,
+    val internalWebViewEnabled: Boolean = true,
     val drawingSaveRelativePath: String = UserPrefs.DEFAULT_DRAWING_SAVE_RELATIVE_PATH,
     val quickCardAutoSaveOnExit: Boolean = false,
     val useBuiltinFileManager: Boolean = true,
