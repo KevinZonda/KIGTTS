@@ -699,74 +699,80 @@ fun SettingsScreen(
             onDismissRequest = { restoreQuickTextPresetDialogVisible = false },
             properties = DialogProperties(usePlatformDefaultWidth = false)
         ) {
-            Surface(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(max = 640.dp),
-                shape = RoundedCornerShape(UiTokens.Radius),
-                color = md2CardContainerColor(),
-                elevation = UiTokens.CardElevation
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
             ) {
-                Column(modifier = Modifier.padding(24.dp)) {
-                    Text(
-                        "恢复文本预设分组",
-                        style = MaterialTheme.typography.h6,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Spacer(Modifier.height(16.dp))
-                    Text(
-                        "选择要添加的分组。同名分组会作为新的导入分组添加，不会合并到现有分组。",
-                        style = MaterialTheme.typography.body2,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Spacer(Modifier.height(10.dp))
-                    Column(
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxWidth()
-                            .verticalScroll(rememberScrollState()),
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        QuickSubtitlePresetGroupSelectionList(
-                            groups = presetGroups,
-                            selectedGroupIds = restoreQuickTextSelectedGroupIds,
-                            expandedGroupIds = restoreQuickTextExpandedGroupIds,
-                            onToggleSelected = { groupId ->
-                                restoreQuickTextSelectedGroupIds =
-                                    if (groupId in restoreQuickTextSelectedGroupIds) {
-                                        restoreQuickTextSelectedGroupIds - groupId
-                                    } else {
-                                        restoreQuickTextSelectedGroupIds + groupId
-                                    }
-                            },
-                            onToggleExpanded = { groupId ->
-                                restoreQuickTextExpandedGroupIds =
-                                    if (groupId in restoreQuickTextExpandedGroupIds) {
-                                        restoreQuickTextExpandedGroupIds - groupId
-                                    } else {
-                                        restoreQuickTextExpandedGroupIds + groupId
-                                    }
-                            }
+                Surface(
+                    modifier = Modifier
+                        .padding(horizontal = 40.dp)
+                        .widthIn(max = 560.dp)
+                        .heightIn(max = 640.dp),
+                    shape = RoundedCornerShape(UiTokens.Radius),
+                    color = md2CardContainerColor(),
+                    elevation = UiTokens.CardElevation
+                ) {
+                    Column(modifier = Modifier.padding(24.dp)) {
+                        Text(
+                            "恢复文本预设分组",
+                            style = MaterialTheme.typography.h6,
+                            fontWeight = FontWeight.Bold
                         )
-                    }
-                    Spacer(Modifier.height(16.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.End,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Md2TextButton(onClick = { restoreQuickTextPresetDialogVisible = false }) {
-                            Text("取消")
-                        }
-                        Spacer(Modifier.width(8.dp))
-                        Md2TextButton(
-                            onClick = {
-                                viewModel.installDefaultQuickSubtitlePresetGroups(restoreQuickTextSelectedGroupIds)
-                                restoreQuickTextPresetDialogVisible = false
-                            },
-                            enabled = restoreQuickTextSelectedGroupIds.isNotEmpty()
+                        Spacer(Modifier.height(16.dp))
+                        Text(
+                            "选择要添加的分组。同名分组会作为新的导入分组添加，不会合并到现有分组。",
+                            style = MaterialTheme.typography.body2,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(Modifier.height(10.dp))
+                        Column(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxWidth()
+                                .verticalScroll(rememberScrollState()),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
-                            Text("添加")
+                            QuickSubtitlePresetGroupSelectionList(
+                                groups = presetGroups,
+                                selectedGroupIds = restoreQuickTextSelectedGroupIds,
+                                expandedGroupIds = restoreQuickTextExpandedGroupIds,
+                                onToggleSelected = { groupId ->
+                                    restoreQuickTextSelectedGroupIds =
+                                        if (groupId in restoreQuickTextSelectedGroupIds) {
+                                            restoreQuickTextSelectedGroupIds - groupId
+                                        } else {
+                                            restoreQuickTextSelectedGroupIds + groupId
+                                        }
+                                },
+                                onToggleExpanded = { groupId ->
+                                    restoreQuickTextExpandedGroupIds =
+                                        if (groupId in restoreQuickTextExpandedGroupIds) {
+                                            restoreQuickTextExpandedGroupIds - groupId
+                                        } else {
+                                            restoreQuickTextExpandedGroupIds + groupId
+                                        }
+                                }
+                            )
+                        }
+                        Spacer(Modifier.height(16.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.End,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Md2TextButton(onClick = { restoreQuickTextPresetDialogVisible = false }) {
+                                Text("取消")
+                            }
+                            Spacer(Modifier.width(8.dp))
+                            Md2TextButton(
+                                onClick = {
+                                    viewModel.installDefaultQuickSubtitlePresetGroups(restoreQuickTextSelectedGroupIds)
+                                    restoreQuickTextPresetDialogVisible = false
+                                },
+                                enabled = restoreQuickTextSelectedGroupIds.isNotEmpty()
+                            ) {
+                                Text("添加")
+                            }
                         }
                     }
                 }
