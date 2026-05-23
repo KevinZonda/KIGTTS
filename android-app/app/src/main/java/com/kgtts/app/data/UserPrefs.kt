@@ -417,7 +417,7 @@ object UserPrefs {
             ),
             piperNoiseScale = (this[KEY_PIPER_NOISE_SCALE] ?: 0.667f).coerceIn(0f, 2f),
             piperLengthScale = (this[KEY_PIPER_LENGTH_SCALE] ?: 1.0f).coerceIn(0.1f, 5f),
-            piperNoiseW = (this[KEY_PIPER_NOISE_W] ?: 0.8f).coerceIn(0f, 2f),
+            piperNoiseW = (this[KEY_PIPER_NOISE_W] ?: 0.8f).coerceIn(0.3f, 1.5f),
             piperSentenceSilence = (this[KEY_PIPER_SENTENCE_SILENCE] ?: 0.2f).coerceIn(0f, 2f),
             keepAlive = true,
             numberReplaceMode = this[KEY_NUMBER_REPLACE_MODE] ?: 0,

@@ -695,62 +695,89 @@ fun SettingsScreen(
 
     if (restoreQuickTextPresetDialogVisible) {
         val presetGroups = remember { defaultQuickSubtitlePresetGroups() }
-        AlertDialog(
+        Dialog(
             onDismissRequest = { restoreQuickTextPresetDialogVisible = false },
-            title = { Text("恢复文本预设分组") },
-            text = {
-                Column(
+            properties = DialogProperties(usePlatformDefaultWidth = false)
+        ) {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
+            ) {
+                Surface(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(max = 520.dp)
-                        .verticalScroll(rememberScrollState()),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                        .padding(horizontal = 40.dp)
+                        .widthIn(max = 560.dp)
+                        .heightIn(max = 640.dp),
+                    shape = RoundedCornerShape(UiTokens.Radius),
+                    color = md2CardContainerColor(),
+                    elevation = UiTokens.CardElevation
                 ) {
-                    Text(
-                        "选择要添加的分组。同名分组会作为新的导入分组添加，不会合并到现有分组。",
-                        style = MaterialTheme.typography.body2,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    QuickSubtitlePresetGroupSelectionList(
-                        groups = presetGroups,
-                        selectedGroupIds = restoreQuickTextSelectedGroupIds,
-                        expandedGroupIds = restoreQuickTextExpandedGroupIds,
-                        onToggleSelected = { groupId ->
-                            restoreQuickTextSelectedGroupIds =
-                                if (groupId in restoreQuickTextSelectedGroupIds) {
-                                    restoreQuickTextSelectedGroupIds - groupId
-                                } else {
-                                    restoreQuickTextSelectedGroupIds + groupId
+                    Column(modifier = Modifier.padding(24.dp)) {
+                        Text(
+                            "恢复文本预设分组",
+                            style = MaterialTheme.typography.h6,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Spacer(Modifier.height(16.dp))
+                        Text(
+                            "选择要添加的分组。同名分组会作为新的导入分组添加，不会合并到现有分组。",
+                            style = MaterialTheme.typography.body2,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(Modifier.height(10.dp))
+                        Column(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxWidth()
+                                .verticalScroll(rememberScrollState()),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            QuickSubtitlePresetGroupSelectionList(
+                                groups = presetGroups,
+                                selectedGroupIds = restoreQuickTextSelectedGroupIds,
+                                expandedGroupIds = restoreQuickTextExpandedGroupIds,
+                                onToggleSelected = { groupId ->
+                                    restoreQuickTextSelectedGroupIds =
+                                        if (groupId in restoreQuickTextSelectedGroupIds) {
+                                            restoreQuickTextSelectedGroupIds - groupId
+                                        } else {
+                                            restoreQuickTextSelectedGroupIds + groupId
+                                        }
+                                },
+                                onToggleExpanded = { groupId ->
+                                    restoreQuickTextExpandedGroupIds =
+                                        if (groupId in restoreQuickTextExpandedGroupIds) {
+                                            restoreQuickTextExpandedGroupIds - groupId
+                                        } else {
+                                            restoreQuickTextExpandedGroupIds + groupId
+                                        }
                                 }
-                        },
-                        onToggleExpanded = { groupId ->
-                            restoreQuickTextExpandedGroupIds =
-                                if (groupId in restoreQuickTextExpandedGroupIds) {
-                                    restoreQuickTextExpandedGroupIds - groupId
-                                } else {
-                                    restoreQuickTextExpandedGroupIds + groupId
-                                }
+                            )
                         }
-                    )
-                }
-            },
-            confirmButton = {
-                Md2TextButton(
-                    onClick = {
-                        viewModel.installDefaultQuickSubtitlePresetGroups(restoreQuickTextSelectedGroupIds)
-                        restoreQuickTextPresetDialogVisible = false
-                    },
-                    enabled = restoreQuickTextSelectedGroupIds.isNotEmpty()
-                ) {
-                    Text("添加")
-                }
-            },
-            dismissButton = {
-                Md2TextButton(onClick = { restoreQuickTextPresetDialogVisible = false }) {
-                    Text("取消")
+                        Spacer(Modifier.height(16.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.End,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Md2TextButton(onClick = { restoreQuickTextPresetDialogVisible = false }) {
+                                Text("取消")
+                            }
+                            Spacer(Modifier.width(8.dp))
+                            Md2TextButton(
+                                onClick = {
+                                    viewModel.installDefaultQuickSubtitlePresetGroups(restoreQuickTextSelectedGroupIds)
+                                    restoreQuickTextPresetDialogVisible = false
+                                },
+                                enabled = restoreQuickTextSelectedGroupIds.isNotEmpty()
+                            ) {
+                                Text("添加")
+                            }
+                        }
+                    }
                 }
             }
-        )
+        }
     }
 
     @Composable
@@ -1312,14 +1339,9 @@ fun SettingsScreen(
                         }
                     }
                 }
-            }
-        }
-    }
 
-    @Composable
-    fun AudioSettingsContent() {
-        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Md2StaggeredFloatIn(index = 0) {
+
+            Md2StaggeredFloatIn(index = 3) {
                 Md2SettingsCard(title = "设备监控") {
                     val realtimeInputLevel = viewModel.realtimeInputLevel
                     Text("输入音量", fontWeight = FontWeight.Bold)
@@ -1334,7 +1356,165 @@ fun SettingsScreen(
                 }
             }
 
-            Md2StaggeredFloatIn(index = 1) {
+            
+
+            Md2StaggeredFloatIn(index = 4) {
+                Md2SettingsCard(title = "回声与降噪") {
+                    Md2SettingSwitchRow(
+                        title = "回声抑制",
+                        checked = state.echoSuppression,
+                        onCheckedChange = { viewModel.setEchoSuppression(it) },
+                        supportingText = "开启后使用通话录音源，可能有回声抑制/降噪效果"
+                    )
+                    Md2SettingSwitchRow(
+                        title = "通话模式降噪",
+                        checked = state.communicationMode,
+                        onCheckedChange = { viewModel.setCommunicationMode(it) },
+                        supportingText = "开启后切换系统通话模式并统一播放属性"
+                    )
+                    Md2SettingSwitchRow(
+                        title = "AEC3 软件回声消除",
+                        checked = state.aec3Enabled,
+                        onCheckedChange = { viewModel.setAec3Enabled(it) },
+                        supportingText = "需渲染参考音频，可能与系统AEC冲突"
+                    )
+                    Md2SettingDropdownRow(
+                        title = "软件噪声抑制",
+                        value = denoiserModeOptions.firstOrNull { it.first == state.denoiserMode }?.second
+                            ?: denoiserModeOptions.first().second,
+                        expanded = denoiserModeExpanded,
+                        onExpandedChange = { denoiserModeExpanded = it },
+                        supportingText = "关闭时不做软件降噪；RNNoise 更偏语音场景，Speex 更偏传统预处理。"
+                    ) {
+                        denoiserModeOptions.forEach { (value, label) ->
+                            M2DropdownMenuItem(
+                                onClick = {
+                                    denoiserModeExpanded = false
+                                    viewModel.setDenoiserMode(value)
+                                }
+                            ) { Text(label) }
+                        }
+                    }
+                    Text("AEC3 状态：${state.aec3Status}", style = MaterialTheme.typography.bodySmall)
+                    Text(state.aec3Diag, style = MaterialTheme.typography.bodySmall)
+                }
+            }
+
+            
+
+            Md2StaggeredFloatIn(index = 5) {
+                Md2SettingsCard(title = "设备路由") {
+                    Md2SettingDropdownRow(
+                        title = "优先选择的音频输入设备类型",
+                        value = inputTypeOptions.firstOrNull { it.first == state.preferredInputType }?.second
+                            ?: inputTypeOptions.first().second,
+                        expanded = inputTypeExpanded,
+                        onExpandedChange = { inputTypeExpanded = it },
+                        supportingText = "适配内置、USB、蓝牙、有线等输入设备"
+                    ) {
+                        inputTypeOptions.forEach { (value, label) ->
+                            M2DropdownMenuItem(
+                                onClick = {
+                                    inputTypeExpanded = false
+                                    viewModel.setPreferredInputType(value)
+                                }
+                            ) { Text(label) }
+                        }
+                    }
+                    Md2SettingDropdownRow(
+                        title = "优先使用的音频输出类型",
+                        value = outputTypeOptions.firstOrNull { it.first == state.preferredOutputType }?.second
+                            ?: outputTypeOptions.first().second,
+                        expanded = outputTypeExpanded,
+                        onExpandedChange = { outputTypeExpanded = it },
+                        supportingText = "适配扬声器、听筒、蓝牙、USB、有线等输出设备"
+                    ) {
+                        outputTypeOptions.forEach { (value, label) ->
+                            M2DropdownMenuItem(
+                                onClick = {
+                                    outputTypeExpanded = false
+                                    viewModel.setPreferredOutputType(value)
+                                }
+                            ) { Text(label) }
+                        }
+                    }
+                }
+            }
+
+            
+
+            Md2StaggeredFloatIn(index = 6) {
+                Md2SettingsCard(title = "音频测试") {
+                    Text("当前状态：${state.audioTestStatus}", style = MaterialTheme.typography.bodySmall)
+                    LinearProgressIndicator(
+                        progress = state.audioTestLevel.coerceIn(0f, 1f),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 6.dp, bottom = 10.dp)
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        if (state.audioTestRecording) {
+                            Md2Button(
+                                onClick = { viewModel.stopAudioTestRecording() },
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text("停止录音")
+                            }
+                        } else {
+                            Md2Button(
+                                onClick = { viewModel.startAudioTestRecording() },
+                                modifier = Modifier.weight(1f),
+                                enabled = !state.audioTestPlaying
+                            ) {
+                                Text("开始录音")
+                            }
+                        }
+                        if (state.audioTestPlaying) {
+                            Md2OutlinedButton(
+                                onClick = { viewModel.stopAudioTestPlayback() },
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text("停止回放")
+                            }
+                        } else {
+                            Md2OutlinedButton(
+                                onClick = { viewModel.startAudioTestPlayback() },
+                                modifier = Modifier.weight(1f),
+                                enabled = state.audioTestHasClip && !state.audioTestRecording
+                            ) {
+                                Text("回放测试")
+                            }
+                        }
+                    }
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 8.dp),
+                        horizontalArrangement = Arrangement.End
+                    ) {
+                        Md2TextButton(
+                            onClick = { viewModel.clearAudioTest() },
+                            enabled = state.audioTestHasClip && !state.audioTestRecording && !state.audioTestPlaying
+                        ) {
+                            Text("清空录音")
+                        }
+                    }
+                    Text(
+                        "用于测试当前麦克风收音和本地回放。回放会套用当前 AI 语音增强设置，不会进入识别或朗读队列。测试前请先停止主语音链路。",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+            }
+                    }
+        }
+    }
+
+    @Composable
+    fun AudioSettingsContent() {
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {Md2StaggeredFloatIn(index = 0) {
                 Md2SettingsCard(title = "播放与合成") {
                     Text(
                         "当前朗读后端：${when {
@@ -1404,11 +1584,20 @@ fun SettingsScreen(
                             Text("选择 Kokoro 音色")
                         }
                     } else {
-                        Text("音色随机度：${String.format("%.3f", state.piperNoiseScale)}", style = MaterialTheme.typography.bodySmall)
+                        Text("语调起伏：${String.format("%.3f", state.piperNoiseScale)}", style = MaterialTheme.typography.bodySmall)
                         Slider(
                             value = state.piperNoiseScale,
                             onValueChange = { viewModel.setPiperNoiseScale(it) },
                             valueRange = 0f..2f
+                        )
+                        Text(
+                            "语调力度：${String.format("%.3f", state.piperNoiseW)}",
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                        Slider(
+                            value = state.piperNoiseW,
+                            onValueChange = { viewModel.setPiperNoiseW(it) },
+                            valueRange = 0.3f..1.5f
                         )
                     }
                     Text(
@@ -1440,7 +1629,7 @@ fun SettingsScreen(
                 }
             }
 
-            Md2StaggeredFloatIn(index = 2) {
+            Md2StaggeredFloatIn(index = 1) {
                 Md2SettingsCard(title = "Kokoro 离线语音") {
                     Text(
                         text = state.kokoroStatus,
@@ -1494,50 +1683,7 @@ fun SettingsScreen(
                     }
                 }
             }
-
-            Md2StaggeredFloatIn(index = 3) {
-                Md2SettingsCard(title = "回声与降噪") {
-                    Md2SettingSwitchRow(
-                        title = "回声抑制",
-                        checked = state.echoSuppression,
-                        onCheckedChange = { viewModel.setEchoSuppression(it) },
-                        supportingText = "开启后使用通话录音源，可能有回声抑制/降噪效果"
-                    )
-                    Md2SettingSwitchRow(
-                        title = "通话模式降噪",
-                        checked = state.communicationMode,
-                        onCheckedChange = { viewModel.setCommunicationMode(it) },
-                        supportingText = "开启后切换系统通话模式并统一播放属性"
-                    )
-                    Md2SettingSwitchRow(
-                        title = "AEC3 软件回声消除",
-                        checked = state.aec3Enabled,
-                        onCheckedChange = { viewModel.setAec3Enabled(it) },
-                        supportingText = "需渲染参考音频，可能与系统AEC冲突"
-                    )
-                    Md2SettingDropdownRow(
-                        title = "软件噪声抑制",
-                        value = denoiserModeOptions.firstOrNull { it.first == state.denoiserMode }?.second
-                            ?: denoiserModeOptions.first().second,
-                        expanded = denoiserModeExpanded,
-                        onExpandedChange = { denoiserModeExpanded = it },
-                        supportingText = "关闭时不做软件降噪；RNNoise 更偏语音场景，Speex 更偏传统预处理。"
-                    ) {
-                        denoiserModeOptions.forEach { (value, label) ->
-                            M2DropdownMenuItem(
-                                onClick = {
-                                    denoiserModeExpanded = false
-                                    viewModel.setDenoiserMode(value)
-                                }
-                            ) { Text(label) }
-                        }
-                    }
-                    Text("AEC3 状态：${state.aec3Status}", style = MaterialTheme.typography.bodySmall)
-                    Text(state.aec3Diag, style = MaterialTheme.typography.bodySmall)
-                }
-            }
-
-            Md2StaggeredFloatIn(index = 4) {
+Md2StaggeredFloatIn(index = 2) {
                 Md2SettingsCard(title = "设备路由") {
                     Md2SettingDropdownRow(
                         title = "优先选择的音频输入设备类型",
@@ -1575,73 +1721,7 @@ fun SettingsScreen(
                     }
                 }
             }
-
-            Md2StaggeredFloatIn(index = 4) {
-                Md2SettingsCard(title = "音频测试") {
-                    Text("当前状态：${state.audioTestStatus}", style = MaterialTheme.typography.bodySmall)
-                    LinearProgressIndicator(
-                        progress = state.audioTestLevel.coerceIn(0f, 1f),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 6.dp, bottom = 10.dp)
-                    )
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        if (state.audioTestRecording) {
-                            Md2Button(
-                                onClick = { viewModel.stopAudioTestRecording() },
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Text("停止录音")
-                            }
-                        } else {
-                            Md2Button(
-                                onClick = { viewModel.startAudioTestRecording() },
-                                modifier = Modifier.weight(1f),
-                                enabled = !state.audioTestPlaying
-                            ) {
-                                Text("开始录音")
-                            }
-                        }
-                        if (state.audioTestPlaying) {
-                            Md2OutlinedButton(
-                                onClick = { viewModel.stopAudioTestPlayback() },
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Text("停止回放")
-                            }
-                        } else {
-                            Md2OutlinedButton(
-                                onClick = { viewModel.startAudioTestPlayback() },
-                                modifier = Modifier.weight(1f),
-                                enabled = state.audioTestHasClip && !state.audioTestRecording
-                            ) {
-                                Text("回放测试")
-                            }
-                        }
-                    }
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 8.dp),
-                        horizontalArrangement = Arrangement.End
-                    ) {
-                        Md2TextButton(
-                            onClick = { viewModel.clearAudioTest() },
-                            enabled = state.audioTestHasClip && !state.audioTestRecording && !state.audioTestPlaying
-                        ) {
-                            Text("清空录音")
-                        }
-                    }
-                    Text(
-                        "用于测试当前麦克风收音和本地回放。回放会套用当前 AI 语音增强设置，不会进入识别或朗读队列。测试前请先停止主语音链路。",
-                        style = MaterialTheme.typography.bodySmall
-                    )
-                }
-            }
-        }
+}
     }
 
     @Composable

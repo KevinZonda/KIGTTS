@@ -4142,84 +4142,140 @@ internal fun QuickSubtitleItemsRecyclerCard(
     }
 
     if (showAddDialog) {
-        AlertDialog(
+        Dialog(
             onDismissRequest = { showAddDialog = false },
-            title = { Text("新增快捷文本") },
-            text = {
-                Md2DialogOutlinedField(
-                    value = addText,
-                    onValueChange = { addText = it },
-                    label = "快捷文本",
-                    modifier = Modifier.onFocusChanged { addTextFocused = it.isFocused },
-                    singleLine = false,
-                    maxLines = 4,
-                    trailingIcon = if (addTextFocused && addText.isNotEmpty()) {
-                        { Md2ClearFieldButton { addText = "" } }
-                    } else {
-                        null
-                    }
-                )
-            },
-            confirmButton = {
-                Md2TextButton(
-                    enabled = addText.trim().isNotEmpty(),
-                    onClick = {
-                        val text = addText.trim()
-                        if (text.isNotEmpty()) {
-                            onAdd(text)
-                            showAddDialog = false
-                            addText = ""
+            properties = DialogProperties(usePlatformDefaultWidth = false)
+        ) {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
+            ) {
+                Surface(
+                    modifier = Modifier
+                        .padding(horizontal = 40.dp)
+                        .widthIn(max = 560.dp),
+                    shape = RoundedCornerShape(UiTokens.Radius),
+                    color = md2CardContainerColor(),
+                    elevation = UiTokens.CardElevation
+                ) {
+                    Column(modifier = Modifier.padding(24.dp)) {
+                        Text(
+                            "新增快捷文本",
+                            style = MaterialTheme.typography.h6,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Spacer(Modifier.height(16.dp))
+                        Md2DialogOutlinedField(
+                            value = addText,
+                            onValueChange = { addText = it },
+                            label = "快捷文本",
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(max = 180.dp)
+                                .onFocusChanged { addTextFocused = it.isFocused },
+                            singleLine = false,
+                            maxLines = 4,
+                            trailingIcon = if (addTextFocused && addText.isNotEmpty()) {
+                                { Md2ClearFieldButton { addText = "" } }
+                            } else {
+                                null
+                            }
+                        )
+                        Spacer(Modifier.height(16.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.End,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Md2TextButton(onClick = { showAddDialog = false }) {
+                                Text("取消")
+                            }
+                            Spacer(Modifier.width(8.dp))
+                            Md2TextButton(
+                                enabled = addText.trim().isNotEmpty(),
+                                onClick = {
+                                    val text = addText.trim()
+                                    if (text.isNotEmpty()) {
+                                        onAdd(text)
+                                        showAddDialog = false
+                                        addText = ""
+                                    }
+                                }
+                            ) {
+                                Text("添加")
+                            }
                         }
                     }
-                ) {
-                    Text("添加")
-                }
-            },
-            dismissButton = {
-                Md2TextButton(onClick = { showAddDialog = false }) {
-                    Text("取消")
                 }
             }
-        )
+        }
     }
 
     val editingIndex = editTargetIndex
     if (editingIndex != null && editingIndex in items.indices) {
-        AlertDialog(
+        Dialog(
             onDismissRequest = { editTargetIndex = null },
-            title = { Text("编辑快捷文本") },
-            text = {
-                Md2DialogOutlinedField(
-                    value = editText,
-                    onValueChange = { editText = it },
-                    label = "快捷文本",
-                    modifier = Modifier.onFocusChanged { editTextFocused = it.isFocused },
-                    singleLine = false,
-                    maxLines = 4,
-                    trailingIcon = if (editTextFocused && editText.isNotEmpty()) {
-                        { Md2ClearFieldButton { editText = "" } }
-                    } else {
-                        null
+            properties = DialogProperties(usePlatformDefaultWidth = false)
+        ) {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
+            ) {
+                Surface(
+                    modifier = Modifier
+                        .padding(horizontal = 40.dp)
+                        .widthIn(max = 560.dp),
+                    shape = RoundedCornerShape(UiTokens.Radius),
+                    color = md2CardContainerColor(),
+                    elevation = UiTokens.CardElevation
+                ) {
+                    Column(modifier = Modifier.padding(24.dp)) {
+                        Text(
+                            "编辑快捷文本",
+                            style = MaterialTheme.typography.h6,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Spacer(Modifier.height(16.dp))
+                        Md2DialogOutlinedField(
+                            value = editText,
+                            onValueChange = { editText = it },
+                            label = "快捷文本",
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(max = 180.dp)
+                                .onFocusChanged { editTextFocused = it.isFocused },
+                            singleLine = false,
+                            maxLines = 4,
+                            trailingIcon = if (editTextFocused && editText.isNotEmpty()) {
+                                { Md2ClearFieldButton { editText = "" } }
+                            } else {
+                                null
+                            }
+                        )
+                        Spacer(Modifier.height(16.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.End,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Md2TextButton(onClick = { editTargetIndex = null }) {
+                                Text("取消")
+                            }
+                            Spacer(Modifier.width(8.dp))
+                            Md2TextButton(onClick = {
+                                val idx = editTargetIndex
+                                if (idx != null && idx in items.indices) {
+                                    onItemTextChanged(idx, editText)
+                                }
+                                editTargetIndex = null
+                            }) {
+                                Text("保存")
+                            }
+                        }
                     }
-                )
-            },
-            confirmButton = {
-                Md2TextButton(onClick = {
-                    val idx = editTargetIndex
-                    if (idx != null && idx in items.indices) {
-                        onItemTextChanged(idx, editText)
-                    }
-                    editTargetIndex = null
-                }) {
-                    Text("保存")
-                }
-            },
-            dismissButton = {
-                Md2TextButton(onClick = { editTargetIndex = null }) {
-                    Text("取消")
                 }
             }
-        )
+        }
     }
 }
 
