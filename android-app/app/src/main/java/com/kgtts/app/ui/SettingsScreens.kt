@@ -1437,6 +1437,15 @@ fun SettingsScreen(
                             onValueChange = { viewModel.setPiperNoiseScale(it) },
                             valueRange = 0f..2f
                         )
+                        Text(
+                            "音素随机度：${String.format("%.3f", state.piperNoiseW)}",
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                        Slider(
+                            value = state.piperNoiseW,
+                            onValueChange = { viewModel.setPiperNoiseW(it) },
+                            valueRange = 0.3f..1.5f
+                        )
                     }
                     Text(
                         if (isSystemTtsSelected) {

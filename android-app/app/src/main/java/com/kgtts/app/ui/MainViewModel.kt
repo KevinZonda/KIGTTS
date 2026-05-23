@@ -834,7 +834,7 @@ class MainViewModel(
             audioFocusAvoidanceMode = settings.audioFocusAvoidanceMode,
             piperNoiseScale = settings.piperNoiseScale,
             piperLengthScale = settings.piperLengthScale,
-            piperNoiseW = 0.8f,
+            piperNoiseW = settings.piperNoiseW,
             piperSentenceSilence = settings.piperSentenceSilence,
             keepAlive = settings.keepAlive,
             numberReplaceMode = settings.numberReplaceMode,
@@ -3330,7 +3330,7 @@ class MainViewModel(
     }
 
     fun setPiperNoiseW(value: Float) {
-        val clamped = value.coerceIn(0f, 2f)
+        val clamped = value.coerceIn(0.3f, 1.5f)
         uiState = uiState.copy(piperNoiseW = clamped)
         realtimeHost?.setPiperNoiseW(clamped)
         viewModelScope.launch {

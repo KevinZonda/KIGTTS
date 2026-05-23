@@ -460,7 +460,7 @@ class PiperTtsEngine(context: Context, packDir: File) : TtsModule {
     ) {
         this.noiseScale = noiseScale.coerceIn(0f, 2f)
         this.lengthScale = lengthScale.coerceIn(0.1f, 5f)
-        this.noiseW = noiseW.coerceIn(0f, 2f)
+        this.noiseW = noiseW.coerceIn(0.3f, 1.5f)
         this.sentenceSilenceSec = sentenceSilenceSec.coerceIn(0f, 2f)
     }
 
@@ -1814,7 +1814,7 @@ class RealtimeController(
     @Volatile private var suppressDelayMs = (initialSuppressDelaySec.coerceIn(0f, 5f) * 1000f).toLong()
     @Volatile private var piperNoiseScale = initialPiperNoiseScale.coerceIn(0f, 2f)
     @Volatile private var piperLengthScale = initialPiperLengthScale.coerceIn(0.1f, 5f)
-    @Volatile private var piperNoiseW = initialPiperNoiseW.coerceIn(0f, 2f)
+    @Volatile private var piperNoiseW = initialPiperNoiseW.coerceIn(0.3f, 1.5f)
     @Volatile private var piperSentenceSilenceSec = initialPiperSentenceSilenceSec.coerceIn(0f, 2f)
     @Volatile private var kokoroSpeakerId = initialKokoroSpeakerId.coerceIn(
         UserPrefs.KOKORO_MIN_SPEAKER_ID,
@@ -2238,7 +2238,7 @@ class RealtimeController(
     }
 
     fun setPiperNoiseW(value: Float) {
-        piperNoiseW = value.coerceIn(0f, 2f)
+        piperNoiseW = value.coerceIn(0.3f, 1.5f)
         applyTtsSynthesisTuning()
     }
 
