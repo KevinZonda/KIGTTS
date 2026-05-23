@@ -537,7 +537,7 @@ class MainViewModel(
         private set
     var soundboardPlaybackStates by mutableStateOf<Map<Long, SoundboardPlaybackState>>(emptyMap())
         private set
-    var settingsSelectedCategoryName by mutableStateOf(SettingsCategory.Recognition.name)
+    var settingsSelectedCategoryName by mutableStateOf(SettingsCategory.Audio.name)
         private set
     var quickCards by mutableStateOf<List<QuickCard>>(emptyList())
         private set

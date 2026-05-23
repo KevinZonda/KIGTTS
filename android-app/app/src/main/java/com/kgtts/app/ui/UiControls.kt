@@ -1356,8 +1356,8 @@ internal fun Md2SettingDropdownRow(
 }
 
 enum class SettingsCategory(val title: String, val icon: String) {
-    Recognition("识别", "graphic_eq"),
     Audio("音频", "volume_up"),
+    Recognition("识别", "graphic_eq"),
     System("系统", "tune"),
     About("关于", "info")
 }
