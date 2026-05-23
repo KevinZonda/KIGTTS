@@ -1339,6 +1339,9 @@ fun SettingsScreen(
                         }
                     }
                 }
+            }
+        }
+    }
 
 
             Md2StaggeredFloatIn(index = 3) {
@@ -1355,8 +1358,6 @@ fun SettingsScreen(
                     Text("当前输出设备：${state.outputDeviceLabel}", style = MaterialTheme.typography.bodySmall)
                 }
             }
-
-            
 
             Md2StaggeredFloatIn(index = 4) {
                 Md2SettingsCard(title = "回声与降噪") {
@@ -1400,8 +1401,6 @@ fun SettingsScreen(
                 }
             }
 
-            
-
             Md2StaggeredFloatIn(index = 5) {
                 Md2SettingsCard(title = "设备路由") {
                     Md2SettingDropdownRow(
@@ -1440,8 +1439,6 @@ fun SettingsScreen(
                     }
                 }
             }
-
-            
 
             Md2StaggeredFloatIn(index = 6) {
                 Md2SettingsCard(title = "音频测试") {
@@ -1508,13 +1505,12 @@ fun SettingsScreen(
                     )
                 }
             }
-                    }
-        }
-    }
 
     @Composable
     fun AudioSettingsContent() {
-        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {Md2StaggeredFloatIn(index = 0) {
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+
+            Md2StaggeredFloatIn(index = 0) {
                 Md2SettingsCard(title = "播放与合成") {
                     Text(
                         "当前朗读后端：${when {
@@ -1683,7 +1679,9 @@ fun SettingsScreen(
                     }
                 }
             }
-Md2StaggeredFloatIn(index = 2) {
+
+
+            Md2StaggeredFloatIn(index = 2) {
                 Md2SettingsCard(title = "设备路由") {
                     Md2SettingDropdownRow(
                         title = "优先选择的音频输入设备类型",
@@ -1721,7 +1719,8 @@ Md2StaggeredFloatIn(index = 2) {
                     }
                 }
             }
-}
+
+        }
     }
 
     @Composable
