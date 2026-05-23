@@ -4146,19 +4146,23 @@ internal fun QuickSubtitleItemsRecyclerCard(
             onDismissRequest = { showAddDialog = false },
             title = { Text("新增快捷文本") },
             text = {
-                Md2DialogOutlinedField(
-                    value = addText,
-                    onValueChange = { addText = it },
-                    label = "快捷文本",
-                    modifier = Modifier.onFocusChanged { addTextFocused = it.isFocused },
-                    singleLine = false,
-                    maxLines = 4,
-                    trailingIcon = if (addTextFocused && addText.isNotEmpty()) {
-                        { Md2ClearFieldButton { addText = "" } }
-                    } else {
-                        null
-                    }
-                )
+                Box(modifier = Modifier.heightIn(max = 200.dp)) {
+                    Md2DialogOutlinedField(
+                        value = addText,
+                        onValueChange = { addText = it },
+                        label = "快捷文本",
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .onFocusChanged { addTextFocused = it.isFocused },
+                        singleLine = false,
+                        maxLines = 4,
+                        trailingIcon = if (addTextFocused && addText.isNotEmpty()) {
+                            { Md2ClearFieldButton { addText = "" } }
+                        } else {
+                            null
+                        }
+                    )
+                }
             },
             confirmButton = {
                 Md2TextButton(
@@ -4189,19 +4193,23 @@ internal fun QuickSubtitleItemsRecyclerCard(
             onDismissRequest = { editTargetIndex = null },
             title = { Text("编辑快捷文本") },
             text = {
-                Md2DialogOutlinedField(
-                    value = editText,
-                    onValueChange = { editText = it },
-                    label = "快捷文本",
-                    modifier = Modifier.onFocusChanged { editTextFocused = it.isFocused },
-                    singleLine = false,
-                    maxLines = 4,
-                    trailingIcon = if (editTextFocused && editText.isNotEmpty()) {
-                        { Md2ClearFieldButton { editText = "" } }
-                    } else {
-                        null
-                    }
-                )
+                Box(modifier = Modifier.heightIn(max = 200.dp)) {
+                    Md2DialogOutlinedField(
+                        value = editText,
+                        onValueChange = { editText = it },
+                        label = "快捷文本",
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .onFocusChanged { editTextFocused = it.isFocused },
+                        singleLine = false,
+                        maxLines = 4,
+                        trailingIcon = if (editTextFocused && editText.isNotEmpty()) {
+                            { Md2ClearFieldButton { editText = "" } }
+                        } else {
+                            null
+                        }
+                    )
+                }
             },
             confirmButton = {
                 Md2TextButton(onClick = {

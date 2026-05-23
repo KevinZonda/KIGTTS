@@ -699,39 +699,44 @@ fun SettingsScreen(
             onDismissRequest = { restoreQuickTextPresetDialogVisible = false },
             title = { Text("恢复文本预设分组") },
             text = {
-                Column(
+                Box(
                     modifier = Modifier
                         .fillMaxWidth()
                         .heightIn(max = 520.dp)
-                        .verticalScroll(rememberScrollState()),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    Text(
-                        "选择要添加的分组。同名分组会作为新的导入分组添加，不会合并到现有分组。",
-                        style = MaterialTheme.typography.body2,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    QuickSubtitlePresetGroupSelectionList(
-                        groups = presetGroups,
-                        selectedGroupIds = restoreQuickTextSelectedGroupIds,
-                        expandedGroupIds = restoreQuickTextExpandedGroupIds,
-                        onToggleSelected = { groupId ->
-                            restoreQuickTextSelectedGroupIds =
-                                if (groupId in restoreQuickTextSelectedGroupIds) {
-                                    restoreQuickTextSelectedGroupIds - groupId
-                                } else {
-                                    restoreQuickTextSelectedGroupIds + groupId
-                                }
-                        },
-                        onToggleExpanded = { groupId ->
-                            restoreQuickTextExpandedGroupIds =
-                                if (groupId in restoreQuickTextExpandedGroupIds) {
-                                    restoreQuickTextExpandedGroupIds - groupId
-                                } else {
-                                    restoreQuickTextExpandedGroupIds + groupId
-                                }
-                        }
-                    )
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Text(
+                            "选择要添加的分组。同名分组会作为新的导入分组添加，不会合并到现有分组。",
+                            style = MaterialTheme.typography.body2,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        QuickSubtitlePresetGroupSelectionList(
+                            groups = presetGroups,
+                            selectedGroupIds = restoreQuickTextSelectedGroupIds,
+                            expandedGroupIds = restoreQuickTextExpandedGroupIds,
+                            onToggleSelected = { groupId ->
+                                restoreQuickTextSelectedGroupIds =
+                                    if (groupId in restoreQuickTextSelectedGroupIds) {
+                                        restoreQuickTextSelectedGroupIds - groupId
+                                    } else {
+                                        restoreQuickTextSelectedGroupIds + groupId
+                                    }
+                            },
+                            onToggleExpanded = { groupId ->
+                                restoreQuickTextExpandedGroupIds =
+                                    if (groupId in restoreQuickTextExpandedGroupIds) {
+                                        restoreQuickTextExpandedGroupIds - groupId
+                                    } else {
+                                        restoreQuickTextExpandedGroupIds + groupId
+                                    }
+                            }
+                        )
+                    }
                 }
             },
             confirmButton = {
