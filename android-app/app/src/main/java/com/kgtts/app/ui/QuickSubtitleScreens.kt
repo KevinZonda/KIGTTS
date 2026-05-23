@@ -155,6 +155,7 @@ import androidx.compose.ui.input.pointer.PointerType
 import androidx.compose.ui.input.pointer.pointerInteropFilter
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.layout.ContentScale
@@ -4146,7 +4147,7 @@ internal fun QuickSubtitleItemsRecyclerCard(
             onDismissRequest = { showAddDialog = false },
             title = { Text("新增快捷文本") },
             text = {
-                Box(modifier = Modifier.heightIn(max = 200.dp)) {
+                Box(modifier = Modifier.heightIn(max = 200.dp).clipToBounds()) {
                     Md2DialogOutlinedField(
                         value = addText,
                         onValueChange = { addText = it },
@@ -4193,7 +4194,7 @@ internal fun QuickSubtitleItemsRecyclerCard(
             onDismissRequest = { editTargetIndex = null },
             title = { Text("编辑快捷文本") },
             text = {
-                Box(modifier = Modifier.heightIn(max = 200.dp)) {
+                Box(modifier = Modifier.heightIn(max = 200.dp).clipToBounds()) {
                     Md2DialogOutlinedField(
                         value = editText,
                         onValueChange = { editText = it },
