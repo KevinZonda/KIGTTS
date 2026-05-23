@@ -1340,10 +1340,6 @@ fun SettingsScreen(
                     }
                 }
             }
-        }
-    }
-
-
             Md2StaggeredFloatIn(index = 3) {
                 Md2SettingsCard(title = "设备监控") {
                     val realtimeInputLevel = viewModel.realtimeInputLevel
@@ -1505,6 +1501,8 @@ fun SettingsScreen(
                     )
                 }
             }
+        }
+    }
 
     @Composable
     fun AudioSettingsContent() {
