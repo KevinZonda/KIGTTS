@@ -486,6 +486,9 @@ fun SettingsScreen(
                 toast(context, "未授予通知权限，实时通知无法显示")
             }
         }
+    var liveSubtitleNotificationPermissionPurposeOpen by remember { mutableStateOf(false) }
+    var speakerEnrollPermissionPurposeOpen by remember { mutableStateOf(false) }
+    var pendingSpeakerEnrollPermissionStep by remember { mutableIntStateOf(0) }
     val drawerModeOptions = listOf(
         UserPrefs.DRAWER_MODE_HIDDEN to "隐藏式抽屉",
         UserPrefs.DRAWER_MODE_PERMANENT to "常驻可折叠"
@@ -582,6 +585,15 @@ fun SettingsScreen(
     fun startSpeakerEnrollStepCapture(step: Int) {
         if (speakerEnrollReading || speakerEnrollCountingDown) return
         if (step !in 1..3) return
+        val micGranted = ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.RECORD_AUDIO
+        ) == PackageManager.PERMISSION_GRANTED
+        if (!micGranted) {
+            pendingSpeakerEnrollPermissionStep = step
+            speakerEnrollPermissionPurposeOpen = true
+            return
+        }
         scope.launch {
             speakerEnrollCountingDown = true
             speakerEnrollCountdown = 3
@@ -646,6 +658,16 @@ fun SettingsScreen(
             }
         }
     }
+    val speakerEnrollPermissionLauncher =
+        rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+            val step = pendingSpeakerEnrollPermissionStep
+            pendingSpeakerEnrollPermissionStep = 0
+            if (granted && step in 1..3) {
+                startSpeakerEnrollStepCapture(step)
+            } else if (!granted) {
+                toast(context, "未授予麦克风权限，无法采集说话人样本")
+            }
+        }
     fun closeSpeakerEnrollDialog() {
         showSpeakerEnrollDialog = false
         speakerEnrollCountingDown = false
@@ -1895,9 +1917,7 @@ fun SettingsScreen(
                                     Manifest.permission.POST_NOTIFICATIONS
                                 ) != PackageManager.PERMISSION_GRANTED
                             ) {
-                                liveSubtitleNotificationPermissionLauncher.launch(
-                                    Manifest.permission.POST_NOTIFICATIONS
-                                )
+                                liveSubtitleNotificationPermissionPurposeOpen = true
                             } else {
                                 viewModel.setLiveSubtitleNotificationEnabled(enabled)
                             }
@@ -2243,6 +2263,38 @@ fun SettingsScreen(
                 TextButton(onClick = { speakerEnrollRetryDialog = false }) {
                     Text("重录")
                 }
+            }
+        )
+    }
+
+    if (liveSubtitleNotificationPermissionPurposeOpen) {
+        PermissionPurposeDialog(
+            info = notificationPermissionPurpose(),
+            onConfirm = {
+                liveSubtitleNotificationPermissionPurposeOpen = false
+                liveSubtitleNotificationPermissionLauncher.launch(
+                    Manifest.permission.POST_NOTIFICATIONS
+                )
+            },
+            onDismiss = {
+                liveSubtitleNotificationPermissionPurposeOpen = false
+            }
+        )
+    }
+
+    if (speakerEnrollPermissionPurposeOpen) {
+        PermissionPurposeDialog(
+            info = recordAudioPermissionPurpose(
+                serviceFeature = "说话人验证样本采集",
+                purpose = "采集你按页面提示主动朗读的三段语音，用于在本机生成说话人验证样本。"
+            ),
+            onConfirm = {
+                speakerEnrollPermissionPurposeOpen = false
+                speakerEnrollPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+            },
+            onDismiss = {
+                speakerEnrollPermissionPurposeOpen = false
+                pendingSpeakerEnrollPermissionStep = 0
             }
         )
     }

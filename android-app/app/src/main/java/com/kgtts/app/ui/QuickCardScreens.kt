@@ -632,27 +632,13 @@ internal fun QuickCardMainScreen(
         )
     }
     if (cameraPermissionDialogOpen) {
-        AlertDialog(
-            onDismissRequest = { cameraPermissionDialogOpen = false },
-            title = { Text("需要相机权限") },
-            text = {
-                Text("扫一扫需要使用相机预览画面来识别二维码。识别过程在本机完成，KIGTTS 不会上传相机画面或二维码截图。")
+        PermissionPurposeDialog(
+            info = cameraScannerPermissionPurpose(),
+            onConfirm = {
+                cameraPermissionDialogOpen = false
+                cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
             },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        cameraPermissionDialogOpen = false
-                        cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
-                    }
-                ) {
-                    Text("允许并继续")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { cameraPermissionDialogOpen = false }) {
-                    Text("取消")
-                }
-            }
+            onDismiss = { cameraPermissionDialogOpen = false }
         )
     }
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -1564,34 +1550,15 @@ internal fun QuickCardScannerScreen(
     }
 
     if (cameraPermissionDialogOpen && !cameraPermissionGranted) {
-        AlertDialog(
-            onDismissRequest = {
+        PermissionPurposeDialog(
+            info = cameraScannerPermissionPurpose(),
+            onConfirm = {
+                cameraPermissionDialogOpen = false
+                cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+            },
+            onDismiss = {
                 cameraPermissionDialogOpen = false
                 onOpenFailed()
-            },
-            title = { Text("需要相机权限") },
-            text = {
-                Text("扫一扫需要使用相机预览画面来识别二维码。识别过程在本机完成，KIGTTS 不会上传相机画面或二维码截图。")
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        cameraPermissionDialogOpen = false
-                        cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
-                    }
-                ) {
-                    Text("允许并继续")
-                }
-            },
-            dismissButton = {
-                TextButton(
-                    onClick = {
-                        cameraPermissionDialogOpen = false
-                        onOpenFailed()
-                    }
-                ) {
-                    Text("取消")
-                }
             }
         )
     }
@@ -4248,5 +4215,3 @@ internal fun rememberQuickCardQrBitmap(content: String): Bitmap? {
     }
     return bitmap
 }
-
-
