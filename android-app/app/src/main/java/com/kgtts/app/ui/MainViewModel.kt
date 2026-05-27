@@ -3925,10 +3925,11 @@ class MainViewModel(
         }
     }
 
+    @Suppress("UNUSED_PARAMETER")
     fun setInternalWebViewEnabled(enabled: Boolean) {
-        uiState = uiState.copy(internalWebViewEnabled = enabled)
+        uiState = uiState.copy(internalWebViewEnabled = true)
         viewModelScope.launch {
-            UserPrefs.setInternalWebViewEnabled(appContext, enabled)
+            UserPrefs.setInternalWebViewEnabled(appContext, true)
         }
     }
 
@@ -4426,4 +4427,3 @@ class MainViewModel(
         }
     }
 }
-

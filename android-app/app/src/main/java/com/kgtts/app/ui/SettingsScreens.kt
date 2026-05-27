@@ -1805,7 +1805,7 @@ fun SettingsScreen(
                     Md2SettingSwitchRow(
                         title = "启用内置 WebView",
                         checked = state.internalWebViewEnabled,
-                        onCheckedChange = { enabled ->
+                        onCheckedChange = { _ ->
                             // Internal WebView always enabled
                         },
                         supportingText = "默认关闭。开启后，内置 WebView 也仅允许访问 lhtstudio.com 及其子域名；其它网页链接仍会优先使用 Chrome Custom Tabs 或外部浏览器。"
@@ -3019,5 +3019,3 @@ internal fun buildMarkdownAnnotatedString(
         index++
     }
 }
-
-

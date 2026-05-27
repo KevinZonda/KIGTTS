@@ -433,7 +433,7 @@ object UserPrefs {
             onboardingCompleted = this[KEY_ONBOARDING_COMPLETED] ?: false,
             forceFullWidthTabsOnPhone = this[KEY_FORCE_FULL_WIDTH_TABS_ON_PHONE] ?: false,
             soundboardGridFullWidth = this[KEY_SOUNDBOARD_GRID_FULL_WIDTH] ?: false,
-            internalWebViewEnabled = this[KEY_INTERNAL_WEBVIEW_ENABLED] ?: true,
+            internalWebViewEnabled = true,
             drawingSaveRelativePath = (this[KEY_DRAWING_SAVE_RELATIVE_PATH]
                 ?: DEFAULT_DRAWING_SAVE_RELATIVE_PATH).ifBlank { DEFAULT_DRAWING_SAVE_RELATIVE_PATH },
             quickCardAutoSaveOnExit = this[KEY_QUICK_CARD_AUTO_SAVE_ON_EXIT] ?: false,
@@ -764,9 +764,10 @@ object UserPrefs {
         }
     }
 
+    @Suppress("UNUSED_PARAMETER")
     suspend fun setInternalWebViewEnabled(context: Context, enabled: Boolean) {
         context.dataStore.edit { prefs ->
-            prefs[KEY_INTERNAL_WEBVIEW_ENABLED] = enabled
+            prefs[KEY_INTERNAL_WEBVIEW_ENABLED] = true
         }
     }
 
