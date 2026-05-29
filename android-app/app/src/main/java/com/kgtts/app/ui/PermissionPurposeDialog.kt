@@ -25,7 +25,7 @@ internal data class PermissionPurposeInfo(
     val serviceFeature: String,
     val purpose: String,
     val privacyNote: String,
-    val confirmLabel: String = "允许并继续"
+    val confirmLabel: String = "授权并继续"
 )
 
 @Composable
@@ -91,7 +91,7 @@ internal fun PermissionPurposeDetails(
         PermissionPurposeLine("用途与范围", info.purpose)
         PermissionPurposeLine("隐私说明", info.privacyNote)
         Text(
-            "请确认了解权限用途后再继续操作。",
+            "请确认了解权限用途后再继续授权。",
             style = MaterialTheme.typography.body2
         )
     }
