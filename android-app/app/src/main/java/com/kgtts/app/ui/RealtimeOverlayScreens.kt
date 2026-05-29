@@ -394,6 +394,7 @@ fun FloatingOverlayScreen(
     val accessibilityPermissionGranted =
         remember { mutableStateOf(VolumeHotkeyAccessibilityService.isEnabled(context)) }
     var pendingOverlayPermissionEnable by remember { mutableStateOf(false) }
+    var overlayPermissionPurposeOpen by remember { mutableStateOf(false) }
     var hotkeyActionPickerSequence by remember { mutableStateOf<VolumeHotkeySequence?>(null) }
     var externalShortcutPickerSequence by remember { mutableStateOf<VolumeHotkeySequence?>(null) }
     var externalShortcutSearchQuery by remember { mutableStateOf("") }
@@ -488,6 +489,14 @@ fun FloatingOverlayScreen(
 
             else -> "系统音量变化监听"
         }
+    fun openOverlayPermissionSettings() {
+        overlayPermissionLauncher.launch(
+            Intent(
+                Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                Uri.parse("package:${context.packageName}")
+            )
+        )
+    }
     fun openAccessibilitySettingsWithGuide() {
         viewModel.setVolumeHotkeyAccessibilityEnabled(true)
         if (overlayPermissionGranted.value) {
@@ -548,12 +557,7 @@ fun FloatingOverlayScreen(
                                 FloatingOverlayService.start(context)
                             } else {
                                 pendingOverlayPermissionEnable = true
-                                overlayPermissionLauncher.launch(
-                                    Intent(
-                                        Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                                        Uri.parse("package:${context.packageName}")
-                                    )
-                                )
+                                overlayPermissionPurposeOpen = true
                             }
                         }
                     )
@@ -574,12 +578,7 @@ fun FloatingOverlayScreen(
                     Md2OutlinedButton(
                         onClick = {
                             pendingOverlayPermissionEnable = false
-                            overlayPermissionLauncher.launch(
-                                Intent(
-                                    Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                                    Uri.parse("package:${context.packageName}")
-                                )
-                            )
+                            overlayPermissionPurposeOpen = true
                         }
                     ) {
                         Text("打开权限设置")
@@ -753,6 +752,20 @@ fun FloatingOverlayScreen(
         }
 
         Spacer(Modifier.height(pageBottomBlankPadding()))
+    }
+
+    if (overlayPermissionPurposeOpen) {
+        PermissionPurposeDialog(
+            info = floatingOverlayPermissionPurpose(),
+            onConfirm = {
+                overlayPermissionPurposeOpen = false
+                openOverlayPermissionSettings()
+            },
+            onDismiss = {
+                overlayPermissionPurposeOpen = false
+                pendingOverlayPermissionEnable = false
+            }
+        )
     }
 
     pendingVolumeHotkeyEnableSequence?.let { sequence ->
@@ -1443,5 +1456,3 @@ internal fun RunningStripTopBarToggle(
         }
     }
 }
-
-

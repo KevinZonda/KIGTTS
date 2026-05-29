@@ -347,7 +347,9 @@ internal fun QuickCardNavHost(
     navController: NavHostController,
     viewModel: MainViewModel,
     onNavReady: () -> Unit,
-    onTopBarActionsChange: (QuickCardTopBarActions?) -> Unit
+    onTopBarActionsChange: (QuickCardTopBarActions?) -> Unit,
+    forceLandscapeLayout: Boolean = false,
+    ultraSmallAdaptiveWindow: Boolean = false
 ) {
     val context = LocalContext.current
     DisposableEffect(Unit) {
@@ -506,7 +508,9 @@ internal fun QuickCardNavHost(
                 },
                 onOpenScanner = {
                     navController.navigate(QuickCardRoutes.Scanner) { launchSingleTop = true }
-                }
+                },
+                forceLandscapeLayout = forceLandscapeLayout,
+                ultraSmallAdaptiveWindow = ultraSmallAdaptiveWindow
             )
         }
         composable(QuickCardRoutes.Sort) {
@@ -535,7 +539,8 @@ internal fun QuickCardNavHost(
                         popUpTo(QuickCardRoutes.Scanner) { inclusive = true }
                         launchSingleTop = true
                     }
-                }
+                },
+                forceLandscapeLayout = forceLandscapeLayout
             )
         }
         composable(
@@ -591,12 +596,16 @@ internal fun QuickCardMainScreen(
     onOpenEditor: (Long) -> Unit,
     onOpenSort: () -> Unit,
     onCreateCard: (QuickCardType, String) -> Unit,
-    onOpenScanner: () -> Unit
+    onOpenScanner: () -> Unit,
+    forceLandscapeLayout: Boolean = false,
+    ultraSmallAdaptiveWindow: Boolean = false
 ) {
     val context = LocalContext.current
     val performKeyHaptic = rememberKigttsKeyHaptic()
     val cards = viewModel.quickCards
-    val isLandscape = androidx.compose.ui.platform.LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
+    val isLandscape =
+        forceLandscapeLayout ||
+            androidx.compose.ui.platform.LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
     val previewCardId = viewModel.quickCardPreviewCardId
     val previewCard = remember(cards, previewCardId) {
         previewCardId?.let { id -> cards.firstOrNull { it.id == id } }
@@ -632,27 +641,13 @@ internal fun QuickCardMainScreen(
         )
     }
     if (cameraPermissionDialogOpen) {
-        AlertDialog(
-            onDismissRequest = { cameraPermissionDialogOpen = false },
-            title = { Text("需要相机权限") },
-            text = {
-                Text("扫一扫需要使用相机预览画面来识别二维码。识别过程在本机完成，KIGTTS 不会上传相机画面或二维码截图。")
+        PermissionPurposeDialog(
+            info = cameraScannerPermissionPurpose(),
+            onConfirm = {
+                cameraPermissionDialogOpen = false
+                cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
             },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        cameraPermissionDialogOpen = false
-                        cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
-                    }
-                ) {
-                    Text("允许并继续")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { cameraPermissionDialogOpen = false }) {
-                    Text("取消")
-                }
-            }
+            onDismiss = { cameraPermissionDialogOpen = false }
         )
     }
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -716,6 +711,7 @@ internal fun QuickCardMainScreen(
                                 cards = cards,
                                 currentIndex = pagerPageIndex,
                                 landscape = true,
+                                ultraSmallAdaptiveWindow = ultraSmallAdaptiveWindow,
                                 modifier = Modifier.fillMaxSize(),
                                 onPageChanged = { page ->
                                     val safePage = page.coerceIn(0, (pageCount - 1).coerceAtLeast(0))
@@ -857,7 +853,11 @@ internal fun QuickCardMainScreen(
                     contentAlignment = Alignment.Center
                 ) {
                 val maxCardWidth = if (isLandscape) {
-                    maxWidth * QUICK_CARD_LANDSCAPE_CARD_WIDTH_FRACTION
+                    maxWidth * if (ultraSmallAdaptiveWindow) {
+                        QUICK_CARD_SMALL_WINDOW_LANDSCAPE_CARD_WIDTH_FRACTION
+                    } else {
+                        QUICK_CARD_LANDSCAPE_CARD_WIDTH_FRACTION
+                    }
                 } else {
                     maxWidth
                 }
@@ -1494,12 +1494,13 @@ internal fun QuickCardScannerScreen(
     onTopBarActionsChange: (QuickCardTopBarActions?) -> Unit,
     onOpenFailed: () -> Unit,
     onResult: (String) -> Unit,
-    onCandidates: (List<String>) -> Unit
+    onCandidates: (List<String>) -> Unit,
+    forceLandscapeLayout: Boolean = false
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val configuration = LocalConfiguration.current
-    val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+    val isLandscape = forceLandscapeLayout || configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
     var cameraPermissionGranted by remember {
         mutableStateOf(
             ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) ==
@@ -1564,34 +1565,15 @@ internal fun QuickCardScannerScreen(
     }
 
     if (cameraPermissionDialogOpen && !cameraPermissionGranted) {
-        AlertDialog(
-            onDismissRequest = {
+        PermissionPurposeDialog(
+            info = cameraScannerPermissionPurpose(),
+            onConfirm = {
+                cameraPermissionDialogOpen = false
+                cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+            },
+            onDismiss = {
                 cameraPermissionDialogOpen = false
                 onOpenFailed()
-            },
-            title = { Text("需要相机权限") },
-            text = {
-                Text("扫一扫需要使用相机预览画面来识别二维码。识别过程在本机完成，KIGTTS 不会上传相机画面或二维码截图。")
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        cameraPermissionDialogOpen = false
-                        cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
-                    }
-                ) {
-                    Text("允许并继续")
-                }
-            },
-            dismissButton = {
-                TextButton(
-                    onClick = {
-                        cameraPermissionDialogOpen = false
-                        onOpenFailed()
-                    }
-                ) {
-                    Text("取消")
-                }
             }
         )
     }
@@ -2501,6 +2483,7 @@ internal fun QuickCardPagerView(
     cards: List<QuickCard>,
     currentIndex: Int,
     landscape: Boolean,
+    ultraSmallAdaptiveWindow: Boolean = false,
     modifier: Modifier = Modifier,
     onPageChanged: (Int) -> Unit,
     onCardClick: (QuickCard?) -> Unit,
@@ -2518,8 +2501,8 @@ internal fun QuickCardPagerView(
         modifier = modifier,
         factory = { context ->
             val density = context.resources.displayMetrics.density
-            val edgeGuardPx = (density * if (landscape) 56f else 6f).toInt()
-            val pageMarginPx = (density * if (landscape) 2f else 0f).toInt()
+            val edgeGuardPx = (density * quickCardPagerEdgeGuardDp(landscape, ultraSmallAdaptiveWindow)).toInt()
+            val pageMarginPx = (density * quickCardPagerPageMarginDp(landscape, ultraSmallAdaptiveWindow)).toInt()
             ViewPager2(context).apply {
                 orientation = ViewPager2.ORIENTATION_HORIZONTAL
                 offscreenPageLimit = if (landscape) 3 else 2
@@ -2553,18 +2536,22 @@ internal fun QuickCardPagerView(
                 }
                 registerOnPageChangeCallback(callback)
                 tag = callback
-                adapter = QuickCardPagerAdapter()
+                adapter = QuickCardPagerAdapter().apply {
+                    this.landscape = landscape
+                    this.ultraSmallAdaptiveWindow = ultraSmallAdaptiveWindow
+                }
             }
         },
         update = { pager ->
             val adapter = (pager.adapter as? QuickCardPagerAdapter) ?: return@AndroidView
             val density = pager.context.resources.displayMetrics.density
-            val edgeGuardPx = (density * if (landscape) 56f else 6f).toInt()
-            val pageMarginPx = (density * if (landscape) 2f else 0f).toInt()
+            val edgeGuardPx = (density * quickCardPagerEdgeGuardDp(landscape, ultraSmallAdaptiveWindow)).toInt()
+            val pageMarginPx = (density * quickCardPagerPageMarginDp(landscape, ultraSmallAdaptiveWindow)).toInt()
             pager.offscreenPageLimit = if (landscape) 3 else 2
             pager.setPadding(edgeGuardPx, 0, edgeGuardPx, 0)
             pager.setPageTransformer(MarginPageTransformer(pageMarginPx))
             adapter.landscape = landscape
+            adapter.ultraSmallAdaptiveWindow = ultraSmallAdaptiveWindow
             adapter.onCardClick = onCardClickState
             adapter.onCardLongPress = onCardLongPressState
             adapter.onEdit = onEditState
@@ -2581,6 +2568,7 @@ internal fun QuickCardPagerView(
 internal class QuickCardPagerAdapter : RecyclerView.Adapter<QuickCardPagerAdapter.QuickCardPageViewHolder>() {
     private var items: List<QuickCard?> = listOf(null)
     var landscape: Boolean = false
+    var ultraSmallAdaptiveWindow: Boolean = false
     var onCardClick: (QuickCard?) -> Unit = {}
     var onCardLongPress: (QuickCard?) -> Unit = {}
     var onEdit: (QuickCard) -> Unit = {}
@@ -2616,6 +2604,7 @@ internal class QuickCardPagerAdapter : RecyclerView.Adapter<QuickCardPagerAdapte
     override fun onBindViewHolder(holder: QuickCardPageViewHolder, position: Int) {
         val card = items[position]
         val isLandscape = landscape
+        val smallWindowMode = ultraSmallAdaptiveWindow
         val click = onCardClick
         val longPress = onCardLongPress
         val edit = onEdit
@@ -2630,7 +2619,11 @@ internal class QuickCardPagerAdapter : RecyclerView.Adapter<QuickCardPagerAdapte
                     contentAlignment = Alignment.Center
                 ) {
                     val maxCardWidth = if (isLandscape) {
-                        maxWidth * QUICK_CARD_LANDSCAPE_CARD_WIDTH_FRACTION
+                        maxWidth * if (smallWindowMode) {
+                            QUICK_CARD_SMALL_WINDOW_LANDSCAPE_CARD_WIDTH_FRACTION
+                        } else {
+                            QUICK_CARD_LANDSCAPE_CARD_WIDTH_FRACTION
+                        }
                     } else {
                         maxWidth
                     }
@@ -4131,8 +4124,25 @@ internal fun HslGradientSlider(
 internal const val QUICK_CARD_ASPECT_PORTRAIT = 9f / 16f
 internal const val QUICK_CARD_ASPECT_LANDSCAPE = 16f / 9f
 internal const val QUICK_CARD_LANDSCAPE_CARD_WIDTH_FRACTION = 0.94f
+internal const val QUICK_CARD_SMALL_WINDOW_LANDSCAPE_CARD_WIDTH_FRACTION = 1f
 internal const val QUICK_CARD_CONTENT_ASPECT_PORTRAIT = QUICK_CARD_ASPECT_PORTRAIT
 internal const val QUICK_CARD_CONTENT_ASPECT_LANDSCAPE = QUICK_CARD_ASPECT_LANDSCAPE
+
+internal fun quickCardPagerEdgeGuardDp(landscape: Boolean, ultraSmallAdaptiveWindow: Boolean): Float {
+    return when {
+        landscape && ultraSmallAdaptiveWindow -> 0f
+        landscape -> 56f
+        else -> 6f
+    }
+}
+
+internal fun quickCardPagerPageMarginDp(landscape: Boolean, ultraSmallAdaptiveWindow: Boolean): Float {
+    return when {
+        landscape && ultraSmallAdaptiveWindow -> 0f
+        landscape -> 2f
+        else -> 0f
+    }
+}
 
 internal fun quickCardDisplayAspect(landscape: Boolean): Float =
     if (landscape) QUICK_CARD_ASPECT_LANDSCAPE else QUICK_CARD_ASPECT_PORTRAIT
@@ -4248,5 +4258,3 @@ internal fun rememberQuickCardQrBitmap(content: String): Bitmap? {
     }
     return bitmap
 }
-
-

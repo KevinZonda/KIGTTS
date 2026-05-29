@@ -537,7 +537,7 @@ class MainViewModel(
         private set
     var soundboardPlaybackStates by mutableStateOf<Map<Long, SoundboardPlaybackState>>(emptyMap())
         private set
-    var settingsSelectedCategoryName by mutableStateOf(SettingsCategory.Recognition.name)
+    var settingsSelectedCategoryName by mutableStateOf(SettingsCategory.Audio.name)
         private set
     var quickCards by mutableStateOf<List<QuickCard>>(emptyList())
         private set
@@ -3925,10 +3925,11 @@ class MainViewModel(
         }
     }
 
+    @Suppress("UNUSED_PARAMETER")
     fun setInternalWebViewEnabled(enabled: Boolean) {
-        uiState = uiState.copy(internalWebViewEnabled = enabled)
+        uiState = uiState.copy(internalWebViewEnabled = true)
         viewModelScope.launch {
-            UserPrefs.setInternalWebViewEnabled(appContext, enabled)
+            UserPrefs.setInternalWebViewEnabled(appContext, true)
         }
     }
 
@@ -4426,4 +4427,3 @@ class MainViewModel(
         }
     }
 }
-

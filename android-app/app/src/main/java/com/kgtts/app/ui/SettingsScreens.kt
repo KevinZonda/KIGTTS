@@ -486,6 +486,9 @@ fun SettingsScreen(
                 toast(context, "未授予通知权限，实时通知无法显示")
             }
         }
+    var liveSubtitleNotificationPermissionPurposeOpen by remember { mutableStateOf(false) }
+    var speakerEnrollPermissionPurposeOpen by remember { mutableStateOf(false) }
+    var pendingSpeakerEnrollPermissionStep by remember { mutableIntStateOf(0) }
     val drawerModeOptions = listOf(
         UserPrefs.DRAWER_MODE_HIDDEN to "隐藏式抽屉",
         UserPrefs.DRAWER_MODE_PERMANENT to "常驻可折叠"
@@ -530,7 +533,6 @@ fun SettingsScreen(
     var themeModeExpanded by remember { mutableStateOf(false) }
     var overlayThemeModeExpanded by remember { mutableStateOf(false) }
     var fontScaleBlockModeExpanded by remember { mutableStateOf(false) }
-    var internalWebViewWarningVisible by remember { mutableStateOf(false) }
     var restoreQuickTextPresetDialogVisible by remember { mutableStateOf(false) }
     var restoreQuickTextSelectedGroupIds by rememberSaveable {
         mutableStateOf(defaultSelectedQuickSubtitlePresetGroupIds())
@@ -583,6 +585,15 @@ fun SettingsScreen(
     fun startSpeakerEnrollStepCapture(step: Int) {
         if (speakerEnrollReading || speakerEnrollCountingDown) return
         if (step !in 1..3) return
+        val micGranted = ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.RECORD_AUDIO
+        ) == PackageManager.PERMISSION_GRANTED
+        if (!micGranted) {
+            pendingSpeakerEnrollPermissionStep = step
+            speakerEnrollPermissionPurposeOpen = true
+            return
+        }
         scope.launch {
             speakerEnrollCountingDown = true
             speakerEnrollCountdown = 3
@@ -647,6 +658,16 @@ fun SettingsScreen(
             }
         }
     }
+    val speakerEnrollPermissionLauncher =
+        rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+            val step = pendingSpeakerEnrollPermissionStep
+            pendingSpeakerEnrollPermissionStep = 0
+            if (granted && step in 1..3) {
+                startSpeakerEnrollStepCapture(step)
+            } else if (!granted) {
+                toast(context, "未授予麦克风权限，无法采集说话人样本")
+            }
+        }
     fun closeSpeakerEnrollDialog() {
         showSpeakerEnrollDialog = false
         speakerEnrollCountingDown = false
@@ -666,31 +687,6 @@ fun SettingsScreen(
 
     LaunchedEffect(selectedCategory) {
         scroll.animateScrollTo(0)
-    }
-
-    if (internalWebViewWarningVisible) {
-        AlertDialog(
-            onDismissRequest = { internalWebViewWarningVisible = false },
-            title = { Text("启用内置 WebView") },
-            text = {
-                Text("开启后，软件内置浏览器仅允许访问 lhtstudio.com 及其子域名。\n其它第三方网页仍会通过外部浏览器打开，其内容、安全性与本软件无关，相关风险由您自行承担。")
-            },
-            confirmButton = {
-                Md2TextButton(
-                    onClick = {
-                        internalWebViewWarningVisible = false
-                        viewModel.setInternalWebViewEnabled(true)
-                    }
-                ) {
-                    Text("开启")
-                }
-            },
-            dismissButton = {
-                Md2TextButton(onClick = { internalWebViewWarningVisible = false }) {
-                    Text("取消")
-                }
-            }
-        )
     }
 
     if (restoreQuickTextPresetDialogVisible) {
@@ -1339,8 +1335,7 @@ fun SettingsScreen(
                         }
                     }
                 }
-
-
+            }
             Md2StaggeredFloatIn(index = 3) {
                 Md2SettingsCard(title = "设备监控") {
                     val realtimeInputLevel = viewModel.realtimeInputLevel
@@ -1355,8 +1350,6 @@ fun SettingsScreen(
                     Text("当前输出设备：${state.outputDeviceLabel}", style = MaterialTheme.typography.bodySmall)
                 }
             }
-
-            
 
             Md2StaggeredFloatIn(index = 4) {
                 Md2SettingsCard(title = "回声与降噪") {
@@ -1400,8 +1393,6 @@ fun SettingsScreen(
                 }
             }
 
-            
-
             Md2StaggeredFloatIn(index = 5) {
                 Md2SettingsCard(title = "设备路由") {
                     Md2SettingDropdownRow(
@@ -1440,8 +1431,6 @@ fun SettingsScreen(
                     }
                 }
             }
-
-            
 
             Md2StaggeredFloatIn(index = 6) {
                 Md2SettingsCard(title = "音频测试") {
@@ -1508,13 +1497,14 @@ fun SettingsScreen(
                     )
                 }
             }
-                    }
         }
     }
 
     @Composable
     fun AudioSettingsContent() {
-        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {Md2StaggeredFloatIn(index = 0) {
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+
+            Md2StaggeredFloatIn(index = 0) {
                 Md2SettingsCard(title = "播放与合成") {
                     Text(
                         "当前朗读后端：${when {
@@ -1683,7 +1673,9 @@ fun SettingsScreen(
                     }
                 }
             }
-Md2StaggeredFloatIn(index = 2) {
+
+
+            Md2StaggeredFloatIn(index = 2) {
                 Md2SettingsCard(title = "设备路由") {
                     Md2SettingDropdownRow(
                         title = "优先选择的音频输入设备类型",
@@ -1721,7 +1713,8 @@ Md2StaggeredFloatIn(index = 2) {
                     }
                 }
             }
-}
+
+        }
     }
 
     @Composable
@@ -1828,21 +1821,19 @@ Md2StaggeredFloatIn(index = 2) {
                     )
                 }
             }
+            if (false) {
             Md2StaggeredFloatIn(index = 2) {
                 Md2SettingsCard(title = "外部网页") {
                     Md2SettingSwitchRow(
                         title = "启用内置 WebView",
                         checked = state.internalWebViewEnabled,
-                        onCheckedChange = { enabled ->
-                            if (enabled) {
-                                internalWebViewWarningVisible = true
-                            } else {
-                                viewModel.setInternalWebViewEnabled(false)
-                            }
+                        onCheckedChange = { _ ->
+                            // Internal WebView always enabled
                         },
                         supportingText = "默认关闭。开启后，内置 WebView 也仅允许访问 lhtstudio.com 及其子域名；其它网页链接仍会优先使用 Chrome Custom Tabs 或外部浏览器。"
                     )
                 }
+            }
             }
             Md2StaggeredFloatIn(index = 3) {
                 Md2SettingsCard(title = "便捷字幕显示") {
@@ -1897,7 +1888,7 @@ Md2StaggeredFloatIn(index = 2) {
                         title = "使用更紧凑的快捷文本控件",
                         checked = state.quickSubtitleCompactControls,
                         onCheckedChange = { viewModel.setQuickSubtitleCompactControls(it) },
-                        supportingText = "仅影响主界面竖屏便捷字幕。开启后会改为类似迷你快捷字幕的紧凑快捷文本区，并把编辑入口移到顶栏。"
+                        supportingText = "影响主界面竖屏和横屏便捷字幕。开启后会改为紧凑快捷文本区，并把编辑入口移到顶栏。"
                     )
                     Md2SettingSwitchRow(
                         title = "输入框内容保持预览",
@@ -1926,9 +1917,7 @@ Md2StaggeredFloatIn(index = 2) {
                                     Manifest.permission.POST_NOTIFICATIONS
                                 ) != PackageManager.PERMISSION_GRANTED
                             ) {
-                                liveSubtitleNotificationPermissionLauncher.launch(
-                                    Manifest.permission.POST_NOTIFICATIONS
-                                )
+                                liveSubtitleNotificationPermissionPurposeOpen = true
                             } else {
                                 viewModel.setLiveSubtitleNotificationEnabled(enabled)
                             }
@@ -2274,6 +2263,38 @@ Md2StaggeredFloatIn(index = 2) {
                 TextButton(onClick = { speakerEnrollRetryDialog = false }) {
                     Text("重录")
                 }
+            }
+        )
+    }
+
+    if (liveSubtitleNotificationPermissionPurposeOpen) {
+        PermissionPurposeDialog(
+            info = notificationPermissionPurpose(),
+            onConfirm = {
+                liveSubtitleNotificationPermissionPurposeOpen = false
+                liveSubtitleNotificationPermissionLauncher.launch(
+                    Manifest.permission.POST_NOTIFICATIONS
+                )
+            },
+            onDismiss = {
+                liveSubtitleNotificationPermissionPurposeOpen = false
+            }
+        )
+    }
+
+    if (speakerEnrollPermissionPurposeOpen) {
+        PermissionPurposeDialog(
+            info = recordAudioPermissionPurpose(
+                serviceFeature = "说话人验证样本采集",
+                purpose = "采集你按页面提示主动朗读的三段语音，用于在本机生成说话人验证样本。"
+            ),
+            onConfirm = {
+                speakerEnrollPermissionPurposeOpen = false
+                speakerEnrollPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+            },
+            onDismiss = {
+                speakerEnrollPermissionPurposeOpen = false
+                pendingSpeakerEnrollPermissionStep = 0
             }
         )
     }
@@ -3050,5 +3071,3 @@ internal fun buildMarkdownAnnotatedString(
         index++
     }
 }
-
-

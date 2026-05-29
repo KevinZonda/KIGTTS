@@ -1356,8 +1356,8 @@ internal fun Md2SettingDropdownRow(
 }
 
 enum class SettingsCategory(val title: String, val icon: String) {
-    Recognition("识别", "graphic_eq"),
     Audio("音频", "volume_up"),
+    Recognition("识别", "graphic_eq"),
     System("系统", "tune"),
     About("关于", "info")
 }
@@ -1424,6 +1424,8 @@ internal fun SettingsTabButton(
     val indicatorColor = MaterialTheme.colorScheme.primary
     val contentColor =
         if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+    val performHaptic = rememberKigttsKeyHaptic()
+    val currentOnClick by rememberUpdatedState(onClick)
 
     Box(
         modifier = modifier
@@ -1432,7 +1434,10 @@ internal fun SettingsTabButton(
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = rememberRipple(bounded = true),
-                onClick = onClick
+                onClick = {
+                    performHaptic()
+                    currentOnClick()
+                }
             ),
     ) {
         if (compact) {
@@ -1488,4 +1493,3 @@ internal fun SettingsTabButton(
         }
     }
 }
-

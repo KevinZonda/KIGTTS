@@ -121,6 +121,7 @@ internal fun KigttsOnboardingScreen(
     }
     var expandedPresetGroupIds by rememberSaveable { mutableStateOf(listOf<Long>()) }
     val pageCount = 4
+    var pendingPermissionPurpose by remember { mutableStateOf<OnboardingPermissionRequest?>(null) }
 
     val micPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -203,14 +204,20 @@ internal fun KigttsOnboardingScreen(
                     )
                     1 -> OnboardingPermissionPage(
                         refreshToken = refreshToken,
-                        onRequestMicrophone = { micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO) },
-                        onRequestCamera = { cameraPermissionLauncher.launch(Manifest.permission.CAMERA) },
+                        onRequestMicrophone = {
+                            pendingPermissionPurpose = OnboardingPermissionRequest.Microphone
+                        },
+                        onRequestCamera = {
+                            pendingPermissionPurpose = OnboardingPermissionRequest.Camera
+                        },
                         onRequestNotification = {
                             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                                notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                                pendingPermissionPurpose = OnboardingPermissionRequest.Notification
                             }
                         },
-                        onOpenOverlaySettings = { openOverlayPermissionSettings(context) }
+                        onOpenOverlaySettings = {
+                            pendingPermissionPurpose = OnboardingPermissionRequest.Overlay
+                        }
                     )
                     2 -> OnboardingQuickTextPresetPage(
                         groups = presetGroups,
@@ -236,6 +243,36 @@ internal fun KigttsOnboardingScreen(
             }
         }
 
+        pendingPermissionPurpose?.let { request ->
+            PermissionPurposeDialog(
+                info = when (request) {
+                    OnboardingPermissionRequest.Microphone -> recordAudioPermissionPurpose(
+                        serviceFeature = "实时语音识别、音频测试和说话人验证",
+                        purpose = "在你主动使用语音相关功能时采集麦克风声音，用于生成字幕、测试输入或完成本机验证。"
+                    )
+                    OnboardingPermissionRequest.Camera -> cameraScannerPermissionPurpose()
+                    OnboardingPermissionRequest.Notification -> notificationPermissionPurpose()
+                    OnboardingPermissionRequest.Overlay -> floatingOverlayPermissionPurpose()
+                },
+                onConfirm = {
+                    pendingPermissionPurpose = null
+                    when (request) {
+                        OnboardingPermissionRequest.Microphone ->
+                            micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                        OnboardingPermissionRequest.Camera ->
+                            cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+                        OnboardingPermissionRequest.Notification ->
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                                notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                            }
+                        OnboardingPermissionRequest.Overlay ->
+                            openOverlayPermissionSettings(context)
+                    }
+                },
+                onDismiss = { pendingPermissionPurpose = null }
+            )
+        }
+
         if (privacyOpen) {
             OnboardingLegalDialog(
                 assetPath = "legal/privacy_policy.md",
@@ -252,6 +289,13 @@ internal fun KigttsOnboardingScreen(
             )
         }
     }
+}
+
+private enum class OnboardingPermissionRequest {
+    Microphone,
+    Camera,
+    Notification,
+    Overlay
 }
 
 @Composable

@@ -823,8 +823,7 @@ class FloatingOverlayService : Service() {
                 textAlignment = View.TEXT_ALIGNMENT_VIEW_START
             }
             val root = FrameLayout(parent.context).apply {
-                background = roundedRectDrawable(overlayRadiusDp, overlayCardColor())
-                elevation = dp(4).toFloat()
+                elevation = 0f
                 clipChildren = true
                 clipToPadding = true
                 isClickable = true
@@ -846,7 +845,15 @@ class FloatingOverlayService : Service() {
         override fun onBindViewHolder(holder: TextViewHolder, position: Int) {
             val item = items.getOrNull(position).orEmpty()
             holder.root.layoutParams = recyclerItemLayoutParams(gridMode)
+            holder.root.background = if (gridMode) overlayItemGridBackground() else null
+            holder.root.elevation = 0f
             holder.root.setPadding(dp(12), dp(8), dp(12), dp(8))
+            holder.textView.layoutParams = FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                if (gridMode) ViewGroup.LayoutParams.MATCH_PARENT else ViewGroup.LayoutParams.WRAP_CONTENT,
+                if (gridMode) Gravity.START else Gravity.CENTER_VERTICAL
+            )
+            holder.textView.gravity = Gravity.START or Gravity.CENTER_VERTICAL
             holder.textView.maxLines = if (gridMode) 2 else 1
             holder.textView.text = item
             holder.root.setOnClickListener {
@@ -870,8 +877,12 @@ class FloatingOverlayService : Service() {
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 if (grid) dp(74) else dp(62)
             ).apply {
-                val gap = dp(4)
-                setMargins(gap, gap, gap, gap)
+                if (grid) {
+                    val gap = dp(4)
+                    setMargins(gap, gap, gap, gap)
+                } else {
+                    setMargins(0, 0, 0, 0)
+                }
             }
         }
     }
@@ -959,8 +970,7 @@ class FloatingOverlayService : Service() {
             }
             val root = LinearLayout(parent.context).apply {
                 orientation = LinearLayout.VERTICAL
-                background = roundedRectDrawable(overlayRadiusDp, overlayCardColor())
-                elevation = dp(4).toFloat()
+                elevation = 0f
                 clipChildren = true
                 clipToPadding = true
                 isClickable = true
@@ -1004,6 +1014,8 @@ class FloatingOverlayService : Service() {
             val item = items.getOrNull(position) ?: return
             val grid = layoutMode != SoundboardLayoutMode.List
             holder.root.layoutParams = recyclerItemLayoutParams(grid)
+            holder.root.background = if (grid) overlayItemGridBackground() else null
+            holder.root.elevation = 0f
             holder.root.setPadding(
                 if (grid) dp(10) else dp(12),
                 if (grid) dp(10) else dp(9),
@@ -1097,7 +1109,11 @@ class FloatingOverlayService : Service() {
                         height
                     )
                 }
-            params.setMargins(dp(6), dp(6), dp(6), dp(6))
+            if (grid) {
+                params.setMargins(dp(6), dp(6), dp(6), dp(6))
+            } else {
+                params.setMargins(0, 0, 0, 0)
+            }
             return params
         }
     }
@@ -3477,6 +3493,36 @@ class FloatingOverlayService : Service() {
             clipToPadding = true
             itemAnimator = null
             setPadding(dp(4), dp(4), dp(4), dp(4))
+            addItemDecoration(
+                object : RecyclerView.ItemDecoration() {
+                    private val dividerHeight = dp(1).coerceAtLeast(1)
+                    private val dividerInset = dp(12)
+                    private val dividerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                        style = Paint.Style.STROKE
+                        strokeWidth = dividerHeight.toFloat()
+                    }
+
+                    override fun onDrawOver(
+                        c: Canvas,
+                        parent: RecyclerView,
+                        state: RecyclerView.State
+                    ) {
+                        if (miniQuickListGridMode) return
+                        val adapterItemCount = parent.adapter?.itemCount ?: return
+                        dividerPaint.color = overlayItemDividerColor()
+                        val lineLeft = parent.paddingLeft + dividerInset
+                        val lineRight = parent.width - parent.paddingRight - dividerInset
+                        if (lineRight <= lineLeft) return
+                        for (index in 0 until parent.childCount) {
+                            val child = parent.getChildAt(index)
+                            val position = parent.getChildAdapterPosition(child)
+                            if (position == RecyclerView.NO_POSITION || position >= adapterItemCount - 1) continue
+                            val lineY = child.bottom - (dividerHeight / 2f)
+                            c.drawLine(lineLeft.toFloat(), lineY, lineRight.toFloat(), lineY, dividerPaint)
+                        }
+                    }
+                }
+            )
         }
         miniQuickListTabsContainer = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -3490,8 +3536,7 @@ class FloatingOverlayService : Service() {
                 }
                 setOnClickListener {
                     performOverlayKeyHaptic(this)
-                    miniQuickListGridMode = !miniQuickListGridMode
-                    refreshMiniQuickTextListOverlayUi(animateContent = true)
+                    cycleMiniQuickTextListLayout()
                 }
             }
         miniQuickListTabsCardView = LinearLayout(this).apply {
@@ -5980,6 +6025,31 @@ class FloatingOverlayService : Service() {
         }
     }
 
+    private fun cycleMiniQuickTextListLayout() {
+        val recycler = miniQuickListRecyclerView
+        val applyLayoutChange = {
+            miniQuickListGridMode = !miniQuickListGridMode
+            refreshMiniQuickTextListOverlayUi(animateContent = false)
+        }
+        if (recycler?.visibility == View.VISIBLE) {
+            recycler.animate().cancel()
+            recycler.animate()
+                .alpha(0f)
+                .setDuration(90L)
+                .withEndAction {
+                    applyLayoutChange()
+                    recycler.animate().cancel()
+                    recycler.alpha = 0f
+                    recycler.animate().alpha(1f).setDuration(130L).start()
+                }
+                .start()
+        } else {
+            recycler?.animate()?.cancel()
+            recycler?.alpha = 1f
+            applyLayoutChange()
+        }
+    }
+
     private fun refreshMiniQuickTextListOverlayUi(animateContent: Boolean = false) {
         val recycler = miniQuickListRecyclerView ?: return
         val adapter = miniQuickListAdapter ?: return
@@ -6899,14 +6969,34 @@ class FloatingOverlayService : Service() {
             }
         val current = currentMiniSoundboardLayout()
         val next = options[(options.indexOf(current).takeIf { it >= 0 } ?: 0).let { (it + 1) % options.size }]
-        if (landscape) {
-            miniSoundboardLandscapeLayout = next
-        } else {
-            miniSoundboardPortraitLayout = next
+        val recycler = miniSoundboardRecyclerView
+        val applyLayoutChange = {
+            if (landscape) {
+                miniSoundboardLandscapeLayout = next
+            } else {
+                miniSoundboardPortraitLayout = next
+            }
+            saveMiniSoundboardLayout()
+            refreshMiniSoundboardUi(animateContent = false)
+            updateMiniPanelPosition()
         }
-        saveMiniSoundboardLayout()
-        refreshMiniSoundboardUi(animateContent = true)
-        updateMiniPanelPosition()
+        if (recycler?.visibility == View.VISIBLE) {
+            recycler.animate().cancel()
+            recycler.animate()
+                .alpha(0f)
+                .setDuration(90L)
+                .withEndAction {
+                    applyLayoutChange()
+                    recycler.animate().cancel()
+                    recycler.alpha = 0f
+                    recycler.animate().alpha(1f).setDuration(130L).start()
+                }
+                .start()
+        } else {
+            recycler?.animate()?.cancel()
+            recycler?.alpha = 1f
+            applyLayoutChange()
+        }
     }
 
     private fun ensureMiniSoundboardSelectedGroup(): SoundboardGroup? {
@@ -10928,7 +11018,6 @@ class FloatingOverlayService : Service() {
                 "头壳歪了没？帮我看一下",
                 "太热了，帮我拿一下小风扇",
                 "帮我整理一下后面的衣服/假发",
-                "我手机在哪？帮我拿一下",
                 "帮我把包拿过来一下",
                 "帮我递张纸巾",
                 "我走不动了，歇一下吧",
@@ -11341,6 +11430,14 @@ class FloatingOverlayService : Service() {
             cornerRadius = dp(radiusDp).toFloat()
             setColor(color)
         }
+
+    private fun overlayItemGridBackground(): GradientDrawable =
+        roundedRectDrawable(overlayRadiusDp, overlayCardColor()).apply {
+            setStroke(dp(1), ColorUtils.setAlphaComponent(overlayOutlineColor(), 72))
+        }
+
+    private fun overlayItemDividerColor(): Int =
+        ColorUtils.setAlphaComponent(overlayOutlineColor(), 46)
 
     private fun View.clipToRoundedOutline(radiusDp: Float) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.LOLLIPOP) return

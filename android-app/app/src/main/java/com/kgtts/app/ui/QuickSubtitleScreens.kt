@@ -78,6 +78,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.indication
@@ -134,6 +135,7 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Outline
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.asAndroidPath
+import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.ExperimentalComposeUiApi
@@ -614,14 +616,32 @@ internal fun QuickSubtitlePopupItem(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    Card(
+    val shape = RoundedCornerShape(UiTokens.Radius)
+    val baseContainerColor = md2CardContainerColor()
+    val gridContainerColor = if (currentAppDarkTheme()) {
+        MaterialTheme.colorScheme.onSurface.copy(alpha = 0.10f).compositeOver(baseContainerColor)
+    } else {
+        baseContainerColor
+    }
+    Box(
         modifier = modifier
             .fillMaxWidth()
             .height(if (grid) 76.dp else 64.dp)
-            .clickable(onClick = onClick),
-        shape = RoundedCornerShape(UiTokens.Radius),
-        backgroundColor = md2CardContainerColor(),
-        elevation = UiTokens.CardElevation
+            .clip(shape)
+            .then(
+                if (grid) {
+                    Modifier
+                        .background(gridContainerColor)
+                        .border(
+                            width = 1.dp,
+                            color = MaterialTheme.colorScheme.outline.copy(alpha = 0.28f),
+                            shape = shape
+                        )
+                } else {
+                    Modifier
+                }
+            )
+            .clickable(onClick = onClick)
     ) {
         Box(
             modifier = Modifier
@@ -879,12 +899,11 @@ internal fun QuickSubtitleListDialog(
                     LazyColumn(
                         modifier = Modifier.fillMaxSize(),
                         contentPadding = PaddingValues(10.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         itemsIndexed(
                             items = targetItems,
                             key = { index, text -> "${targetGroupIndex}_${index}_$text" }
-                        ) { _, text ->
+                        ) { index, text ->
                             QuickSubtitlePopupItem(
                                 text = text,
                                 grid = false,
@@ -894,6 +913,12 @@ internal fun QuickSubtitleListDialog(
                                     onDismiss()
                                 }
                             )
+                            if (index < targetItems.lastIndex) {
+                                Divider(
+                                    color = MaterialTheme.colorScheme.outline.copy(alpha = 0.18f),
+                                    thickness = 1.dp
+                                )
+                            }
                         }
                     }
                 }
@@ -1089,7 +1114,8 @@ fun QuickSubtitleScreen(
     val subtitleFullscreenDialogVisible = viewModel.quickSubtitlePreviewVisible
     val quickSubtitleAutoFit = state.quickSubtitleAutoFit
     val quickSubtitleContentRevision = viewModel.quickSubtitleContentRevision
-    val useCompactQuickTextControls = state.quickSubtitleCompactControls && !isLandscape
+    val useCompactQuickTextControls =
+        state.quickSubtitleCompactControls || (isLandscape && ultraSmallAdaptiveWindow)
     val showQuickSubtitleActionButtons = viewModel.quickSubtitleShowActionButtons
     val density = LocalDensity.current
     val actionPanelToggleIcon =
@@ -1382,7 +1408,13 @@ fun QuickSubtitleScreen(
         animationSpec = tween(180, easing = FastOutSlowInEasing),
         label = "quick_subtitle_top_blank"
     )
-    val landscapeQuickPanelWidth = 220.dp
+    val useUltraSmallCompactQuickText =
+        isLandscape && ultraSmallAdaptiveWindow && useCompactQuickTextControls
+    val landscapeQuickPanelWidth = when {
+        useUltraSmallCompactQuickText -> 144.dp
+        useCompactQuickTextControls -> 176.dp
+        else -> 220.dp
+    }
     val landscapeQuickPanelGap = 8.dp
     val navBarsBottomInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
     val quickSubtitleBottomBlankBase = if (isLandscape) {
@@ -1671,76 +1703,267 @@ fun QuickSubtitleScreen(
                                 backgroundColor = md2ElevatedCardContainerColor(),
                                 elevation = 0.dp
                             ) {
-                                Row(
-                                    modifier = Modifier.fillMaxSize()
-                                ) {
+                                if (useCompactQuickTextControls) {
                                     Column(
                                         modifier = Modifier
-                                            .weight(1f)
-                                            .fillMaxHeight()
-                                            .padding(horizontal = 6.dp)
+                                            .fillMaxSize()
+                                            .padding(horizontal = 6.dp, vertical = 6.dp)
                                     ) {
                                         AnimatedContent(
                                             targetState = selectedGroupIndex,
                                             transitionSpec = {
-                                                val forward = targetState >= initialState
-                                                ContentTransform(
-                                                    targetContentEnter = fadeIn(animationSpec = tween(200)) +
-                                                        slideInVertically(
-                                                            initialOffsetY = { full ->
-                                                                val d = kotlin.math.min(full / 3, 28)
-                                                                if (forward) d else -d
-                                                            },
-                                                            animationSpec = tween(180, easing = FastOutSlowInEasing)
-                                                        ),
-                                                    initialContentExit = fadeOut(animationSpec = tween(170)) +
-                                                        slideOutVertically(
-                                                            targetOffsetY = { full ->
-                                                                val d = kotlin.math.min(full / 4, 22)
-                                                                if (forward) -d else d
-                                                            },
-                                                            animationSpec = tween(160, easing = FastOutSlowInEasing)
-                                                        ),
-                                                    sizeTransform = androidx.compose.animation.SizeTransform(clip = false)
-                                                )
+                                                if (compactQuickGroupSuppressAnimation || groups.size <= 1) {
+                                                    ContentTransform(
+                                                        targetContentEnter = fadeIn(animationSpec = tween(0)),
+                                                        initialContentExit = fadeOut(animationSpec = tween(0)),
+                                                        sizeTransform = null
+                                                    )
+                                                } else {
+                                                    val forward = targetState == if (initialState < groups.lastIndex) initialState + 1 else 0
+                                                    ContentTransform(
+                                                        targetContentEnter = fadeIn(animationSpec = tween(200)) +
+                                                            slideInVertically(
+                                                                initialOffsetY = { full -> if (forward) full / 3 else -full / 3 },
+                                                                animationSpec = tween(250, easing = FastOutSlowInEasing)
+                                                            ),
+                                                        initialContentExit = fadeOut(animationSpec = tween(170)) +
+                                                            slideOutVertically(
+                                                                targetOffsetY = { full -> if (forward) -full / 4 else full / 4 },
+                                                                animationSpec = tween(210, easing = FastOutSlowInEasing)
+                                                            ),
+                                                        sizeTransform = null
+                                                    )
+                                                }
                                             },
-                                            label = "quick_subtitle_items_switch_landscape"
+                                            label = "quick_subtitle_items_switch_landscape_compact",
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .fillMaxWidth()
                                         ) { groupIndex ->
                                             val animatedQuickItems = groups.getOrNull(groupIndex)?.items.orEmpty()
                                             Column(
                                                 modifier = Modifier
                                                     .fillMaxWidth()
-                                                    .padding(horizontal = 3.dp)
-                                                    .verticalScroll(quickItemsScrollState),
-                                                verticalArrangement = Arrangement.spacedBy(6.dp)
+                                                    .verticalScroll(quickItemsScrollState)
                                             ) {
                                                 Spacer(Modifier.height(3.dp))
                                                 animatedQuickItems.forEach { text ->
-                                                    Card(
+                                                    Box(
                                                         modifier = Modifier
                                                             .fillMaxWidth()
-                                                            .height(72.dp)
-                                                            .mdCenteredShadow(
-                                                                shape = RoundedCornerShape(UiTokens.Radius),
-                                                                shadowStyle = MdCardShadowStyle
-                                                            )
+                                                            .height(64.dp)
                                                             .combinedClickable(
                                                                 onClick = {
                                                                     performKeyHaptic()
                                                                     viewModel.submitQuickSubtitlePreset(
                                                                         text = text,
-                                                                        hasVoice = hasVoice
+                                                                        hasVoice = hasVoice,
+                                                                        interruptCurrent = state.quickSubtitleInterruptQueue
                                                                     )
                                                                 },
                                                                 onLongClick = openQuickSubtitleListDialog
-                                                            ),
-                                                        shape = RoundedCornerShape(UiTokens.Radius),
-                                                        backgroundColor = md2ElevatedCardContainerColor(UiTokens.MenuElevation),
-                                                        elevation = 0.dp
+                                                            )
+                                                            .padding(horizontal = 8.dp, vertical = 7.dp),
+                                                        contentAlignment = Alignment.CenterStart
                                                     ) {
+                                                        Text(
+                                                            text = text,
+                                                            maxLines = 2,
+                                                            overflow = TextOverflow.Ellipsis,
+                                                            style = MaterialTheme.typography.bodyLarge
+                                                        )
+                                                    }
+                                                    Divider(
+                                                        modifier = Modifier.padding(horizontal = 8.dp),
+                                                        color = MaterialTheme.colorScheme.outline.copy(alpha = 0.18f)
+                                                    )
+                                                }
+                                                Box(
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .height(48.dp)
+                                                        .clickable {
+                                                            performKeyHaptic()
+                                                            addCurrentTextToQuickItems(groupIndex)
+                                                        },
+                                                    contentAlignment = Alignment.Center
+                                                ) {
+                                                    MsIcon("add", contentDescription = "添加当前文本")
+                                                }
+                                                Spacer(Modifier.height(3.dp))
+                                            }
+                                        }
+                                        Divider(
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                                            color = MaterialTheme.colorScheme.outline.copy(alpha = 0.22f)
+                                        )
+                                        val compactDisplayGroup = groups.getOrNull(selectedGroupIndex)
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .height(40.dp)
+                                                .pointerInput(groups.size) {
+                                                    var accumulatedDrag = 0f
+                                                    var gestureGroupIndex = 0
+                                                    detectDragGestures(
+                                                        onDragStart = {
+                                                            accumulatedDrag = 0f
+                                                            gestureGroupIndex = currentCompactSelectedGroupIndex
+                                                            compactQuickGroupSuppressAnimation = true
+                                                            groupHintState.beginHold()
+                                                        },
+                                                        onDragEnd = {
+                                                            accumulatedDrag = 0f
+                                                            compactQuickGroupSuppressAnimation = false
+                                                            groupHintState.release()
+                                                        },
+                                                        onDragCancel = {
+                                                            accumulatedDrag = 0f
+                                                            compactQuickGroupSuppressAnimation = false
+                                                            groupHintState.release()
+                                                        }
+                                                    ) { change, dragAmount ->
+                                                        if (groups.isEmpty()) return@detectDragGestures
+                                                        change.consume()
+                                                        accumulatedDrag += dragAmount.x
+                                                        if (kotlin.math.abs(accumulatedDrag) >= compactQuickGroupSwipeThresholdPx) {
+                                                            val target = if (accumulatedDrag > 0f) {
+                                                                if (gestureGroupIndex > 0) gestureGroupIndex - 1 else groups.lastIndex
+                                                            } else {
+                                                                if (gestureGroupIndex < groups.lastIndex) gestureGroupIndex + 1 else 0
+                                                            }
+                                                            performKeyHaptic()
+                                                            groupHintState.show(groups[target].title.ifBlank { "未命名分组" }, hold = true)
+                                                            viewModel.selectQuickSubtitleGroup(target)
+                                                            gestureGroupIndex = target
+                                                            accumulatedDrag = 0f
+                                                        }
+                                                    }
+                                                },
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Md2IconButton(
+                                                icon = "chevron_left",
+                                                contentDescription = "上一分组",
+                                                onClick = {
+                                                    if (groups.isNotEmpty()) {
+                                                        compactQuickGroupSuppressAnimation = false
+                                                        val target = if (selectedGroupIndex > 0) {
+                                                            selectedGroupIndex - 1
+                                                        } else {
+                                                            groups.lastIndex
+                                                        }
+                                                        selectQuickSubtitleGroupWithHint(target)
+                                                    }
+                                                }
+                                            )
+                                            Box(
+                                                modifier = Modifier
+                                                    .weight(1f)
+                                                    .fillMaxHeight(),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                if (compactDisplayGroup != null) {
+                                                    if (useUltraSmallCompactQuickText) {
+                                                        MsIcon(
+                                                            compactDisplayGroup.icon,
+                                                            contentDescription = compactDisplayGroup.title.ifBlank { "当前分组" }
+                                                        )
+                                                    } else {
+                                                        Row(
+                                                            verticalAlignment = Alignment.CenterVertically,
+                                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                                        ) {
+                                                            MsIcon(
+                                                                compactDisplayGroup.icon,
+                                                                contentDescription = compactDisplayGroup.title.ifBlank { "当前分组" }
+                                                            )
+                                                            Text(
+                                                                text = compactDisplayGroup.title.ifBlank { "未命名分组" },
+                                                                maxLines = 1,
+                                                                overflow = TextOverflow.Ellipsis,
+                                                                style = MaterialTheme.typography.bodyMedium
+                                                            )
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                            Md2IconButton(
+                                                icon = "chevron_right",
+                                                contentDescription = "下一分组",
+                                                onClick = {
+                                                    if (groups.isNotEmpty()) {
+                                                        compactQuickGroupSuppressAnimation = false
+                                                        val target = if (selectedGroupIndex < groups.lastIndex) {
+                                                            selectedGroupIndex + 1
+                                                        } else {
+                                                            0
+                                                        }
+                                                        selectQuickSubtitleGroupWithHint(target)
+                                                    }
+                                                }
+                                            )
+                                        }
+                                    }
+                                } else {
+                                    Row(
+                                        modifier = Modifier.fillMaxSize()
+                                    ) {
+                                        Column(
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .fillMaxHeight()
+                                                .padding(horizontal = 6.dp)
+                                        ) {
+                                            AnimatedContent(
+                                                targetState = selectedGroupIndex,
+                                                transitionSpec = {
+                                                    val forward = targetState >= initialState
+                                                    ContentTransform(
+                                                        targetContentEnter = fadeIn(animationSpec = tween(200)) +
+                                                            slideInVertically(
+                                                                initialOffsetY = { full ->
+                                                                    val d = kotlin.math.min(full / 3, 28)
+                                                                    if (forward) d else -d
+                                                                },
+                                                                animationSpec = tween(180, easing = FastOutSlowInEasing)
+                                                            ),
+                                                        initialContentExit = fadeOut(animationSpec = tween(170)) +
+                                                            slideOutVertically(
+                                                                targetOffsetY = { full ->
+                                                                    val d = kotlin.math.min(full / 4, 22)
+                                                                    if (forward) -d else d
+                                                                },
+                                                                animationSpec = tween(160, easing = FastOutSlowInEasing)
+                                                            ),
+                                                        sizeTransform = androidx.compose.animation.SizeTransform(clip = false)
+                                                    )
+                                                },
+                                                label = "quick_subtitle_items_switch_landscape"
+                                            ) { groupIndex ->
+                                                val animatedQuickItems = groups.getOrNull(groupIndex)?.items.orEmpty()
+                                                Column(
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .padding(horizontal = 3.dp)
+                                                        .verticalScroll(quickItemsScrollState)
+                                                ) {
+                                                    Spacer(Modifier.height(3.dp))
+                                                    animatedQuickItems.forEach { text ->
                                                         Box(
                                                             modifier = Modifier
-                                                                .fillMaxSize()
+                                                                .fillMaxWidth()
+                                                                .height(72.dp)
+                                                                .combinedClickable(
+                                                                    onClick = {
+                                                                        performKeyHaptic()
+                                                                        viewModel.submitQuickSubtitlePreset(
+                                                                            text = text,
+                                                                            hasVoice = hasVoice
+                                                                        )
+                                                                    },
+                                                                    onLongClick = openQuickSubtitleListDialog
+                                                                )
                                                                 .padding(horizontal = 8.dp, vertical = 8.dp),
                                                             contentAlignment = Alignment.CenterStart
                                                         ) {
@@ -1751,92 +1974,85 @@ fun QuickSubtitleScreen(
                                                                 style = MaterialTheme.typography.bodyLarge
                                                             )
                                                         }
-                                                    }
-                                                }
-                                                Card(
-                                                    modifier = Modifier
-                                                        .fillMaxWidth()
-                                                        .height(56.dp)
-                                                        .mdCenteredShadow(
-                                                            shape = RoundedCornerShape(UiTokens.Radius),
-                                                            shadowStyle = MdCardShadowStyle
+                                                        Divider(
+                                                            modifier = Modifier.padding(horizontal = 8.dp),
+                                                            color = MaterialTheme.colorScheme.outline.copy(alpha = 0.18f)
                                                         )
-                                                        .clickable {
-                                                            performKeyHaptic()
-                                                            addCurrentTextToQuickItems(groupIndex)
-                                                        },
-                                                    shape = RoundedCornerShape(UiTokens.Radius),
-                                                    backgroundColor = md2ElevatedCardContainerColor(UiTokens.MenuElevation),
-                                                    elevation = 0.dp
-                                                ) {
+                                                    }
                                                     Box(
-                                                        modifier = Modifier.fillMaxSize(),
+                                                        modifier = Modifier
+                                                            .fillMaxWidth()
+                                                            .height(56.dp)
+                                                            .clickable {
+                                                                performKeyHaptic()
+                                                                addCurrentTextToQuickItems(groupIndex)
+                                                            },
                                                         contentAlignment = Alignment.Center
                                                     ) {
                                                         MsIcon("add", contentDescription = "添加当前文本")
                                                     }
+                                                    Spacer(Modifier.height(3.dp))
                                                 }
-                                                Spacer(Modifier.height(3.dp))
                                             }
                                         }
-                                    }
-                                    Box(
-                                        modifier = Modifier
-                                            .fillMaxHeight()
-                                            .width(1.dp)
-                                            .background(MaterialTheme.colorScheme.outline.copy(alpha = 0.35f))
-                                    )
-                                    Column(
-                                        modifier = Modifier
-                                            .width(44.dp)
-                                            .fillMaxHeight()
-                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxHeight()
+                                                .width(1.dp)
+                                                .background(MaterialTheme.colorScheme.outline.copy(alpha = 0.35f))
+                                        )
                                         Column(
                                             modifier = Modifier
-                                                .weight(1f)
-                                                .fillMaxWidth()
-                                                .verticalScroll(rememberScrollState())
-                                                .padding(horizontal = 2.dp, vertical = 4.dp),
-                                            verticalArrangement = Arrangement.spacedBy(2.dp)
+                                                .width(44.dp)
+                                                .fillMaxHeight()
                                         ) {
-                                            groups.forEachIndexed { index, group ->
-                                                val selected = selectedGroupIndex == index
-                                                val tabBg =
-                                                    if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.16f) else Color.Transparent
-                                                Box(
-                                                    modifier = Modifier
-                                                        .fillMaxWidth()
-                                                        .height(44.dp)
-                                                        .clip(RoundedCornerShape(UiTokens.Radius))
-                                                        .background(tabBg)
-                                                        .clickable {
-                                                            performKeyHaptic()
-                                                            selectQuickSubtitleGroupWithHint(index)
-                                                        },
-                                                    contentAlignment = Alignment.Center
-                                                ) {
-                                                    MsIcon(
-                                                        group.icon,
-                                                        contentDescription = group.title.ifBlank { "未命名分组" }
-                                                    )
+                                            Column(
+                                                modifier = Modifier
+                                                    .weight(1f)
+                                                    .fillMaxWidth()
+                                                    .verticalScroll(rememberScrollState())
+                                                    .padding(horizontal = 2.dp, vertical = 4.dp),
+                                                verticalArrangement = Arrangement.spacedBy(2.dp)
+                                            ) {
+                                                groups.forEachIndexed { index, group ->
+                                                    val selected = selectedGroupIndex == index
+                                                    val tabBg =
+                                                        if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.16f) else Color.Transparent
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .fillMaxWidth()
+                                                            .height(44.dp)
+                                                            .clip(RoundedCornerShape(UiTokens.Radius))
+                                                            .background(tabBg)
+                                                            .clickable {
+                                                                performKeyHaptic()
+                                                                selectQuickSubtitleGroupWithHint(index)
+                                                            },
+                                                        contentAlignment = Alignment.Center
+                                                    ) {
+                                                        MsIcon(
+                                                            group.icon,
+                                                            contentDescription = group.title.ifBlank { "未命名分组" }
+                                                        )
+                                                    }
                                                 }
                                             }
-                                        }
-                                        Surface(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .height(44.dp),
-                                            color = MaterialTheme.colorScheme.primary
-                                        ) {
-                                            Box(contentAlignment = Alignment.Center) {
-                                                KigttsIconButton(onClick = {
-                                                    onOpenEditor()
-                                                }) {
-                                                    MsIcon(
-                                                        "edit",
-                                                        contentDescription = "编辑快捷文本",
-                                                        tint = MaterialTheme.colorScheme.onPrimary
-                                                    )
+                                            Surface(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .height(44.dp),
+                                                color = MaterialTheme.colorScheme.primary
+                                            ) {
+                                                Box(contentAlignment = Alignment.Center) {
+                                                    KigttsIconButton(onClick = {
+                                                        onOpenEditor()
+                                                    }) {
+                                                        MsIcon(
+                                                            "edit",
+                                                            contentDescription = "编辑快捷文本",
+                                                            tint = MaterialTheme.colorScheme.onPrimary
+                                                        )
+                                                    }
                                                 }
                                             }
                                         }
@@ -1846,9 +2062,15 @@ fun QuickSubtitleScreen(
                         }
                         GroupSwitchHintCard(
                             state = groupHintState,
-                            modifier = Modifier
-                                .align(Alignment.CenterEnd)
-                                .padding(end = 54.dp)
+                            modifier = if (useCompactQuickTextControls) {
+                                Modifier
+                                    .align(Alignment.BottomCenter)
+                                    .padding(bottom = 54.dp)
+                            } else {
+                                Modifier
+                                    .align(Alignment.CenterEnd)
+                                    .padding(end = 54.dp)
+                            }
                         )
                     }
                 }
@@ -3519,7 +3741,7 @@ internal fun QuickSubtitleEditorScreen(
                     title = "使用更紧凑的快捷文本控件",
                     checked = compactControls,
                     onCheckedChange = { viewModel.setQuickSubtitleCompactControls(it) },
-                    supportingText = "仅影响主界面竖屏便捷字幕。开启后会压缩快捷文本区高度，并把编辑入口移到顶栏。"
+                    supportingText = "影响主界面竖屏和横屏便捷字幕。开启后会压缩快捷文本区，并把编辑入口移到顶栏。"
                 )
             }
         }
@@ -3787,7 +4009,7 @@ internal fun QuickSubtitleEditorScreen(
                             title = "使用更紧凑的快捷文本控件",
                             checked = compactControls,
                             onCheckedChange = { viewModel.setQuickSubtitleCompactControls(it) },
-                            supportingText = "仅影响主界面竖屏便捷字幕。开启后会压缩快捷文本区高度，并把编辑入口移到顶栏。"
+                            supportingText = "影响主界面竖屏和横屏便捷字幕。开启后会压缩快捷文本区，并把编辑入口移到顶栏。"
                         )
                     }
                 }
@@ -4721,5 +4943,3 @@ internal fun QuickSubtitleEditableRow(
         }
     }
 }
-
-

@@ -74,7 +74,6 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
@@ -136,7 +135,7 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Outline
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.asAndroidPath
-import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
@@ -524,10 +523,9 @@ internal fun SoundboardScreen(
         if (!targetGridMode) {
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
             ) {
-                items(targetItems, key = { it.id }) { item ->
+                itemsIndexed(targetItems, key = { _, item -> item.id }) { _, item ->
                     SoundboardListItem(
                         item = item,
                         playing = viewModel.isSoundboardItemPlaying(item.id),
@@ -957,58 +955,74 @@ internal fun SoundboardGridItem(
     onStop: () -> Unit
 ) {
     val performKeyHaptic = rememberKigttsKeyHaptic()
-    Card(
+    val contentColor = MaterialTheme.colorScheme.onSurface
+    val shape = RoundedCornerShape(UiTokens.Radius)
+    val darkTheme = currentAppDarkTheme()
+    val baseContainerColor = md2CardContainerColor()
+    val containerColor = if (darkTheme) {
+        MaterialTheme.colorScheme.onSurface.copy(alpha = 0.10f).compositeOver(baseContainerColor)
+    } else {
+        baseContainerColor
+    }
+    Box(
         modifier = Modifier
             .fillMaxWidth()
             .height(118.dp)
+            .clip(shape)
+            .background(containerColor)
+            .border(
+                width = 1.dp,
+                color = MaterialTheme.colorScheme.outline.copy(alpha = 0.28f),
+                shape = shape
+            )
             .clickable {
                 performKeyHaptic()
                 onPlay()
-            },
-        shape = RoundedCornerShape(UiTokens.Radius),
-        backgroundColor = md2CardContainerColor(),
-        elevation = UiTokens.CardElevation
+            }
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(10.dp)
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.Top
+        CompositionLocalProvider(LocalContentColor provides contentColor) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(10.dp)
             ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = item.title.ifBlank { "未命名音效" },
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                    if (item.wakeWord.isNotBlank()) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.Top
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = item.wakeWord,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.66f),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
+                            text = item.title.ifBlank { "未命名音效" },
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        if (item.wakeWord.isNotBlank()) {
+                            Text(
+                                text = item.wakeWord,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = contentColor.copy(alpha = 0.72f),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+                    KigttsIconButton(onClick = { if (playing) onStop() else onPlay() }) {
+                        MsIcon(
+                            if (playing) "stop" else "play_arrow",
+                            contentDescription = if (playing) "停止音效" else "播放音效",
+                            tint = contentColor
                         )
                     }
                 }
-                KigttsIconButton(onClick = { if (playing) onStop() else onPlay() }) {
-                    MsIcon(
-                        if (playing) "stop" else "play_arrow",
-                        contentDescription = if (playing) "停止音效" else "播放音效"
-                    )
-                }
+                Spacer(Modifier.weight(1f))
+                LinearProgressIndicator(
+                    progress = progress.coerceIn(0f, 1f),
+                    modifier = Modifier.fillMaxWidth(),
+                    backgroundColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)
+                )
             }
-            Spacer(Modifier.weight(1f))
-            LinearProgressIndicator(
-                progress = progress.coerceIn(0f, 1f),
-                modifier = Modifier.fillMaxWidth(),
-                backgroundColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)
-            )
         }
     }
 }
@@ -1022,56 +1036,48 @@ internal fun SoundboardListItem(
     onStop: () -> Unit
 ) {
     val performKeyHaptic = rememberKigttsKeyHaptic()
-    Card(
+    Column(
         modifier = Modifier
             .fillMaxWidth()
             .clickable {
                 performKeyHaptic()
                 onPlay()
-            },
-        shape = RoundedCornerShape(UiTokens.Radius),
-        backgroundColor = md2CardContainerColor(),
-        elevation = UiTokens.CardElevation
+            }
+            .padding(horizontal = 12.dp, vertical = 10.dp)
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 10.dp)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = item.title.ifBlank { "未命名音效" },
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    fontWeight = FontWeight.SemiBold
+                )
+                if (item.wakeWord.isNotBlank()) {
                     Text(
-                        text = item.title.ifBlank { "未命名音效" },
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                    if (item.wakeWord.isNotBlank()) {
-                        Text(
-                            text = item.wakeWord,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.66f)
-                        )
-                    }
-                }
-                KigttsIconButton(onClick = { if (playing) onStop() else onPlay() }) {
-                    MsIcon(
-                        if (playing) "stop" else "play_arrow",
-                        contentDescription = if (playing) "停止音效" else "播放音效"
+                        text = item.wakeWord,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.66f)
                     )
                 }
             }
-            LinearProgressIndicator(
-                progress = progress.coerceIn(0f, 1f),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 6.dp),
-                backgroundColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)
-            )
+            KigttsIconButton(onClick = { if (playing) onStop() else onPlay() }) {
+                MsIcon(
+                    if (playing) "stop" else "play_arrow",
+                    contentDescription = if (playing) "停止音效" else "播放音效"
+                )
+            }
         }
+        LinearProgressIndicator(
+            progress = progress.coerceIn(0f, 1f),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 6.dp),
+            backgroundColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)
+        )
     }
 }
 
@@ -1904,6 +1910,7 @@ internal fun SoundboardItemsRecyclerCard(
     var showBuiltinAudioPicker by remember { mutableStateOf(false) }
     var showBuiltinBatchAudioPicker by remember { mutableStateOf(false) }
     var deleteTargetItem by remember(items) { mutableStateOf<SoundboardItem?>(null) }
+    val openFileManagerAfterPermission = rememberFileManagerPermissionGate()
     val audioPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri != null) {
             clipSourceUri = uri
@@ -1938,10 +1945,12 @@ internal fun SoundboardItemsRecyclerCard(
             ) {
                 Md2CardTitleText("音效条目", modifier = Modifier.weight(1f))
                 Md2TextButton(onClick = {
-                    if (state.useBuiltinFileManager) {
-                        showBuiltinBatchAudioPicker = true
-                    } else {
-                        batchAudioPicker.launch("audio/*")
+                    openFileManagerAfterPermission(SoundboardAudioFileExtensions) {
+                        if (state.useBuiltinFileManager) {
+                            showBuiltinBatchAudioPicker = true
+                        } else {
+                            batchAudioPicker.launch("audio/*")
+                        }
                     }
                 }) {
                     MsIcon("queue_music", contentDescription = "批量导入")
@@ -1979,11 +1988,13 @@ internal fun SoundboardItemsRecyclerCard(
                     editWakeWord = item.wakeWord
                 },
                 onAudioRequested = { index ->
-                    audioTargetIndex = index
-                    if (state.useBuiltinFileManager) {
-                        showBuiltinAudioPicker = true
-                    } else {
-                        audioPicker.launch("audio/*")
+                    openFileManagerAfterPermission(SoundboardAudioFileExtensions) {
+                        audioTargetIndex = index
+                        if (state.useBuiltinFileManager) {
+                            showBuiltinAudioPicker = true
+                        } else {
+                            audioPicker.launch("audio/*")
+                        }
                     }
                 },
                 onDeleteRequested = { _, item ->
@@ -2719,5 +2730,3 @@ internal fun SoundboardEditableRow(
         }
     }
 }
-
-

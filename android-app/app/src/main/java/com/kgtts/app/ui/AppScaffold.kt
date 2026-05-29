@@ -848,6 +848,7 @@ fun AppScaffold(viewModel: MainViewModel) {
     }
 
     var startRealtimeAfterPermissionGrant by remember { mutableStateOf(false) }
+    var pendingRecordAudioPermissionPurpose by remember { mutableStateOf<PermissionPurposeInfo?>(null) }
     val permLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         val shouldStartRealtime = startRealtimeAfterPermissionGrant
         startRealtimeAfterPermissionGrant = false
@@ -865,12 +866,44 @@ fun AppScaffold(viewModel: MainViewModel) {
             toast(context, "需要麦克风权限")
         }
     }
+    fun explainAndRequestRecordAudioPermission(
+        info: PermissionPurposeInfo,
+        startRealtimeOnGrant: Boolean
+    ) {
+        startRealtimeAfterPermissionGrant = startRealtimeOnGrant
+        pendingRecordAudioPermissionPurpose = info
+    }
     val pendingRecordAudioPermissionRequest = viewModel.pendingRecordAudioPermissionRequest
     LaunchedEffect(pendingRecordAudioPermissionRequest?.requestId) {
         val request = pendingRecordAudioPermissionRequest ?: return@LaunchedEffect
-        startRealtimeAfterPermissionGrant = request.startRealtimeOnGrant
-        permLauncher.launch(Manifest.permission.RECORD_AUDIO)
+        explainAndRequestRecordAudioPermission(
+            info = if (request.startRealtimeOnGrant) {
+                recordAudioPermissionPurpose(
+                    serviceFeature = "悬浮窗实时语音识别",
+                    purpose = "从悬浮窗启动实时识别时采集麦克风声音，并转换为字幕或朗读输入。"
+                )
+            } else {
+                recordAudioPermissionPurpose(
+                    serviceFeature = "悬浮窗语音输入",
+                    purpose = "在你主动使用悬浮窗语音输入时采集麦克风声音，用于生成字幕内容。"
+                )
+            },
+            startRealtimeOnGrant = request.startRealtimeOnGrant
+        )
         viewModel.consumeRecordAudioPermissionRequest(request.requestId)
+    }
+    pendingRecordAudioPermissionPurpose?.let { info ->
+        PermissionPurposeDialog(
+            info = info,
+            onConfirm = {
+                pendingRecordAudioPermissionPurpose = null
+                permLauncher.launch(Manifest.permission.RECORD_AUDIO)
+            },
+            onDismiss = {
+                pendingRecordAudioPermissionPurpose = null
+                startRealtimeAfterPermissionGrant = false
+            }
+        )
     }
     val voicePicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri != null) viewModel.importVoice(uri) else toast(context, "未选择文件")
@@ -888,6 +921,12 @@ fun AppScaffold(viewModel: MainViewModel) {
         if (uri != null) viewModel.installKokoroVoice(uri) else toast(context, "未选择文件")
     }
     var showBuiltinVoicePicker by remember { mutableStateOf(false) }
+    val voicePackageFileExtensions = remember { setOf("zip", "kigvpk") }
+    val quickSubtitlePresetFileExtensions = remember { setOf("kigtpk", "zip", "json") }
+    val soundboardPresetFileExtensions = remember { setOf("kigspk", "zip", "json") }
+    val recognitionResourceFileExtensions = remember { setOf("7z", "zip") }
+    val kokoroVoiceFileExtensions = remember { setOf("zip", "tar", "bz2", "tbz2") }
+    val openFileManagerAfterPermission = rememberFileManagerPermissionGate()
     val recognitionResourceMissing = state.asrDir == null && !state.recognitionResourceInstalled
 
     fun requestRecordAudioPermissionAndStart() {
@@ -898,8 +937,13 @@ fun AppScaffold(viewModel: MainViewModel) {
         if (granted) {
             viewModel.start()
         } else {
-            startRealtimeAfterPermissionGrant = true
-            permLauncher.launch(Manifest.permission.RECORD_AUDIO)
+            explainAndRequestRecordAudioPermission(
+                info = recordAudioPermissionPurpose(
+                    serviceFeature = "实时字幕语音识别",
+                    purpose = "采集麦克风声音并转换为实时字幕，供上屏显示、朗读或快捷发送使用。"
+                ),
+                startRealtimeOnGrant = true
+            )
         }
     }
 
@@ -960,7 +1004,13 @@ fun AppScaffold(viewModel: MainViewModel) {
                 startRealtimeAfterRecognitionResourceInstall = false
                 viewModel.refreshRecognitionResourceStatus()
             } else {
-                permLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                explainAndRequestRecordAudioPermission(
+                    info = recordAudioPermissionPurpose(
+                        serviceFeature = "便捷字幕按住说话",
+                        purpose = "仅在你主动按住说话时采集麦克风声音，松开后按你的选择发送或取消。"
+                    ),
+                    startRealtimeOnGrant = false
+                )
             }
         } else if (recognitionResourceMissing) {
             pttConfirmOwnedByMainPanel = false
@@ -996,7 +1046,7 @@ fun AppScaffold(viewModel: MainViewModel) {
     if (showBuiltinVoicePicker) {
         BuiltinFilePickerDialog(
             title = "选择语音包文件",
-            allowedExtensions = setOf("zip", "kigvpk"),
+            allowedExtensions = voicePackageFileExtensions,
             onDismiss = { showBuiltinVoicePicker = false },
             onPicked = { uri ->
                 showBuiltinVoicePicker = false
@@ -1011,7 +1061,7 @@ fun AppScaffold(viewModel: MainViewModel) {
     if (showBuiltinQuickSubtitlePresetPicker) {
         BuiltinFilePickerDialog(
             title = "选择便捷字幕预设",
-            allowedExtensions = setOf("kigtpk", "zip", "json"),
+            allowedExtensions = quickSubtitlePresetFileExtensions,
             onDismiss = { showBuiltinQuickSubtitlePresetPicker = false },
             onPicked = { uri ->
                 showBuiltinQuickSubtitlePresetPicker = false
@@ -1026,7 +1076,7 @@ fun AppScaffold(viewModel: MainViewModel) {
     if (showBuiltinSoundboardPresetPicker) {
         BuiltinFilePickerDialog(
             title = "选择音效板预设",
-            allowedExtensions = setOf("kigspk", "zip", "json"),
+            allowedExtensions = soundboardPresetFileExtensions,
             onDismiss = { showBuiltinSoundboardPresetPicker = false },
             onPicked = { uri ->
                 showBuiltinSoundboardPresetPicker = false
@@ -1041,7 +1091,7 @@ fun AppScaffold(viewModel: MainViewModel) {
     if (showBuiltinRecognitionResourcePicker) {
         BuiltinFilePickerDialog(
             title = "选择语音识别资源包",
-            allowedExtensions = setOf("7z", "zip"),
+            allowedExtensions = recognitionResourceFileExtensions,
             onDismiss = { showBuiltinRecognitionResourcePicker = false },
             onPicked = { uri ->
                 showBuiltinRecognitionResourcePicker = false
@@ -1056,7 +1106,7 @@ fun AppScaffold(viewModel: MainViewModel) {
     if (showBuiltinKokoroVoicePicker) {
         BuiltinFilePickerDialog(
             title = "选择 Kokoro 离线语音资源",
-            allowedExtensions = setOf("zip", "tar", "bz2", "tbz2"),
+            allowedExtensions = kokoroVoiceFileExtensions,
             onDismiss = { showBuiltinKokoroVoicePicker = false },
             onPicked = { uri ->
                 showBuiltinKokoroVoicePicker = false
@@ -1113,7 +1163,13 @@ fun AppScaffold(viewModel: MainViewModel) {
                 viewModel.downloadRecognitionResources()
             },
             onPickLocalPackage = {
-                showBuiltinRecognitionResourcePicker = true
+                openFileManagerAfterPermission(recognitionResourceFileExtensions) {
+                    if (state.useBuiltinFileManager) {
+                        showBuiltinRecognitionResourcePicker = true
+                    } else {
+                        recognitionResourcePicker.launch("*/*")
+                    }
+                }
             },
             onOpenSources = {
                 recognitionResourceSourceDialog = true
@@ -1335,10 +1391,13 @@ fun AppScaffold(viewModel: MainViewModel) {
                     val quickCardActions = quickCardTopBarActions
                     val showQuickSubtitleActions =
                         basePage == pageQuickSubtitle && quickSubtitleRoute == QuickSubtitleRoutes.Main
+                    val quickSubtitleEffectiveLandscape = isLandscape || forceLandscapeContentLayout
+                    val quickSubtitleUsesCompactQuickText =
+                        state.quickSubtitleCompactControls ||
+                            (quickSubtitleEffectiveLandscape && ultraSmallAdaptiveWindow)
                     val showQuickSubtitleCompactEditorAction =
                         showQuickSubtitleActions &&
-                            !isLandscape &&
-                            state.quickSubtitleCompactControls
+                            quickSubtitleUsesCompactQuickText
                     val showQuickSubtitleEditorActions =
                         basePage == pageQuickSubtitle && quickSubtitleRoute == QuickSubtitleRoutes.Editor
                     val showSoundboardEditorActions =
@@ -1523,10 +1582,12 @@ fun AppScaffold(viewModel: MainViewModel) {
                                 } else {
                                     KigttsIconButton(
                                         onClick = {
-                                            if (state.useBuiltinFileManager) {
-                                                showBuiltinQuickSubtitlePresetPicker = true
-                                            } else {
-                                                quickSubtitlePresetPicker.launch("*/*")
+                                            openFileManagerAfterPermission(quickSubtitlePresetFileExtensions) {
+                                                if (state.useBuiltinFileManager) {
+                                                    showBuiltinQuickSubtitlePresetPicker = true
+                                                } else {
+                                                    quickSubtitlePresetPicker.launch("*/*")
+                                                }
                                             }
                                         },
                                         enabled = showQuickSubtitleEditorActions
@@ -1574,10 +1635,12 @@ fun AppScaffold(viewModel: MainViewModel) {
                                 } else {
                                     KigttsIconButton(
                                         onClick = {
-                                            if (state.useBuiltinFileManager) {
-                                                showBuiltinSoundboardPresetPicker = true
-                                            } else {
-                                                soundboardPresetPicker.launch("*/*")
+                                            openFileManagerAfterPermission(soundboardPresetFileExtensions) {
+                                                if (state.useBuiltinFileManager) {
+                                                    showBuiltinSoundboardPresetPicker = true
+                                                } else {
+                                                    soundboardPresetPicker.launch("*/*")
+                                                }
                                             }
                                         },
                                         enabled = showSoundboardEditorActions
@@ -1839,10 +1902,12 @@ fun AppScaffold(viewModel: MainViewModel) {
                             ) {
                                 KigttsIconButton(
                                     onClick = {
-                                        if (state.useBuiltinFileManager) {
-                                            showBuiltinVoicePicker = true
-                                        } else {
-                                            voicePicker.launch("*/*")
+                                        openFileManagerAfterPermission(voicePackageFileExtensions) {
+                                            if (state.useBuiltinFileManager) {
+                                                showBuiltinVoicePicker = true
+                                            } else {
+                                                voicePicker.launch("*/*")
+                                            }
                                         }
                                     },
                                     enabled = showVoicePackActions
@@ -1964,7 +2029,9 @@ fun AppScaffold(viewModel: MainViewModel) {
                         navController = quickCardNavController,
                         viewModel = viewModel,
                         onNavReady = { quickCardNavReady = true },
-                        onTopBarActionsChange = { quickCardTopBarActions = it }
+                        onTopBarActionsChange = { quickCardTopBarActions = it },
+                        forceLandscapeLayout = forceLandscapeContentLayout,
+                        ultraSmallAdaptiveWindow = ultraSmallAdaptiveWindow
                     )
                     pageVoicePack -> VoicePackScreen(viewModel, state)
                     pageDrawing -> DrawingBoardScreen(
@@ -1987,10 +2054,26 @@ fun AppScaffold(viewModel: MainViewModel) {
                         state = state,
                         onTopBarActionsChange = { logTopBarActions = it },
                         onOpenRecognitionResourceSources = { recognitionResourceSourceDialog = true },
-                        onPickRecognitionResourcePackage = { showBuiltinRecognitionResourcePicker = true },
+                        onPickRecognitionResourcePackage = {
+                            openFileManagerAfterPermission(recognitionResourceFileExtensions) {
+                                if (state.useBuiltinFileManager) {
+                                    showBuiltinRecognitionResourcePicker = true
+                                } else {
+                                    recognitionResourcePicker.launch("*/*")
+                                }
+                            }
+                        },
                         onDownloadRecognitionResources = { viewModel.downloadRecognitionResources() },
                         onOpenKokoroSources = { kokoroSourceDialog = true },
-                        onPickKokoroVoicePackage = { showBuiltinKokoroVoicePicker = true },
+                        onPickKokoroVoicePackage = {
+                            openFileManagerAfterPermission(kokoroVoiceFileExtensions) {
+                                if (state.useBuiltinFileManager) {
+                                    showBuiltinKokoroVoicePicker = true
+                                } else {
+                                    kokoroVoicePicker.launch("*/*")
+                                }
+                            }
+                        },
                         onDownloadKokoroVoice = { viewModel.downloadKokoroVoice() },
                         onOpenKokoroVoiceSettings = { kokoroVoiceSettingsDialog = true }
                     )
@@ -2584,5 +2667,3 @@ internal fun AppDrawerContent(
         }
     }
 }
-
-

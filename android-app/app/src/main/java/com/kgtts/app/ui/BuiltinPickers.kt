@@ -318,13 +318,8 @@ fun BuiltinFilePickerDialog(
     val systemPickerAction = remember(multiSelect, onOpenSystemPicker, onOpenSystemPickerMultiple) {
         if (multiSelect) onOpenSystemPickerMultiple ?: onOpenSystemPicker else onOpenSystemPicker
     }
-    val readPermissionMessage = remember(readPermission) {
-        when (readPermission) {
-            Manifest.permission.READ_MEDIA_AUDIO -> "需要音频读取权限，否则共享目录中的音频文件可能无法显示。"
-            Manifest.permission.READ_MEDIA_IMAGES -> "需要图片读取权限，否则共享目录中的图片文件可能无法显示。"
-            Manifest.permission.READ_EXTERNAL_STORAGE -> "需要存储读取权限，否则共享目录中的文件可能无法显示。"
-            else -> null
-        }
+    val readPermissionPurpose = remember(readPermission) {
+        readPermission?.let { builtinReadPermissionPurpose(it) }
     }
     var hasReadPermission by remember(readPermission) {
         mutableStateOf(
@@ -399,7 +394,7 @@ fun BuiltinFilePickerDialog(
             Text(title, style = MaterialTheme.typography.h6)
 
             if (readPermission != null && !hasReadPermission) {
-                Text(readPermissionMessage ?: "需要读取权限。", style = MaterialTheme.typography.body2)
+                readPermissionPurpose?.let { PermissionPurposeDetails(it) }
                 Button(onClick = { permissionLauncher.launch(readPermission) }) {
                     Text("授予读取权限")
                 }
@@ -624,7 +619,7 @@ fun BuiltinGalleryPickerDialog(
             Text(title, style = MaterialTheme.typography.h6)
 
             if (!hasPermission) {
-                Text("需要图库读取权限")
+                PermissionPurposeDetails(galleryReadPermissionPurpose(requiredPermission))
                 Button(onClick = { permissionLauncher.launch(requiredPermission) }) {
                     Text("授予权限")
                 }
@@ -869,7 +864,7 @@ private val BuiltinArchiveFileExtensions = setOf(
     "kigspk"
 )
 
-private fun builtinReadPermissionForExtensions(allowedExtensions: Set<String>): String? {
+internal fun builtinReadPermissionForExtensions(allowedExtensions: Set<String>): String? {
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
         return when {
             allowedExtensions.any { it in BuiltinAudioFileExtensions } -> Manifest.permission.READ_MEDIA_AUDIO
@@ -878,6 +873,38 @@ private fun builtinReadPermissionForExtensions(allowedExtensions: Set<String>): 
         }
     } else {
         return Manifest.permission.READ_EXTERNAL_STORAGE
+    }
+}
+
+private fun builtinReadPermissionPurpose(permission: String): PermissionPurposeInfo {
+    return when (permission) {
+        Manifest.permission.READ_MEDIA_AUDIO -> PermissionPurposeInfo(
+            title = "需要访问音频文件",
+            iconName = "audio_file",
+            summary = "用于在内置文件浏览器中显示并选择可导入的音频文件。",
+            permissionName = "音频文件访问权限",
+            serviceFeature = "内置文件浏览器导入语音、音效或音频资源",
+            purpose = "读取共享媒体库中的音频文件并显示在内置文件列表中，便于你选择导入。",
+            privacyNote = "只在你打开内置文件浏览器并选择文件时读取本机音频文件，不会自动上传。"
+        )
+        Manifest.permission.READ_MEDIA_IMAGES -> PermissionPurposeInfo(
+            title = "需要访问图片",
+            iconName = "image",
+            summary = "用于在内置文件浏览器中显示并选择可导入的图片文件。",
+            permissionName = "图片文件访问权限",
+            serviceFeature = "内置文件浏览器导入图片资源",
+            purpose = "读取共享媒体库中的图片文件并显示在内置文件列表中，便于你选择导入。",
+            privacyNote = "只在你打开内置文件浏览器并选择文件时读取本机图片文件，不会自动上传。"
+        )
+        else -> PermissionPurposeInfo(
+            title = "需要读取本机文件",
+            iconName = "folder_open",
+            summary = "用于在内置文件浏览器中显示并选择可导入的本机文件。",
+            permissionName = "存储读取权限",
+            serviceFeature = "内置文件浏览器导入语音包、预设包、模型或媒体文件",
+            purpose = "读取共享存储中的可导入文件并显示在内置文件列表中，便于你选择导入。",
+            privacyNote = "只在你打开内置文件浏览器并选择文件时读取本机文件，不会自动上传。"
+        )
     }
 }
 
@@ -1131,6 +1158,30 @@ private fun galleryReadPermission(): String {
         Manifest.permission.READ_MEDIA_IMAGES
     } else {
         Manifest.permission.READ_EXTERNAL_STORAGE
+    }
+}
+
+private fun galleryReadPermissionPurpose(permission: String): PermissionPurposeInfo {
+    return if (permission == Manifest.permission.READ_MEDIA_IMAGES) {
+        PermissionPurposeInfo(
+            title = "需要访问图片",
+            iconName = "image",
+            summary = "用于在内置图库中显示并选择图片。",
+            permissionName = "图片文件访问权限",
+            serviceFeature = "内置图库选择图片",
+            purpose = "读取系统图库中的图片缩略图和图片文件，便于你选择要使用的图片。",
+            privacyNote = "只在你打开内置图库并选择图片时读取本机图片，不会自动上传。"
+        )
+    } else {
+        PermissionPurposeInfo(
+            title = "需要读取本机图片",
+            iconName = "image",
+            summary = "用于在内置图库中显示并选择图片。",
+            permissionName = "存储读取权限",
+            serviceFeature = "内置图库选择图片",
+            purpose = "读取共享存储中的图片缩略图和图片文件，便于你选择要使用的图片。",
+            privacyNote = "只在你打开内置图库并选择图片时读取本机图片，不会自动上传。"
+        )
     }
 }
 
