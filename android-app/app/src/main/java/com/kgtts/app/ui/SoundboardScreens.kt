@@ -78,6 +78,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.indication
@@ -960,10 +961,17 @@ internal fun SoundboardGridItem(
 ) {
     val performKeyHaptic = rememberKigttsKeyHaptic()
     val contentColor = MaterialTheme.colorScheme.onSurface
+    val shape = RoundedCornerShape(UiTokens.Radius)
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .height(118.dp)
+            .clip(shape)
+            .border(
+                width = 1.dp,
+                color = MaterialTheme.colorScheme.outline.copy(alpha = 0.28f),
+                shape = shape
+            )
             .clickable {
                 performKeyHaptic()
                 onPlay()
