@@ -1408,7 +1408,13 @@ fun QuickSubtitleScreen(
         animationSpec = tween(180, easing = FastOutSlowInEasing),
         label = "quick_subtitle_top_blank"
     )
-    val landscapeQuickPanelWidth = if (useCompactQuickTextControls) 176.dp else 220.dp
+    val useUltraSmallCompactQuickText =
+        isLandscape && ultraSmallAdaptiveWindow && useCompactQuickTextControls
+    val landscapeQuickPanelWidth = when {
+        useUltraSmallCompactQuickText -> 144.dp
+        useCompactQuickTextControls -> 176.dp
+        else -> 220.dp
+    }
     val landscapeQuickPanelGap = 8.dp
     val navBarsBottomInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
     val quickSubtitleBottomBlankBase = if (isLandscape) {
@@ -1858,20 +1864,27 @@ fun QuickSubtitleScreen(
                                                 contentAlignment = Alignment.Center
                                             ) {
                                                 if (compactDisplayGroup != null) {
-                                                    Row(
-                                                        verticalAlignment = Alignment.CenterVertically,
-                                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                                    ) {
+                                                    if (useUltraSmallCompactQuickText) {
                                                         MsIcon(
                                                             compactDisplayGroup.icon,
                                                             contentDescription = compactDisplayGroup.title.ifBlank { "当前分组" }
                                                         )
-                                                        Text(
-                                                            text = compactDisplayGroup.title.ifBlank { "未命名分组" },
-                                                            maxLines = 1,
-                                                            overflow = TextOverflow.Ellipsis,
-                                                            style = MaterialTheme.typography.bodyMedium
-                                                        )
+                                                    } else {
+                                                        Row(
+                                                            verticalAlignment = Alignment.CenterVertically,
+                                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                                        ) {
+                                                            MsIcon(
+                                                                compactDisplayGroup.icon,
+                                                                contentDescription = compactDisplayGroup.title.ifBlank { "当前分组" }
+                                                            )
+                                                            Text(
+                                                                text = compactDisplayGroup.title.ifBlank { "未命名分组" },
+                                                                maxLines = 1,
+                                                                overflow = TextOverflow.Ellipsis,
+                                                                style = MaterialTheme.typography.bodyMedium
+                                                            )
+                                                        }
                                                     }
                                                 }
                                             }

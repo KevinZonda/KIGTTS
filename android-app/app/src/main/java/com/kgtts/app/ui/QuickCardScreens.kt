@@ -348,7 +348,8 @@ internal fun QuickCardNavHost(
     viewModel: MainViewModel,
     onNavReady: () -> Unit,
     onTopBarActionsChange: (QuickCardTopBarActions?) -> Unit,
-    forceLandscapeLayout: Boolean = false
+    forceLandscapeLayout: Boolean = false,
+    ultraSmallAdaptiveWindow: Boolean = false
 ) {
     val context = LocalContext.current
     DisposableEffect(Unit) {
@@ -508,7 +509,8 @@ internal fun QuickCardNavHost(
                 onOpenScanner = {
                     navController.navigate(QuickCardRoutes.Scanner) { launchSingleTop = true }
                 },
-                forceLandscapeLayout = forceLandscapeLayout
+                forceLandscapeLayout = forceLandscapeLayout,
+                ultraSmallAdaptiveWindow = ultraSmallAdaptiveWindow
             )
         }
         composable(QuickCardRoutes.Sort) {
@@ -595,7 +597,8 @@ internal fun QuickCardMainScreen(
     onOpenSort: () -> Unit,
     onCreateCard: (QuickCardType, String) -> Unit,
     onOpenScanner: () -> Unit,
-    forceLandscapeLayout: Boolean = false
+    forceLandscapeLayout: Boolean = false,
+    ultraSmallAdaptiveWindow: Boolean = false
 ) {
     val context = LocalContext.current
     val performKeyHaptic = rememberKigttsKeyHaptic()
@@ -708,6 +711,7 @@ internal fun QuickCardMainScreen(
                                 cards = cards,
                                 currentIndex = pagerPageIndex,
                                 landscape = true,
+                                ultraSmallAdaptiveWindow = ultraSmallAdaptiveWindow,
                                 modifier = Modifier.fillMaxSize(),
                                 onPageChanged = { page ->
                                     val safePage = page.coerceIn(0, (pageCount - 1).coerceAtLeast(0))
@@ -849,7 +853,11 @@ internal fun QuickCardMainScreen(
                     contentAlignment = Alignment.Center
                 ) {
                 val maxCardWidth = if (isLandscape) {
-                    maxWidth * QUICK_CARD_LANDSCAPE_CARD_WIDTH_FRACTION
+                    maxWidth * if (ultraSmallAdaptiveWindow) {
+                        QUICK_CARD_SMALL_WINDOW_LANDSCAPE_CARD_WIDTH_FRACTION
+                    } else {
+                        QUICK_CARD_LANDSCAPE_CARD_WIDTH_FRACTION
+                    }
                 } else {
                     maxWidth
                 }
@@ -2475,6 +2483,7 @@ internal fun QuickCardPagerView(
     cards: List<QuickCard>,
     currentIndex: Int,
     landscape: Boolean,
+    ultraSmallAdaptiveWindow: Boolean = false,
     modifier: Modifier = Modifier,
     onPageChanged: (Int) -> Unit,
     onCardClick: (QuickCard?) -> Unit,
@@ -2492,8 +2501,8 @@ internal fun QuickCardPagerView(
         modifier = modifier,
         factory = { context ->
             val density = context.resources.displayMetrics.density
-            val edgeGuardPx = (density * if (landscape) 56f else 6f).toInt()
-            val pageMarginPx = (density * if (landscape) 2f else 0f).toInt()
+            val edgeGuardPx = (density * quickCardPagerEdgeGuardDp(landscape, ultraSmallAdaptiveWindow)).toInt()
+            val pageMarginPx = (density * quickCardPagerPageMarginDp(landscape, ultraSmallAdaptiveWindow)).toInt()
             ViewPager2(context).apply {
                 orientation = ViewPager2.ORIENTATION_HORIZONTAL
                 offscreenPageLimit = if (landscape) 3 else 2
@@ -2527,18 +2536,22 @@ internal fun QuickCardPagerView(
                 }
                 registerOnPageChangeCallback(callback)
                 tag = callback
-                adapter = QuickCardPagerAdapter()
+                adapter = QuickCardPagerAdapter().apply {
+                    this.landscape = landscape
+                    this.ultraSmallAdaptiveWindow = ultraSmallAdaptiveWindow
+                }
             }
         },
         update = { pager ->
             val adapter = (pager.adapter as? QuickCardPagerAdapter) ?: return@AndroidView
             val density = pager.context.resources.displayMetrics.density
-            val edgeGuardPx = (density * if (landscape) 56f else 6f).toInt()
-            val pageMarginPx = (density * if (landscape) 2f else 0f).toInt()
+            val edgeGuardPx = (density * quickCardPagerEdgeGuardDp(landscape, ultraSmallAdaptiveWindow)).toInt()
+            val pageMarginPx = (density * quickCardPagerPageMarginDp(landscape, ultraSmallAdaptiveWindow)).toInt()
             pager.offscreenPageLimit = if (landscape) 3 else 2
             pager.setPadding(edgeGuardPx, 0, edgeGuardPx, 0)
             pager.setPageTransformer(MarginPageTransformer(pageMarginPx))
             adapter.landscape = landscape
+            adapter.ultraSmallAdaptiveWindow = ultraSmallAdaptiveWindow
             adapter.onCardClick = onCardClickState
             adapter.onCardLongPress = onCardLongPressState
             adapter.onEdit = onEditState
@@ -2555,6 +2568,7 @@ internal fun QuickCardPagerView(
 internal class QuickCardPagerAdapter : RecyclerView.Adapter<QuickCardPagerAdapter.QuickCardPageViewHolder>() {
     private var items: List<QuickCard?> = listOf(null)
     var landscape: Boolean = false
+    var ultraSmallAdaptiveWindow: Boolean = false
     var onCardClick: (QuickCard?) -> Unit = {}
     var onCardLongPress: (QuickCard?) -> Unit = {}
     var onEdit: (QuickCard) -> Unit = {}
@@ -2590,6 +2604,7 @@ internal class QuickCardPagerAdapter : RecyclerView.Adapter<QuickCardPagerAdapte
     override fun onBindViewHolder(holder: QuickCardPageViewHolder, position: Int) {
         val card = items[position]
         val isLandscape = landscape
+        val smallWindowMode = ultraSmallAdaptiveWindow
         val click = onCardClick
         val longPress = onCardLongPress
         val edit = onEdit
@@ -2604,7 +2619,11 @@ internal class QuickCardPagerAdapter : RecyclerView.Adapter<QuickCardPagerAdapte
                     contentAlignment = Alignment.Center
                 ) {
                     val maxCardWidth = if (isLandscape) {
-                        maxWidth * QUICK_CARD_LANDSCAPE_CARD_WIDTH_FRACTION
+                        maxWidth * if (smallWindowMode) {
+                            QUICK_CARD_SMALL_WINDOW_LANDSCAPE_CARD_WIDTH_FRACTION
+                        } else {
+                            QUICK_CARD_LANDSCAPE_CARD_WIDTH_FRACTION
+                        }
                     } else {
                         maxWidth
                     }
@@ -4105,8 +4124,25 @@ internal fun HslGradientSlider(
 internal const val QUICK_CARD_ASPECT_PORTRAIT = 9f / 16f
 internal const val QUICK_CARD_ASPECT_LANDSCAPE = 16f / 9f
 internal const val QUICK_CARD_LANDSCAPE_CARD_WIDTH_FRACTION = 0.94f
+internal const val QUICK_CARD_SMALL_WINDOW_LANDSCAPE_CARD_WIDTH_FRACTION = 1f
 internal const val QUICK_CARD_CONTENT_ASPECT_PORTRAIT = QUICK_CARD_ASPECT_PORTRAIT
 internal const val QUICK_CARD_CONTENT_ASPECT_LANDSCAPE = QUICK_CARD_ASPECT_LANDSCAPE
+
+internal fun quickCardPagerEdgeGuardDp(landscape: Boolean, ultraSmallAdaptiveWindow: Boolean): Float {
+    return when {
+        landscape && ultraSmallAdaptiveWindow -> 0f
+        landscape -> 56f
+        else -> 6f
+    }
+}
+
+internal fun quickCardPagerPageMarginDp(landscape: Boolean, ultraSmallAdaptiveWindow: Boolean): Float {
+    return when {
+        landscape && ultraSmallAdaptiveWindow -> 0f
+        landscape -> 2f
+        else -> 0f
+    }
+}
 
 internal fun quickCardDisplayAspect(landscape: Boolean): Float =
     if (landscape) QUICK_CARD_ASPECT_LANDSCAPE else QUICK_CARD_ASPECT_PORTRAIT
