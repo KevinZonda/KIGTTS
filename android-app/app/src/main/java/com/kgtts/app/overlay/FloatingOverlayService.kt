@@ -809,8 +809,7 @@ class FloatingOverlayService : Service() {
 
         inner class TextViewHolder(
             val root: FrameLayout,
-            val textView: TextView,
-            val dividerView: View
+            val textView: TextView
         ) : RecyclerView.ViewHolder(root)
 
         override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): TextViewHolder {
@@ -822,9 +821,6 @@ class FloatingOverlayService : Service() {
                 includeFontPadding = false
                 gravity = Gravity.START or Gravity.CENTER_VERTICAL
                 textAlignment = View.TEXT_ALIGNMENT_VIEW_START
-            }
-            val dividerView = View(parent.context).apply {
-                setBackgroundColor(overlayItemDividerColor())
             }
             val root = FrameLayout(parent.context).apply {
                 elevation = 0f
@@ -842,16 +838,8 @@ class FloatingOverlayService : Service() {
                         ViewGroup.LayoutParams.MATCH_PARENT
                     )
                 )
-                addView(
-                    dividerView,
-                    FrameLayout.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        dp(1),
-                        Gravity.BOTTOM
-                    )
-                )
             }
-            return TextViewHolder(root, textView, dividerView)
+            return TextViewHolder(root, textView)
         }
 
         override fun onBindViewHolder(holder: TextViewHolder, position: Int) {
@@ -860,8 +848,6 @@ class FloatingOverlayService : Service() {
             holder.root.background = if (gridMode) overlayItemGridBackground() else null
             holder.root.elevation = 0f
             holder.root.setPadding(dp(12), dp(8), dp(12), dp(8))
-            holder.dividerView.visibility =
-                if (!gridMode && position < items.lastIndex) View.VISIBLE else View.GONE
             holder.textView.layoutParams = FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 if (gridMode) ViewGroup.LayoutParams.MATCH_PARENT else ViewGroup.LayoutParams.WRAP_CONTENT,
@@ -3507,6 +3493,36 @@ class FloatingOverlayService : Service() {
             clipToPadding = true
             itemAnimator = null
             setPadding(dp(4), dp(4), dp(4), dp(4))
+            addItemDecoration(
+                object : RecyclerView.ItemDecoration() {
+                    private val dividerHeight = dp(1).coerceAtLeast(1)
+                    private val dividerInset = dp(12)
+                    private val dividerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                        style = Paint.Style.STROKE
+                        strokeWidth = dividerHeight.toFloat()
+                    }
+
+                    override fun onDrawOver(
+                        c: Canvas,
+                        parent: RecyclerView,
+                        state: RecyclerView.State
+                    ) {
+                        if (miniQuickListGridMode) return
+                        val adapterItemCount = parent.adapter?.itemCount ?: return
+                        dividerPaint.color = overlayItemDividerColor()
+                        val lineLeft = parent.paddingLeft + dividerInset
+                        val lineRight = parent.width - parent.paddingRight - dividerInset
+                        if (lineRight <= lineLeft) return
+                        for (index in 0 until parent.childCount) {
+                            val child = parent.getChildAt(index)
+                            val position = parent.getChildAdapterPosition(child)
+                            if (position == RecyclerView.NO_POSITION || position >= adapterItemCount - 1) continue
+                            val lineY = child.bottom - (dividerHeight / 2f)
+                            c.drawLine(lineLeft.toFloat(), lineY, lineRight.toFloat(), lineY, dividerPaint)
+                        }
+                    }
+                }
+            )
         }
         miniQuickListTabsContainer = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
