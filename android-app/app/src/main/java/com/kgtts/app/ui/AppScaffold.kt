@@ -1391,10 +1391,13 @@ fun AppScaffold(viewModel: MainViewModel) {
                     val quickCardActions = quickCardTopBarActions
                     val showQuickSubtitleActions =
                         basePage == pageQuickSubtitle && quickSubtitleRoute == QuickSubtitleRoutes.Main
+                    val quickSubtitleEffectiveLandscape = isLandscape || forceLandscapeContentLayout
+                    val quickSubtitleUsesCompactQuickText =
+                        state.quickSubtitleCompactControls ||
+                            (quickSubtitleEffectiveLandscape && ultraSmallAdaptiveWindow)
                     val showQuickSubtitleCompactEditorAction =
                         showQuickSubtitleActions &&
-                            !isLandscape &&
-                            state.quickSubtitleCompactControls
+                            quickSubtitleUsesCompactQuickText
                     val showQuickSubtitleEditorActions =
                         basePage == pageQuickSubtitle && quickSubtitleRoute == QuickSubtitleRoutes.Editor
                     val showSoundboardEditorActions =

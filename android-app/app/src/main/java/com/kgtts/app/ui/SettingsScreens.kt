@@ -1888,7 +1888,7 @@ fun SettingsScreen(
                         title = "使用更紧凑的快捷文本控件",
                         checked = state.quickSubtitleCompactControls,
                         onCheckedChange = { viewModel.setQuickSubtitleCompactControls(it) },
-                        supportingText = "仅影响主界面竖屏便捷字幕。开启后会改为类似迷你快捷字幕的紧凑快捷文本区，并把编辑入口移到顶栏。"
+                        supportingText = "影响主界面竖屏和横屏便捷字幕。开启后会改为紧凑快捷文本区，并把编辑入口移到顶栏。"
                     )
                     Md2SettingSwitchRow(
                         title = "输入框内容保持预览",
