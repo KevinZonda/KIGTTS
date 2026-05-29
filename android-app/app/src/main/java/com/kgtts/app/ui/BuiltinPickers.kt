@@ -879,19 +879,28 @@ internal fun builtinReadPermissionForExtensions(allowedExtensions: Set<String>):
 private fun builtinReadPermissionPurpose(permission: String): PermissionPurposeInfo {
     return when (permission) {
         Manifest.permission.READ_MEDIA_AUDIO -> PermissionPurposeInfo(
-            permissionName = "音频读取（android.permission.READ_MEDIA_AUDIO）",
+            title = "需要访问音频文件",
+            iconName = "audio_file",
+            summary = "用于在内置文件浏览器中显示并选择可导入的音频文件。",
+            permissionName = "音频文件访问权限",
             serviceFeature = "内置文件浏览器导入语音、音效或音频资源",
             purpose = "读取共享媒体库中的音频文件并显示在内置文件列表中，便于你选择导入。",
             privacyNote = "只在你打开内置文件浏览器并选择文件时读取本机音频文件，不会自动上传。"
         )
         Manifest.permission.READ_MEDIA_IMAGES -> PermissionPurposeInfo(
-            permissionName = "图片读取（android.permission.READ_MEDIA_IMAGES）",
+            title = "需要访问图片",
+            iconName = "image",
+            summary = "用于在内置文件浏览器中显示并选择可导入的图片文件。",
+            permissionName = "图片文件访问权限",
             serviceFeature = "内置文件浏览器导入图片资源",
             purpose = "读取共享媒体库中的图片文件并显示在内置文件列表中，便于你选择导入。",
             privacyNote = "只在你打开内置文件浏览器并选择文件时读取本机图片文件，不会自动上传。"
         )
         else -> PermissionPurposeInfo(
-            permissionName = "存储读取（android.permission.READ_EXTERNAL_STORAGE）",
+            title = "需要读取本机文件",
+            iconName = "folder_open",
+            summary = "用于在内置文件浏览器中显示并选择可导入的本机文件。",
+            permissionName = "存储读取权限",
             serviceFeature = "内置文件浏览器导入语音包、预设包、模型或媒体文件",
             purpose = "读取共享存储中的可导入文件并显示在内置文件列表中，便于你选择导入。",
             privacyNote = "只在你打开内置文件浏览器并选择文件时读取本机文件，不会自动上传。"
@@ -1155,14 +1164,20 @@ private fun galleryReadPermission(): String {
 private fun galleryReadPermissionPurpose(permission: String): PermissionPurposeInfo {
     return if (permission == Manifest.permission.READ_MEDIA_IMAGES) {
         PermissionPurposeInfo(
-            permissionName = "图片读取（android.permission.READ_MEDIA_IMAGES）",
+            title = "需要访问图片",
+            iconName = "image",
+            summary = "用于在内置图库中显示并选择图片。",
+            permissionName = "图片文件访问权限",
             serviceFeature = "内置图库选择图片",
             purpose = "读取系统图库中的图片缩略图和图片文件，便于你选择要使用的图片。",
             privacyNote = "只在你打开内置图库并选择图片时读取本机图片，不会自动上传。"
         )
     } else {
         PermissionPurposeInfo(
-            permissionName = "存储读取（android.permission.READ_EXTERNAL_STORAGE）",
+            title = "需要读取本机图片",
+            iconName = "image",
+            summary = "用于在内置图库中显示并选择图片。",
+            permissionName = "存储读取权限",
             serviceFeature = "内置图库选择图片",
             purpose = "读取共享存储中的图片缩略图和图片文件，便于你选择要使用的图片。",
             privacyNote = "只在你打开内置图库并选择图片时读取本机图片，不会自动上传。"
