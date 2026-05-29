@@ -347,7 +347,8 @@ internal fun QuickCardNavHost(
     navController: NavHostController,
     viewModel: MainViewModel,
     onNavReady: () -> Unit,
-    onTopBarActionsChange: (QuickCardTopBarActions?) -> Unit
+    onTopBarActionsChange: (QuickCardTopBarActions?) -> Unit,
+    forceLandscapeLayout: Boolean = false
 ) {
     val context = LocalContext.current
     DisposableEffect(Unit) {
@@ -506,7 +507,8 @@ internal fun QuickCardNavHost(
                 },
                 onOpenScanner = {
                     navController.navigate(QuickCardRoutes.Scanner) { launchSingleTop = true }
-                }
+                },
+                forceLandscapeLayout = forceLandscapeLayout
             )
         }
         composable(QuickCardRoutes.Sort) {
@@ -535,7 +537,8 @@ internal fun QuickCardNavHost(
                         popUpTo(QuickCardRoutes.Scanner) { inclusive = true }
                         launchSingleTop = true
                     }
-                }
+                },
+                forceLandscapeLayout = forceLandscapeLayout
             )
         }
         composable(
@@ -591,12 +594,15 @@ internal fun QuickCardMainScreen(
     onOpenEditor: (Long) -> Unit,
     onOpenSort: () -> Unit,
     onCreateCard: (QuickCardType, String) -> Unit,
-    onOpenScanner: () -> Unit
+    onOpenScanner: () -> Unit,
+    forceLandscapeLayout: Boolean = false
 ) {
     val context = LocalContext.current
     val performKeyHaptic = rememberKigttsKeyHaptic()
     val cards = viewModel.quickCards
-    val isLandscape = androidx.compose.ui.platform.LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
+    val isLandscape =
+        forceLandscapeLayout ||
+            androidx.compose.ui.platform.LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
     val previewCardId = viewModel.quickCardPreviewCardId
     val previewCard = remember(cards, previewCardId) {
         previewCardId?.let { id -> cards.firstOrNull { it.id == id } }
@@ -1480,12 +1486,13 @@ internal fun QuickCardScannerScreen(
     onTopBarActionsChange: (QuickCardTopBarActions?) -> Unit,
     onOpenFailed: () -> Unit,
     onResult: (String) -> Unit,
-    onCandidates: (List<String>) -> Unit
+    onCandidates: (List<String>) -> Unit,
+    forceLandscapeLayout: Boolean = false
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val configuration = LocalConfiguration.current
-    val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+    val isLandscape = forceLandscapeLayout || configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
     var cameraPermissionGranted by remember {
         mutableStateOf(
             ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) ==

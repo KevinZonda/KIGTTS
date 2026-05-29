@@ -2029,7 +2029,8 @@ fun AppScaffold(viewModel: MainViewModel) {
                         navController = quickCardNavController,
                         viewModel = viewModel,
                         onNavReady = { quickCardNavReady = true },
-                        onTopBarActionsChange = { quickCardTopBarActions = it }
+                        onTopBarActionsChange = { quickCardTopBarActions = it },
+                        forceLandscapeLayout = forceLandscapeContentLayout
                     )
                     pageVoicePack -> VoicePackScreen(viewModel, state)
                     pageDrawing -> DrawingBoardScreen(
