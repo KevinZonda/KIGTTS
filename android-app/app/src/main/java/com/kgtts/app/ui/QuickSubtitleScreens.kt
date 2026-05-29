@@ -1408,7 +1408,7 @@ fun QuickSubtitleScreen(
         animationSpec = tween(180, easing = FastOutSlowInEasing),
         label = "quick_subtitle_top_blank"
     )
-    val landscapeQuickPanelWidth = if (useCompactQuickTextControls) 204.dp else 220.dp
+    val landscapeQuickPanelWidth = if (useCompactQuickTextControls) 176.dp else 220.dp
     val landscapeQuickPanelGap = 8.dp
     val navBarsBottomInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
     val quickSubtitleBottomBlankBase = if (isLandscape) {
