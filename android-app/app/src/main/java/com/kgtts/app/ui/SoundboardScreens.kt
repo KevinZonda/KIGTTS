@@ -1910,6 +1910,7 @@ internal fun SoundboardItemsRecyclerCard(
     var showBuiltinAudioPicker by remember { mutableStateOf(false) }
     var showBuiltinBatchAudioPicker by remember { mutableStateOf(false) }
     var deleteTargetItem by remember(items) { mutableStateOf<SoundboardItem?>(null) }
+    val openFileManagerAfterPermission = rememberFileManagerPermissionGate()
     val audioPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri != null) {
             clipSourceUri = uri
@@ -1944,10 +1945,12 @@ internal fun SoundboardItemsRecyclerCard(
             ) {
                 Md2CardTitleText("音效条目", modifier = Modifier.weight(1f))
                 Md2TextButton(onClick = {
-                    if (state.useBuiltinFileManager) {
-                        showBuiltinBatchAudioPicker = true
-                    } else {
-                        batchAudioPicker.launch("audio/*")
+                    openFileManagerAfterPermission(SoundboardAudioFileExtensions) {
+                        if (state.useBuiltinFileManager) {
+                            showBuiltinBatchAudioPicker = true
+                        } else {
+                            batchAudioPicker.launch("audio/*")
+                        }
                     }
                 }) {
                     MsIcon("queue_music", contentDescription = "批量导入")
@@ -1985,11 +1988,13 @@ internal fun SoundboardItemsRecyclerCard(
                     editWakeWord = item.wakeWord
                 },
                 onAudioRequested = { index ->
-                    audioTargetIndex = index
-                    if (state.useBuiltinFileManager) {
-                        showBuiltinAudioPicker = true
-                    } else {
-                        audioPicker.launch("audio/*")
+                    openFileManagerAfterPermission(SoundboardAudioFileExtensions) {
+                        audioTargetIndex = index
+                        if (state.useBuiltinFileManager) {
+                            showBuiltinAudioPicker = true
+                        } else {
+                            audioPicker.launch("audio/*")
+                        }
                     }
                 },
                 onDeleteRequested = { _, item ->

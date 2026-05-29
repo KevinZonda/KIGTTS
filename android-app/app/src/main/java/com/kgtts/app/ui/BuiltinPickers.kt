@@ -864,7 +864,7 @@ private val BuiltinArchiveFileExtensions = setOf(
     "kigspk"
 )
 
-private fun builtinReadPermissionForExtensions(allowedExtensions: Set<String>): String? {
+internal fun builtinReadPermissionForExtensions(allowedExtensions: Set<String>): String? {
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
         return when {
             allowedExtensions.any { it in BuiltinAudioFileExtensions } -> Manifest.permission.READ_MEDIA_AUDIO

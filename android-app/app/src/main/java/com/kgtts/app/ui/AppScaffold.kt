@@ -921,6 +921,12 @@ fun AppScaffold(viewModel: MainViewModel) {
         if (uri != null) viewModel.installKokoroVoice(uri) else toast(context, "未选择文件")
     }
     var showBuiltinVoicePicker by remember { mutableStateOf(false) }
+    val voicePackageFileExtensions = remember { setOf("zip", "kigvpk") }
+    val quickSubtitlePresetFileExtensions = remember { setOf("kigtpk", "zip", "json") }
+    val soundboardPresetFileExtensions = remember { setOf("kigspk", "zip", "json") }
+    val recognitionResourceFileExtensions = remember { setOf("7z", "zip") }
+    val kokoroVoiceFileExtensions = remember { setOf("zip", "tar", "bz2", "tbz2") }
+    val openFileManagerAfterPermission = rememberFileManagerPermissionGate()
     val recognitionResourceMissing = state.asrDir == null && !state.recognitionResourceInstalled
 
     fun requestRecordAudioPermissionAndStart() {
@@ -1040,7 +1046,7 @@ fun AppScaffold(viewModel: MainViewModel) {
     if (showBuiltinVoicePicker) {
         BuiltinFilePickerDialog(
             title = "选择语音包文件",
-            allowedExtensions = setOf("zip", "kigvpk"),
+            allowedExtensions = voicePackageFileExtensions,
             onDismiss = { showBuiltinVoicePicker = false },
             onPicked = { uri ->
                 showBuiltinVoicePicker = false
@@ -1055,7 +1061,7 @@ fun AppScaffold(viewModel: MainViewModel) {
     if (showBuiltinQuickSubtitlePresetPicker) {
         BuiltinFilePickerDialog(
             title = "选择便捷字幕预设",
-            allowedExtensions = setOf("kigtpk", "zip", "json"),
+            allowedExtensions = quickSubtitlePresetFileExtensions,
             onDismiss = { showBuiltinQuickSubtitlePresetPicker = false },
             onPicked = { uri ->
                 showBuiltinQuickSubtitlePresetPicker = false
@@ -1070,7 +1076,7 @@ fun AppScaffold(viewModel: MainViewModel) {
     if (showBuiltinSoundboardPresetPicker) {
         BuiltinFilePickerDialog(
             title = "选择音效板预设",
-            allowedExtensions = setOf("kigspk", "zip", "json"),
+            allowedExtensions = soundboardPresetFileExtensions,
             onDismiss = { showBuiltinSoundboardPresetPicker = false },
             onPicked = { uri ->
                 showBuiltinSoundboardPresetPicker = false
@@ -1085,7 +1091,7 @@ fun AppScaffold(viewModel: MainViewModel) {
     if (showBuiltinRecognitionResourcePicker) {
         BuiltinFilePickerDialog(
             title = "选择语音识别资源包",
-            allowedExtensions = setOf("7z", "zip"),
+            allowedExtensions = recognitionResourceFileExtensions,
             onDismiss = { showBuiltinRecognitionResourcePicker = false },
             onPicked = { uri ->
                 showBuiltinRecognitionResourcePicker = false
@@ -1100,7 +1106,7 @@ fun AppScaffold(viewModel: MainViewModel) {
     if (showBuiltinKokoroVoicePicker) {
         BuiltinFilePickerDialog(
             title = "选择 Kokoro 离线语音资源",
-            allowedExtensions = setOf("zip", "tar", "bz2", "tbz2"),
+            allowedExtensions = kokoroVoiceFileExtensions,
             onDismiss = { showBuiltinKokoroVoicePicker = false },
             onPicked = { uri ->
                 showBuiltinKokoroVoicePicker = false
@@ -1157,7 +1163,13 @@ fun AppScaffold(viewModel: MainViewModel) {
                 viewModel.downloadRecognitionResources()
             },
             onPickLocalPackage = {
-                showBuiltinRecognitionResourcePicker = true
+                openFileManagerAfterPermission(recognitionResourceFileExtensions) {
+                    if (state.useBuiltinFileManager) {
+                        showBuiltinRecognitionResourcePicker = true
+                    } else {
+                        recognitionResourcePicker.launch("*/*")
+                    }
+                }
             },
             onOpenSources = {
                 recognitionResourceSourceDialog = true
@@ -1567,10 +1579,12 @@ fun AppScaffold(viewModel: MainViewModel) {
                                 } else {
                                     KigttsIconButton(
                                         onClick = {
-                                            if (state.useBuiltinFileManager) {
-                                                showBuiltinQuickSubtitlePresetPicker = true
-                                            } else {
-                                                quickSubtitlePresetPicker.launch("*/*")
+                                            openFileManagerAfterPermission(quickSubtitlePresetFileExtensions) {
+                                                if (state.useBuiltinFileManager) {
+                                                    showBuiltinQuickSubtitlePresetPicker = true
+                                                } else {
+                                                    quickSubtitlePresetPicker.launch("*/*")
+                                                }
                                             }
                                         },
                                         enabled = showQuickSubtitleEditorActions
@@ -1618,10 +1632,12 @@ fun AppScaffold(viewModel: MainViewModel) {
                                 } else {
                                     KigttsIconButton(
                                         onClick = {
-                                            if (state.useBuiltinFileManager) {
-                                                showBuiltinSoundboardPresetPicker = true
-                                            } else {
-                                                soundboardPresetPicker.launch("*/*")
+                                            openFileManagerAfterPermission(soundboardPresetFileExtensions) {
+                                                if (state.useBuiltinFileManager) {
+                                                    showBuiltinSoundboardPresetPicker = true
+                                                } else {
+                                                    soundboardPresetPicker.launch("*/*")
+                                                }
                                             }
                                         },
                                         enabled = showSoundboardEditorActions
@@ -1883,10 +1899,12 @@ fun AppScaffold(viewModel: MainViewModel) {
                             ) {
                                 KigttsIconButton(
                                     onClick = {
-                                        if (state.useBuiltinFileManager) {
-                                            showBuiltinVoicePicker = true
-                                        } else {
-                                            voicePicker.launch("*/*")
+                                        openFileManagerAfterPermission(voicePackageFileExtensions) {
+                                            if (state.useBuiltinFileManager) {
+                                                showBuiltinVoicePicker = true
+                                            } else {
+                                                voicePicker.launch("*/*")
+                                            }
                                         }
                                     },
                                     enabled = showVoicePackActions
@@ -2031,10 +2049,26 @@ fun AppScaffold(viewModel: MainViewModel) {
                         state = state,
                         onTopBarActionsChange = { logTopBarActions = it },
                         onOpenRecognitionResourceSources = { recognitionResourceSourceDialog = true },
-                        onPickRecognitionResourcePackage = { showBuiltinRecognitionResourcePicker = true },
+                        onPickRecognitionResourcePackage = {
+                            openFileManagerAfterPermission(recognitionResourceFileExtensions) {
+                                if (state.useBuiltinFileManager) {
+                                    showBuiltinRecognitionResourcePicker = true
+                                } else {
+                                    recognitionResourcePicker.launch("*/*")
+                                }
+                            }
+                        },
                         onDownloadRecognitionResources = { viewModel.downloadRecognitionResources() },
                         onOpenKokoroSources = { kokoroSourceDialog = true },
-                        onPickKokoroVoicePackage = { showBuiltinKokoroVoicePicker = true },
+                        onPickKokoroVoicePackage = {
+                            openFileManagerAfterPermission(kokoroVoiceFileExtensions) {
+                                if (state.useBuiltinFileManager) {
+                                    showBuiltinKokoroVoicePicker = true
+                                } else {
+                                    kokoroVoicePicker.launch("*/*")
+                                }
+                            }
+                        },
                         onDownloadKokoroVoice = { viewModel.downloadKokoroVoice() },
                         onOpenKokoroVoiceSettings = { kokoroVoiceSettingsDialog = true }
                     )
@@ -2628,4 +2662,3 @@ internal fun AppDrawerContent(
         }
     }
 }
-
