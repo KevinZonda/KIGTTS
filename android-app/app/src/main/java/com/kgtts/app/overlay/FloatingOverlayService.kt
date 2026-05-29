@@ -809,7 +809,8 @@ class FloatingOverlayService : Service() {
 
         inner class TextViewHolder(
             val root: FrameLayout,
-            val textView: TextView
+            val textView: TextView,
+            val dividerView: View
         ) : RecyclerView.ViewHolder(root)
 
         override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): TextViewHolder {
@@ -822,9 +823,11 @@ class FloatingOverlayService : Service() {
                 gravity = Gravity.START or Gravity.CENTER_VERTICAL
                 textAlignment = View.TEXT_ALIGNMENT_VIEW_START
             }
+            val dividerView = View(parent.context).apply {
+                setBackgroundColor(overlayItemDividerColor())
+            }
             val root = FrameLayout(parent.context).apply {
-                background = roundedRectDrawable(overlayRadiusDp, overlayCardColor())
-                elevation = dp(4).toFloat()
+                elevation = 0f
                 clipChildren = true
                 clipToPadding = true
                 isClickable = true
@@ -839,14 +842,32 @@ class FloatingOverlayService : Service() {
                         ViewGroup.LayoutParams.MATCH_PARENT
                     )
                 )
+                addView(
+                    dividerView,
+                    FrameLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        dp(1),
+                        Gravity.BOTTOM
+                    )
+                )
             }
-            return TextViewHolder(root, textView)
+            return TextViewHolder(root, textView, dividerView)
         }
 
         override fun onBindViewHolder(holder: TextViewHolder, position: Int) {
             val item = items.getOrNull(position).orEmpty()
             holder.root.layoutParams = recyclerItemLayoutParams(gridMode)
+            holder.root.background = if (gridMode) overlayItemGridBackground() else null
+            holder.root.elevation = 0f
             holder.root.setPadding(dp(12), dp(8), dp(12), dp(8))
+            holder.dividerView.visibility =
+                if (!gridMode && position < items.lastIndex) View.VISIBLE else View.GONE
+            holder.textView.layoutParams = FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                if (gridMode) ViewGroup.LayoutParams.MATCH_PARENT else ViewGroup.LayoutParams.WRAP_CONTENT,
+                if (gridMode) Gravity.START else Gravity.CENTER_VERTICAL
+            )
+            holder.textView.gravity = Gravity.START or Gravity.CENTER_VERTICAL
             holder.textView.maxLines = if (gridMode) 2 else 1
             holder.textView.text = item
             holder.root.setOnClickListener {
@@ -870,8 +891,12 @@ class FloatingOverlayService : Service() {
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 if (grid) dp(74) else dp(62)
             ).apply {
-                val gap = dp(4)
-                setMargins(gap, gap, gap, gap)
+                if (grid) {
+                    val gap = dp(4)
+                    setMargins(gap, gap, gap, gap)
+                } else {
+                    setMargins(0, 0, 0, 0)
+                }
             }
         }
     }
@@ -959,8 +984,7 @@ class FloatingOverlayService : Service() {
             }
             val root = LinearLayout(parent.context).apply {
                 orientation = LinearLayout.VERTICAL
-                background = roundedRectDrawable(overlayRadiusDp, overlayCardColor())
-                elevation = dp(4).toFloat()
+                elevation = 0f
                 clipChildren = true
                 clipToPadding = true
                 isClickable = true
@@ -1004,6 +1028,8 @@ class FloatingOverlayService : Service() {
             val item = items.getOrNull(position) ?: return
             val grid = layoutMode != SoundboardLayoutMode.List
             holder.root.layoutParams = recyclerItemLayoutParams(grid)
+            holder.root.background = if (grid) overlayItemGridBackground() else null
+            holder.root.elevation = 0f
             holder.root.setPadding(
                 if (grid) dp(10) else dp(12),
                 if (grid) dp(10) else dp(9),
@@ -1097,7 +1123,11 @@ class FloatingOverlayService : Service() {
                         height
                     )
                 }
-            params.setMargins(dp(6), dp(6), dp(6), dp(6))
+            if (grid) {
+                params.setMargins(dp(6), dp(6), dp(6), dp(6))
+            } else {
+                params.setMargins(0, 0, 0, 0)
+            }
             return params
         }
     }
@@ -3491,7 +3521,7 @@ class FloatingOverlayService : Service() {
                 setOnClickListener {
                     performOverlayKeyHaptic(this)
                     miniQuickListGridMode = !miniQuickListGridMode
-                    refreshMiniQuickTextListOverlayUi(animateContent = true)
+                    refreshMiniQuickTextListOverlayUi(animateContent = false)
                 }
             }
         miniQuickListTabsCardView = LinearLayout(this).apply {
@@ -6905,7 +6935,7 @@ class FloatingOverlayService : Service() {
             miniSoundboardPortraitLayout = next
         }
         saveMiniSoundboardLayout()
-        refreshMiniSoundboardUi(animateContent = true)
+        refreshMiniSoundboardUi(animateContent = false)
         updateMiniPanelPosition()
     }
 
@@ -11340,6 +11370,14 @@ class FloatingOverlayService : Service() {
             cornerRadius = dp(radiusDp).toFloat()
             setColor(color)
         }
+
+    private fun overlayItemGridBackground(): GradientDrawable =
+        roundedRectDrawable(overlayRadiusDp, overlayCardColor()).apply {
+            setStroke(dp(1), ColorUtils.setAlphaComponent(overlayOutlineColor(), 72))
+        }
+
+    private fun overlayItemDividerColor(): Int =
+        ColorUtils.setAlphaComponent(overlayOutlineColor(), 46)
 
     private fun View.clipToRoundedOutline(radiusDp: Float) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.LOLLIPOP) return

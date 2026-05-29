@@ -135,6 +135,7 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Outline
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.asAndroidPath
+import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
@@ -524,7 +525,7 @@ internal fun SoundboardScreen(
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
             ) {
-                itemsIndexed(targetItems, key = { _, item -> item.id }) { index, item ->
+                itemsIndexed(targetItems, key = { _, item -> item.id }) { _, item ->
                     SoundboardListItem(
                         item = item,
                         playing = viewModel.isSoundboardItemPlaying(item.id),
@@ -532,12 +533,6 @@ internal fun SoundboardScreen(
                         onPlay = { viewModel.playSoundboardItem(item) },
                         onStop = { viewModel.stopSoundboardItem(item.id) }
                     )
-                    if (index < targetItems.lastIndex) {
-                        Divider(
-                            modifier = Modifier.padding(horizontal = 12.dp),
-                            color = MaterialTheme.colorScheme.outline.copy(alpha = 0.18f)
-                        )
-                    }
                 }
             }
         } else {
@@ -962,11 +957,19 @@ internal fun SoundboardGridItem(
     val performKeyHaptic = rememberKigttsKeyHaptic()
     val contentColor = MaterialTheme.colorScheme.onSurface
     val shape = RoundedCornerShape(UiTokens.Radius)
+    val darkTheme = currentAppDarkTheme()
+    val baseContainerColor = md2CardContainerColor()
+    val containerColor = if (darkTheme) {
+        MaterialTheme.colorScheme.onSurface.copy(alpha = 0.10f).compositeOver(baseContainerColor)
+    } else {
+        baseContainerColor
+    }
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .height(118.dp)
             .clip(shape)
+            .background(containerColor)
             .border(
                 width = 1.dp,
                 color = MaterialTheme.colorScheme.outline.copy(alpha = 0.28f),

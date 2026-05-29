@@ -78,6 +78,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.indication
@@ -134,6 +135,7 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Outline
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.asAndroidPath
+import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.ExperimentalComposeUiApi
@@ -614,14 +616,32 @@ internal fun QuickSubtitlePopupItem(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    Card(
+    val shape = RoundedCornerShape(UiTokens.Radius)
+    val baseContainerColor = md2CardContainerColor()
+    val gridContainerColor = if (currentAppDarkTheme()) {
+        MaterialTheme.colorScheme.onSurface.copy(alpha = 0.10f).compositeOver(baseContainerColor)
+    } else {
+        baseContainerColor
+    }
+    Box(
         modifier = modifier
             .fillMaxWidth()
             .height(if (grid) 76.dp else 64.dp)
-            .clickable(onClick = onClick),
-        shape = RoundedCornerShape(UiTokens.Radius),
-        backgroundColor = md2CardContainerColor(),
-        elevation = UiTokens.CardElevation
+            .clip(shape)
+            .then(
+                if (grid) {
+                    Modifier
+                        .background(gridContainerColor)
+                        .border(
+                            width = 1.dp,
+                            color = MaterialTheme.colorScheme.outline.copy(alpha = 0.28f),
+                            shape = shape
+                        )
+                } else {
+                    Modifier
+                }
+            )
+            .clickable(onClick = onClick)
     ) {
         Box(
             modifier = Modifier
@@ -879,12 +899,11 @@ internal fun QuickSubtitleListDialog(
                     LazyColumn(
                         modifier = Modifier.fillMaxSize(),
                         contentPadding = PaddingValues(10.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         itemsIndexed(
                             items = targetItems,
                             key = { index, text -> "${targetGroupIndex}_${index}_$text" }
-                        ) { _, text ->
+                        ) { index, text ->
                             QuickSubtitlePopupItem(
                                 text = text,
                                 grid = false,
@@ -894,6 +913,12 @@ internal fun QuickSubtitleListDialog(
                                     onDismiss()
                                 }
                             )
+                            if (index < targetItems.lastIndex) {
+                                Divider(
+                                    color = MaterialTheme.colorScheme.outline.copy(alpha = 0.18f),
+                                    thickness = 1.dp
+                                )
+                            }
                         }
                     }
                 }
