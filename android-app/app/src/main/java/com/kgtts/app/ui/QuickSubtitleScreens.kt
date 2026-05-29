@@ -1711,19 +1711,14 @@ fun QuickSubtitleScreen(
                                                 modifier = Modifier
                                                     .fillMaxWidth()
                                                     .padding(horizontal = 3.dp)
-                                                    .verticalScroll(quickItemsScrollState),
-                                                verticalArrangement = Arrangement.spacedBy(6.dp)
+                                                    .verticalScroll(quickItemsScrollState)
                                             ) {
                                                 Spacer(Modifier.height(3.dp))
                                                 animatedQuickItems.forEach { text ->
-                                                    Card(
+                                                    Box(
                                                         modifier = Modifier
                                                             .fillMaxWidth()
                                                             .height(72.dp)
-                                                            .mdCenteredShadow(
-                                                                shape = RoundedCornerShape(UiTokens.Radius),
-                                                                shadowStyle = MdCardShadowStyle
-                                                            )
                                                             .combinedClickable(
                                                                 onClick = {
                                                                     performKeyHaptic()
@@ -1733,48 +1728,33 @@ fun QuickSubtitleScreen(
                                                                     )
                                                                 },
                                                                 onLongClick = openQuickSubtitleListDialog
-                                                            ),
-                                                        shape = RoundedCornerShape(UiTokens.Radius),
-                                                        backgroundColor = md2ElevatedCardContainerColor(UiTokens.MenuElevation),
-                                                        elevation = 0.dp
-                                                    ) {
-                                                        Box(
-                                                            modifier = Modifier
-                                                                .fillMaxSize()
-                                                                .padding(horizontal = 8.dp, vertical = 8.dp),
-                                                            contentAlignment = Alignment.CenterStart
-                                                        ) {
-                                                            Text(
-                                                                text = text,
-                                                                maxLines = 2,
-                                                                overflow = TextOverflow.Ellipsis,
-                                                                style = MaterialTheme.typography.bodyLarge
                                                             )
-                                                        }
+                                                            .padding(horizontal = 8.dp, vertical = 8.dp),
+                                                        contentAlignment = Alignment.CenterStart
+                                                    ) {
+                                                        Text(
+                                                            text = text,
+                                                            maxLines = 2,
+                                                            overflow = TextOverflow.Ellipsis,
+                                                            style = MaterialTheme.typography.bodyLarge
+                                                        )
                                                     }
+                                                    Divider(
+                                                        modifier = Modifier.padding(horizontal = 8.dp),
+                                                        color = MaterialTheme.colorScheme.outline.copy(alpha = 0.18f)
+                                                    )
                                                 }
-                                                Card(
+                                                Box(
                                                     modifier = Modifier
                                                         .fillMaxWidth()
                                                         .height(56.dp)
-                                                        .mdCenteredShadow(
-                                                            shape = RoundedCornerShape(UiTokens.Radius),
-                                                            shadowStyle = MdCardShadowStyle
-                                                        )
                                                         .clickable {
                                                             performKeyHaptic()
                                                             addCurrentTextToQuickItems(groupIndex)
                                                         },
-                                                    shape = RoundedCornerShape(UiTokens.Radius),
-                                                    backgroundColor = md2ElevatedCardContainerColor(UiTokens.MenuElevation),
-                                                    elevation = 0.dp
+                                                    contentAlignment = Alignment.Center
                                                 ) {
-                                                    Box(
-                                                        modifier = Modifier.fillMaxSize(),
-                                                        contentAlignment = Alignment.Center
-                                                    ) {
-                                                        MsIcon("add", contentDescription = "添加当前文本")
-                                                    }
+                                                    MsIcon("add", contentDescription = "添加当前文本")
                                                 }
                                                 Spacer(Modifier.height(3.dp))
                                             }
@@ -4721,5 +4701,3 @@ internal fun QuickSubtitleEditableRow(
         }
     }
 }
-
-
