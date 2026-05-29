@@ -3536,8 +3536,7 @@ class FloatingOverlayService : Service() {
                 }
                 setOnClickListener {
                     performOverlayKeyHaptic(this)
-                    miniQuickListGridMode = !miniQuickListGridMode
-                    refreshMiniQuickTextListOverlayUi(animateContent = false)
+                    cycleMiniQuickTextListLayout()
                 }
             }
         miniQuickListTabsCardView = LinearLayout(this).apply {
@@ -6026,6 +6025,31 @@ class FloatingOverlayService : Service() {
         }
     }
 
+    private fun cycleMiniQuickTextListLayout() {
+        val recycler = miniQuickListRecyclerView
+        val applyLayoutChange = {
+            miniQuickListGridMode = !miniQuickListGridMode
+            refreshMiniQuickTextListOverlayUi(animateContent = false)
+        }
+        if (recycler?.visibility == View.VISIBLE) {
+            recycler.animate().cancel()
+            recycler.animate()
+                .alpha(0f)
+                .setDuration(90L)
+                .withEndAction {
+                    applyLayoutChange()
+                    recycler.animate().cancel()
+                    recycler.alpha = 0f
+                    recycler.animate().alpha(1f).setDuration(130L).start()
+                }
+                .start()
+        } else {
+            recycler?.animate()?.cancel()
+            recycler?.alpha = 1f
+            applyLayoutChange()
+        }
+    }
+
     private fun refreshMiniQuickTextListOverlayUi(animateContent: Boolean = false) {
         val recycler = miniQuickListRecyclerView ?: return
         val adapter = miniQuickListAdapter ?: return
@@ -6945,14 +6969,34 @@ class FloatingOverlayService : Service() {
             }
         val current = currentMiniSoundboardLayout()
         val next = options[(options.indexOf(current).takeIf { it >= 0 } ?: 0).let { (it + 1) % options.size }]
-        if (landscape) {
-            miniSoundboardLandscapeLayout = next
-        } else {
-            miniSoundboardPortraitLayout = next
+        val recycler = miniSoundboardRecyclerView
+        val applyLayoutChange = {
+            if (landscape) {
+                miniSoundboardLandscapeLayout = next
+            } else {
+                miniSoundboardPortraitLayout = next
+            }
+            saveMiniSoundboardLayout()
+            refreshMiniSoundboardUi(animateContent = false)
+            updateMiniPanelPosition()
         }
-        saveMiniSoundboardLayout()
-        refreshMiniSoundboardUi(animateContent = false)
-        updateMiniPanelPosition()
+        if (recycler?.visibility == View.VISIBLE) {
+            recycler.animate().cancel()
+            recycler.animate()
+                .alpha(0f)
+                .setDuration(90L)
+                .withEndAction {
+                    applyLayoutChange()
+                    recycler.animate().cancel()
+                    recycler.alpha = 0f
+                    recycler.animate().alpha(1f).setDuration(130L).start()
+                }
+                .start()
+        } else {
+            recycler?.animate()?.cancel()
+            recycler?.alpha = 1f
+            applyLayoutChange()
+        }
     }
 
     private fun ensureMiniSoundboardSelectedGroup(): SoundboardGroup? {
