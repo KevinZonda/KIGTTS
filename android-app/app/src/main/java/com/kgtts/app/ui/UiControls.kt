@@ -1424,6 +1424,8 @@ internal fun SettingsTabButton(
     val indicatorColor = MaterialTheme.colorScheme.primary
     val contentColor =
         if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+    val performHaptic = rememberKigttsKeyHaptic()
+    val currentOnClick by rememberUpdatedState(onClick)
 
     Box(
         modifier = modifier
@@ -1432,7 +1434,10 @@ internal fun SettingsTabButton(
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = rememberRipple(bounded = true),
-                onClick = onClick
+                onClick = {
+                    performHaptic()
+                    currentOnClick()
+                }
             ),
     ) {
         if (compact) {
@@ -1488,4 +1493,3 @@ internal fun SettingsTabButton(
         }
     }
 }
-
