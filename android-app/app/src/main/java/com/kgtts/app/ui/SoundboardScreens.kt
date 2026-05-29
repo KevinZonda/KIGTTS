@@ -524,10 +524,9 @@ internal fun SoundboardScreen(
         if (!targetGridMode) {
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
             ) {
-                items(targetItems, key = { it.id }) { item ->
+                itemsIndexed(targetItems, key = { _, item -> item.id }) { index, item ->
                     SoundboardListItem(
                         item = item,
                         playing = viewModel.isSoundboardItemPlaying(item.id),
@@ -535,6 +534,12 @@ internal fun SoundboardScreen(
                         onPlay = { viewModel.playSoundboardItem(item) },
                         onStop = { viewModel.stopSoundboardItem(item.id) }
                     )
+                    if (index < targetItems.lastIndex) {
+                        Divider(
+                            modifier = Modifier.padding(horizontal = 12.dp),
+                            color = MaterialTheme.colorScheme.outline.copy(alpha = 0.18f)
+                        )
+                    }
                 }
             }
         } else {
@@ -957,60 +962,102 @@ internal fun SoundboardGridItem(
     onStop: () -> Unit
 ) {
     val performKeyHaptic = rememberKigttsKeyHaptic()
-    Card(
+    val shape = RoundedCornerShape(UiTokens.Radius)
+    val blockColor = soundboardGridBlockColor(item.id)
+    val contentColor = soundboardGridBlockContentColor(blockColor)
+    Box(
         modifier = Modifier
             .fillMaxWidth()
             .height(118.dp)
+            .clip(shape)
+            .background(blockColor)
+            .border(
+                BorderStroke(
+                    width = 1.dp,
+                    color = contentColor.copy(alpha = 0.18f)
+                ),
+                shape
+            )
             .clickable {
                 performKeyHaptic()
                 onPlay()
-            },
-        shape = RoundedCornerShape(UiTokens.Radius),
-        backgroundColor = md2CardContainerColor(),
-        elevation = UiTokens.CardElevation
+            }
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(10.dp)
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.Top
+        CompositionLocalProvider(LocalContentColor provides contentColor) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(10.dp)
             ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = item.title.ifBlank { "未命名音效" },
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                    if (item.wakeWord.isNotBlank()) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.Top
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = item.wakeWord,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.66f),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
+                            text = item.title.ifBlank { "未命名音效" },
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        if (item.wakeWord.isNotBlank()) {
+                            Text(
+                                text = item.wakeWord,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = contentColor.copy(alpha = 0.72f),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+                    KigttsIconButton(onClick = { if (playing) onStop() else onPlay() }) {
+                        MsIcon(
+                            if (playing) "stop" else "play_arrow",
+                            contentDescription = if (playing) "停止音效" else "播放音效",
+                            tint = contentColor
                         )
                     }
                 }
-                KigttsIconButton(onClick = { if (playing) onStop() else onPlay() }) {
-                    MsIcon(
-                        if (playing) "stop" else "play_arrow",
-                        contentDescription = if (playing) "停止音效" else "播放音效"
-                    )
-                }
+                Spacer(Modifier.weight(1f))
+                LinearProgressIndicator(
+                    progress = progress.coerceIn(0f, 1f),
+                    modifier = Modifier.fillMaxWidth(),
+                    color = contentColor.copy(alpha = 0.86f),
+                    backgroundColor = contentColor.copy(alpha = 0.18f)
+                )
             }
-            Spacer(Modifier.weight(1f))
-            LinearProgressIndicator(
-                progress = progress.coerceIn(0f, 1f),
-                modifier = Modifier.fillMaxWidth(),
-                backgroundColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)
-            )
         }
     }
+}
+
+@Composable
+private fun soundboardGridBlockColor(itemId: Long): Color {
+    val palette = if (currentAppDarkTheme()) {
+        listOf(
+            Color(0xFF14535A),
+            Color(0xFF264F73),
+            Color(0xFF4B406F),
+            Color(0xFF675033),
+            Color(0xFF315D45),
+            Color(0xFF663F4F)
+        )
+    } else {
+        listOf(
+            Color(0xFFD6F3F0),
+            Color(0xFFDCEBFF),
+            Color(0xFFECE4FF),
+            Color(0xFFFFE8C9),
+            Color(0xFFDDF4E6),
+            Color(0xFFFFE3EC)
+        )
+    }
+    val index = (itemId % palette.size).toInt().let { if (it < 0) it + palette.size else it }
+    return palette[index]
+}
+
+private fun soundboardGridBlockContentColor(background: Color): Color {
+    return if (background.luminance() > 0.56f) Color(0xFF111417) else Color.White
 }
 
 @Composable
@@ -1022,56 +1069,48 @@ internal fun SoundboardListItem(
     onStop: () -> Unit
 ) {
     val performKeyHaptic = rememberKigttsKeyHaptic()
-    Card(
+    Column(
         modifier = Modifier
             .fillMaxWidth()
             .clickable {
                 performKeyHaptic()
                 onPlay()
-            },
-        shape = RoundedCornerShape(UiTokens.Radius),
-        backgroundColor = md2CardContainerColor(),
-        elevation = UiTokens.CardElevation
+            }
+            .padding(horizontal = 12.dp, vertical = 10.dp)
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 10.dp)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = item.title.ifBlank { "未命名音效" },
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    fontWeight = FontWeight.SemiBold
+                )
+                if (item.wakeWord.isNotBlank()) {
                     Text(
-                        text = item.title.ifBlank { "未命名音效" },
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                    if (item.wakeWord.isNotBlank()) {
-                        Text(
-                            text = item.wakeWord,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.66f)
-                        )
-                    }
-                }
-                KigttsIconButton(onClick = { if (playing) onStop() else onPlay() }) {
-                    MsIcon(
-                        if (playing) "stop" else "play_arrow",
-                        contentDescription = if (playing) "停止音效" else "播放音效"
+                        text = item.wakeWord,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.66f)
                     )
                 }
             }
-            LinearProgressIndicator(
-                progress = progress.coerceIn(0f, 1f),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 6.dp),
-                backgroundColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)
-            )
+            KigttsIconButton(onClick = { if (playing) onStop() else onPlay() }) {
+                MsIcon(
+                    if (playing) "stop" else "play_arrow",
+                    contentDescription = if (playing) "停止音效" else "播放音效"
+                )
+            }
         }
+        LinearProgressIndicator(
+            progress = progress.coerceIn(0f, 1f),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 6.dp),
+            backgroundColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)
+        )
     }
 }
 
@@ -2719,5 +2758,3 @@ internal fun SoundboardEditableRow(
         }
     }
 }
-
-
