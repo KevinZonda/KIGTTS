@@ -1009,8 +1009,7 @@ internal fun SoundboardGridItem(
                 LinearProgressIndicator(
                     progress = progress.coerceIn(0f, 1f),
                     modifier = Modifier.fillMaxWidth(),
-                    color = contentColor.copy(alpha = 0.68f),
-                    backgroundColor = contentColor.copy(alpha = 0.12f)
+                    backgroundColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)
                 )
             }
         }
