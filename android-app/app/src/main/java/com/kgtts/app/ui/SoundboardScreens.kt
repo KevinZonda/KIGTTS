@@ -74,12 +74,10 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.indication
@@ -136,7 +134,6 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Outline
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.asAndroidPath
-import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
@@ -962,22 +959,11 @@ internal fun SoundboardGridItem(
     onStop: () -> Unit
 ) {
     val performKeyHaptic = rememberKigttsKeyHaptic()
-    val shape = RoundedCornerShape(UiTokens.Radius)
-    val blockColor = soundboardGridBlockColor(item.id)
-    val contentColor = soundboardGridBlockContentColor(blockColor)
+    val contentColor = MaterialTheme.colorScheme.onSurface
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .height(118.dp)
-            .clip(shape)
-            .background(blockColor)
-            .border(
-                BorderStroke(
-                    width = 1.dp,
-                    color = contentColor.copy(alpha = 0.18f)
-                ),
-                shape
-            )
             .clickable {
                 performKeyHaptic()
                 onPlay()
@@ -1023,41 +1009,12 @@ internal fun SoundboardGridItem(
                 LinearProgressIndicator(
                     progress = progress.coerceIn(0f, 1f),
                     modifier = Modifier.fillMaxWidth(),
-                    color = contentColor.copy(alpha = 0.86f),
-                    backgroundColor = contentColor.copy(alpha = 0.18f)
+                    color = contentColor.copy(alpha = 0.68f),
+                    backgroundColor = contentColor.copy(alpha = 0.12f)
                 )
             }
         }
     }
-}
-
-@Composable
-private fun soundboardGridBlockColor(itemId: Long): Color {
-    val palette = if (currentAppDarkTheme()) {
-        listOf(
-            Color(0xFF14535A),
-            Color(0xFF264F73),
-            Color(0xFF4B406F),
-            Color(0xFF675033),
-            Color(0xFF315D45),
-            Color(0xFF663F4F)
-        )
-    } else {
-        listOf(
-            Color(0xFFD6F3F0),
-            Color(0xFFDCEBFF),
-            Color(0xFFECE4FF),
-            Color(0xFFFFE8C9),
-            Color(0xFFDDF4E6),
-            Color(0xFFFFE3EC)
-        )
-    }
-    val index = (itemId % palette.size).toInt().let { if (it < 0) it + palette.size else it }
-    return palette[index]
-}
-
-private fun soundboardGridBlockContentColor(background: Color): Color {
-    return if (background.luminance() > 0.56f) Color(0xFF111417) else Color.White
 }
 
 @Composable
