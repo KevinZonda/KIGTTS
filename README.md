@@ -30,8 +30,18 @@ KIGTTS 是一套面向 **Kigurumi 玩家、漫展用户和不方便说话场景*
       <br>
       <span>适合直接安装到手机或平板使用</span>
       <br><br>
-      <a href="https://github.com/LHT02/KIGTTS/releases/tag/APP0.1.0">
-        <img src="https://img.shields.io/badge/GitHub%20Release-APP0.1.0-038387?style=for-the-badge&logo=github&logoColor=white" alt="Android App Release">
+      <a href="https://github.com/LHT02/KIGTTS/releases/tag/APP0.1.1">
+        <img src="https://img.shields.io/badge/GitHub%20Release-APP0.1.1-038387?style=for-the-badge&logo=github&logoColor=white" alt="Android App Release">
+      </a>
+      <br>
+      <a href="https://a.app.qq.com/o/simple.jsp?pkgname=com.lhtstudio.kigtts.app">
+        <img src="https://img.shields.io/badge/%E5%BA%94%E7%94%A8%E5%AE%9D-%E4%B8%8B%E8%BD%BD-12B7F5?style=for-the-badge" alt="应用宝下载">
+      </a>
+      <a href="https://gitee.com/LHTOFFICAL/KIGTTS/releases/download/APP0.1.1%E5%8F%91%E8%A1%8C%E7%89%88/app-release.apk">
+        <img src="https://img.shields.io/badge/Gitee-APK%20%E4%B8%8B%E8%BD%BD-C71D23?style=for-the-badge&logo=gitee&logoColor=white" alt="Gitee 下载">
+      </a>
+      <a href="https://appgallery.huawei.com/app/C117576039?sharePrepath=ag&channelId=%E5%AE%98%E6%96%B9%E7%BD%91%E7%AB%99&id=fafcf6ee7f5f4097bdd660bc8be21563&s=08BD28653FBBD05CDB82E8345EE55350DFC37CD4FAFE57F7F1281EB7D890CA2E&detailType=0&v=&callType=AGDLINK&installType=0000&shareTo=qrcode">
+        <img src="https://img.shields.io/badge/%E5%8D%8E%E4%B8%BA%E5%BA%94%E7%94%A8%E5%B8%82%E5%9C%BA-%E4%B8%8B%E8%BD%BD-D0021B?style=for-the-badge" alt="华为应用市场下载">
       </a>
     </td>
     <td align="center" width="50%">
