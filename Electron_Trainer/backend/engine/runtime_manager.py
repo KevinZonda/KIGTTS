@@ -650,17 +650,23 @@ def _run_command(
     cwd: Optional[Path] = None,
     timeout: int = 7200,
 ) -> tuple[int, str]:
-    proc = subprocess.run(
-        cmd,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        env=env,
-        cwd=str(cwd) if cwd else None,
-        timeout=timeout,
-    )
+    try:
+        proc = subprocess.run(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            env=env,
+            cwd=str(cwd) if cwd else None,
+            timeout=timeout,
+        )
+    except subprocess.TimeoutExpired as exc:
+        output = exc.stdout or ""
+        if isinstance(output, bytes):
+            output = output.decode("utf-8", errors="replace")
+        return 124, f"命令执行超时（{timeout} 秒）\n{output}".strip()
     return proc.returncode, proc.stdout or ""
 
 
@@ -781,33 +787,80 @@ def _probe_nvidia_smi() -> Dict[str, str]:
     }
 
 
-def _probe_env_python(python_path: Path, *, require_standard_prepare: bool = False) -> Dict[str, Any]:
+def _probe_python_import(
+    python_path: Path,
+    module_name: str,
+    *,
+    attr_name: str,
+    payload_key: str,
+    timeout: int = 45,
+) -> Dict[str, Any]:
     env = _pip_env(python_path)
-    standard_prepare_probe = (
-        """
-import librosa
-import scipy
-import soundfile
-import sherpa_onnx
+    probe_code = f"""
+import importlib
+import json
 
-payload.update({
-    "librosa_version": getattr(librosa, "__version__", ""),
-    "scipy_version": getattr(scipy, "__version__", ""),
-    "soundfile_version": getattr(soundfile, "__version__", ""),
-    "sherpa_onnx_path": getattr(sherpa_onnx, "__file__", ""),
-})
+module = importlib.import_module({module_name!r})
+payload = {{{payload_key!r}: getattr(module, {attr_name!r}, "")}}
+print(json.dumps(payload, ensure_ascii=False))
 """
-        if require_standard_prepare
-        else ""
-    )
+    code, output = _run_command([str(python_path), "-c", probe_code], env=env, cwd=python_path.parent, timeout=timeout)
+    if code == 124:
+        raise RuntimeError(f"运行时组件 {module_name} 启动超时，请重新安装对应运行时包。")
+    if code != 0:
+        trimmed = _trim_output(output)
+        if "ModuleNotFoundError" in trimmed:
+            raise RuntimeError(f"运行时缺少必要组件：{module_name}。请重新安装对应运行时包。")
+        raise RuntimeError(trimmed or f"运行时组件 {module_name} 探测失败")
+    last_line = next((line for line in reversed(output.splitlines()) if line.strip()), "")
+    if not last_line:
+        raise RuntimeError(f"运行时组件 {module_name} 探测无输出")
+    try:
+        return json.loads(last_line)
+    except Exception as exc:
+        raise RuntimeError(f"运行时组件 {module_name} 探测输出无法解析: {last_line}") from exc
+
+
+def _probe_standard_prepare_modules(python_path: Path) -> Dict[str, Any]:
+    payload: Dict[str, Any] = {}
+    for module_name, attr_name, payload_key in (
+        ("librosa", "__version__", "librosa_version"),
+        ("scipy", "__version__", "scipy_version"),
+        ("soundfile", "__version__", "soundfile_version"),
+        ("sherpa_onnx", "__file__", "sherpa_onnx_path"),
+    ):
+        payload.update(
+            _probe_python_import(
+                python_path,
+                module_name,
+                attr_name=attr_name,
+                payload_key=payload_key,
+            )
+        )
+    return payload
+
+
+def _probe_env_python(
+    python_path: Path,
+    *,
+    check_cuda: bool = False,
+    require_standard_prepare: bool = False,
+) -> Dict[str, Any]:
+    env = _pip_env(python_path)
+    cuda_check = "True" if check_cuda else "False"
     probe_code = (
-        """
+        f"""
 import importlib
 import json
 
 import piper_train
 import pytorch_lightning
 import torch
+
+check_cuda = {cuda_check}
+cuda_available = False
+if check_cuda:
+    cuda_available = bool(torch.cuda.is_available())
 
 torchaudio_version = ""
 torchaudio_available = False
@@ -821,19 +874,21 @@ except ModuleNotFoundError:
 payload = {
     "torch_version": torch.__version__,
     "torch_cuda_version": getattr(torch.version, "cuda", None),
-    "cuda_available": bool(torch.cuda.is_available()),
+    "cuda_available": cuda_available,
+    "cuda_probe_skipped": not check_cuda,
     "torchaudio_version": torchaudio_version,
     "torchaudio_available": torchaudio_available,
     "pytorch_lightning_version": getattr(pytorch_lightning, "__version__", ""),
     "piper_train_path": getattr(piper_train, "__file__", ""),
 }
 """
-        + standard_prepare_probe
         + """
 print(json.dumps(payload, ensure_ascii=False))
 """
     )
-    code, output = _run_command([str(python_path), "-c", probe_code], env=env, cwd=python_path.parent, timeout=240)
+    code, output = _run_command([str(python_path), "-c", probe_code], env=env, cwd=python_path.parent, timeout=120)
+    if code == 124:
+        raise RuntimeError("运行时 Python 启动或基础组件探测超时，请重新安装对应运行时包。")
     if code != 0:
         trimmed = _trim_output(output)
         if "ModuleNotFoundError" in trimmed:
@@ -848,9 +903,12 @@ print(json.dumps(payload, ensure_ascii=False))
     if not last_line:
         raise RuntimeError("运行时探测无输出")
     try:
-        return json.loads(last_line)
+        payload = json.loads(last_line)
     except Exception as exc:
         raise RuntimeError(f"运行时探测输出无法解析: {last_line}") from exc
+    if require_standard_prepare:
+        payload.update(_probe_standard_prepare_modules(python_path))
+    return payload
 
 
 def _probe_piper_runtime_python(python_path: Path) -> Dict[str, Any]:
@@ -1292,7 +1350,7 @@ def describe_piper_cuda_runtime() -> Dict[str, Any]:
         )
 
     try:
-        probe = _probe_env_python(python_path)
+        probe = _probe_env_python(python_path, check_cuda=True)
     except Exception as exc:
         return _build_status(
             available=False,
@@ -1762,7 +1820,7 @@ def install_piper_cuda_runtime(
             extract_dirname="piper_env_cuda_extract",
             progress=progress,
             force=force,
-            probe_python=_probe_env_python,
+            probe_python=lambda python_path: _probe_env_python(python_path, check_cuda=True),
             local_archive_path=local_archive_path,
         )
         _write_meta(
