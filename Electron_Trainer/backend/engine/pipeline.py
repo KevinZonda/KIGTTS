@@ -26,7 +26,6 @@ from .project_state import (
 )
 from .text_normalization import DEFAULT_SENTENCE_PERIOD, ensure_sentence_ending
 from .utils import find_executable
-from .runtime_manager import describe_piper_runtime
 
 
 def _ensure_dirs(paths: ProjectPaths) -> None:
@@ -71,11 +70,6 @@ def _run_piper_standard_prepare(
     opts: TrainingOptions,
     progress: Optional[ProgressCallback] = None,
 ) -> None:
-    status = describe_piper_runtime()
-    if not status.get("available"):
-        message = str(status.get("message") or "Piper 基础运行时不可用。")
-        raise RuntimeError(f"{message} 请先在“依赖准备”中安装或重新安装 Piper 基础运行时。")
-
     piper_python = training._find_piper_python(prefer_cuda=False)  # type: ignore[attr-defined]
     if not piper_python:
         raise RuntimeError("Piper 基础运行时未安装。请先在“依赖准备”中安装 Piper 基础运行时。")

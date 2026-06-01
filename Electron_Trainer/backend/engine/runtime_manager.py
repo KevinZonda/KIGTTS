@@ -844,42 +844,74 @@ def _probe_env_python(
     python_path: Path,
     *,
     check_cuda: bool = False,
+    import_training_stack: bool = True,
     require_standard_prepare: bool = False,
 ) -> Dict[str, Any]:
     env = _pip_env(python_path)
     cuda_check = "True" if check_cuda else "False"
+    training_stack_import = "True" if import_training_stack else "False"
     probe_code = (
         f"""
 import importlib
+import importlib.util
 import json
 
-import piper_train
-import pytorch_lightning
-import torch
+def require_spec(name):
+    spec = importlib.util.find_spec(name)
+    if spec is None:
+        raise ModuleNotFoundError(f"No module named '{{name}}'")
+    return spec
 
 check_cuda = {cuda_check}
+import_training_stack = {training_stack_import}
 cuda_available = False
+torch_version = ""
+torch_cuda_version = None
+pytorch_lightning_version = ""
+piper_train_path = ""
+torch_available = False
+
+if import_training_stack or check_cuda:
+    import piper_train
+    import pytorch_lightning
+    import torch
+    torch_available = True
+    torch_version = torch.__version__
+    torch_cuda_version = getattr(torch.version, "cuda", None)
+    pytorch_lightning_version = getattr(pytorch_lightning, "__version__", "")
+    piper_train_path = getattr(piper_train, "__file__", "")
+else:
+    piper_train_path = getattr(require_spec("piper_train"), "origin", "") or ""
+    require_spec("pytorch_lightning")
+    require_spec("torch")
+    torch_available = True
+
 if check_cuda:
     cuda_available = bool(torch.cuda.is_available())
 
 torchaudio_version = ""
 torchaudio_available = False
 try:
-    torchaudio = importlib.import_module("torchaudio")
-    torchaudio_version = getattr(torchaudio, "__version__", "")
-    torchaudio_available = True
+    if import_training_stack:
+        torchaudio = importlib.import_module("torchaudio")
+        torchaudio_version = getattr(torchaudio, "__version__", "")
+        torchaudio_available = True
+    else:
+        torchaudio_available = importlib.util.find_spec("torchaudio") is not None
 except ModuleNotFoundError:
     pass
 
 payload = {{
-    "torch_version": torch.__version__,
-    "torch_cuda_version": getattr(torch.version, "cuda", None),
+    "torch_version": torch_version,
+    "torch_cuda_version": torch_cuda_version,
+    "torch_available": torch_available,
     "cuda_available": cuda_available,
     "cuda_probe_skipped": not check_cuda,
     "torchaudio_version": torchaudio_version,
     "torchaudio_available": torchaudio_available,
-    "pytorch_lightning_version": getattr(pytorch_lightning, "__version__", ""),
-    "piper_train_path": getattr(piper_train, "__file__", ""),
+    "pytorch_lightning_version": pytorch_lightning_version,
+    "piper_train_path": piper_train_path,
+    "training_stack_import_skipped": not import_training_stack,
 }}
 """
         + """
@@ -912,7 +944,7 @@ print(json.dumps(payload, ensure_ascii=False))
 
 
 def _probe_piper_runtime_python(python_path: Path) -> Dict[str, Any]:
-    return _probe_env_python(python_path, require_standard_prepare=True)
+    return _probe_env_python(python_path, import_training_stack=False, require_standard_prepare=True)
 
 
 def _download_file_with_progress(
