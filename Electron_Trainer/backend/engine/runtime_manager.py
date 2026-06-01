@@ -871,7 +871,7 @@ try:
 except ModuleNotFoundError:
     pass
 
-payload = {
+payload = {{
     "torch_version": torch.__version__,
     "torch_cuda_version": getattr(torch.version, "cuda", None),
     "cuda_available": cuda_available,
@@ -880,7 +880,7 @@ payload = {
     "torchaudio_available": torchaudio_available,
     "pytorch_lightning_version": getattr(pytorch_lightning, "__version__", ""),
     "piper_train_path": getattr(piper_train, "__file__", ""),
-}
+}}
 """
         + """
 print(json.dumps(payload, ensure_ascii=False))
