@@ -414,11 +414,11 @@ fun BuiltinFilePickerDialog(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    OutlinedButton(onClick = { treePermissionLauncher.launch(null) }) {
+                    Md2OutlinedButton(onClick = { treePermissionLauncher.launch(null) }) {
                         Text("授权目录")
                     }
                     if (systemPickerAction != null) {
-                        OutlinedButton(onClick = systemPickerAction) { Text("系统文件选择器") }
+                        Md2OutlinedButton(onClick = systemPickerAction) { Text("系统文件选择器") }
                     }
                 }
 
@@ -542,7 +542,7 @@ fun BuiltinFilePickerDialog(
                 horizontalArrangement = Arrangement.End
             ) {
                 if (multiSelect) {
-                    TextButton(
+                    Md2TextButton(
                         onClick = {
                             val picked = selectedUris.values.toList()
                             if (picked.isNotEmpty()) {
@@ -554,7 +554,7 @@ fun BuiltinFilePickerDialog(
                         Text("确认选择")
                     }
                 }
-                TextButton(onClick = onDismiss) {
+                Md2TextButton(onClick = onDismiss) {
                     Text("关闭")
                 }
             }
@@ -627,13 +627,13 @@ fun BuiltinGalleryPickerDialog(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.End
                 ) {
-                    TextButton(onClick = onDismiss) {
+                    Md2TextButton(onClick = onDismiss) {
                         Text("关闭")
                     }
                 }
             } else {
                 Box {
-                    OutlinedButton(onClick = { albumExpanded = true }) {
+                    Md2OutlinedButton(onClick = { albumExpanded = true }) {
                         Text(albums[selectedAlbumId] ?: "全部相册")
                     }
                     BuiltinAnimatedDropdownMenu(
@@ -673,7 +673,7 @@ fun BuiltinGalleryPickerDialog(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.End
                 ) {
-                    TextButton(onClick = onDismiss) {
+                    Md2TextButton(onClick = onDismiss) {
                         Text("关闭")
                     }
                 }

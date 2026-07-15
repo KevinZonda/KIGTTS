@@ -255,6 +255,7 @@ import com.lhtstudio.kigtts.app.data.KOKORO_VOICE_NAME
 import com.lhtstudio.kigtts.app.data.SYSTEM_TTS_VOICE_NAME
 import com.lhtstudio.kigtts.app.data.VoicePackInfo
 import com.lhtstudio.kigtts.app.data.UserPrefs
+import com.lhtstudio.kigtts.app.theme.ThemeColorResolver
 import com.lhtstudio.kigtts.app.data.VoicePackMeta
 import com.lhtstudio.kigtts.app.data.defaultSoundboardGroups
 import com.lhtstudio.kigtts.app.data.isKokoroVoiceDir
@@ -350,6 +351,7 @@ internal fun SettingsNavHost(
     viewModel: MainViewModel,
     state: UiState,
     onTopBarActionsChange: (LogTopBarActions?) -> Unit,
+    onFontTopBarActionsChange: (FontTopBarActions?) -> Unit,
     onOpenRecognitionResourceSources: () -> Unit,
     onPickRecognitionResourcePackage: () -> Unit,
     onDownloadRecognitionResources: () -> Unit,
@@ -420,6 +422,9 @@ internal fun SettingsNavHost(
             SettingsScreen(
                 viewModel = viewModel,
                 state = state,
+                onOpenFonts = {
+                    navController.navigate(SettingsRoutes.Fonts) { launchSingleTop = true }
+                },
                 onOpenLicenses = {
                     navController.navigate(SettingsRoutes.Licenses) { launchSingleTop = true }
                 },
@@ -440,6 +445,9 @@ internal fun SettingsNavHost(
         }
         composable(SettingsRoutes.Log) {
             LogScreen(onTopBarActionsChange = onTopBarActionsChange)
+        }
+        composable(SettingsRoutes.Fonts) {
+            FontSettingsScreen(onTopBarActionsChange = onFontTopBarActionsChange)
         }
         composable(SettingsRoutes.Licenses) {
             LegalDocumentScreen(
@@ -464,6 +472,7 @@ internal fun SettingsNavHost(
 fun SettingsScreen(
     viewModel: MainViewModel,
     state: UiState,
+    onOpenFonts: () -> Unit,
     onOpenLicenses: () -> Unit,
     onOpenPrivacy: () -> Unit,
     onOpenAgreement: () -> Unit,
@@ -533,6 +542,8 @@ fun SettingsScreen(
     var themeModeExpanded by remember { mutableStateOf(false) }
     var overlayThemeModeExpanded by remember { mutableStateOf(false) }
     var fontScaleBlockModeExpanded by remember { mutableStateOf(false) }
+    var themeColorPickerVisible by remember { mutableStateOf(false) }
+    var themeToneCorrectionSuggestionVisible by remember { mutableStateOf(false) }
     var restoreQuickTextPresetDialogVisible by remember { mutableStateOf(false) }
     var restoreQuickTextSelectedGroupIds by rememberSaveable {
         mutableStateOf(defaultSelectedQuickSubtitlePresetGroupIds())
@@ -687,6 +698,54 @@ fun SettingsScreen(
 
     LaunchedEffect(selectedCategory) {
         scroll.animateScrollTo(0)
+    }
+
+    if (themeColorPickerVisible) {
+        ThemeColorPickerDialog(
+            title = "应用主题色",
+            initialColor = Color(state.themeColorArgb),
+            onDismissRequest = { themeColorPickerVisible = false },
+            onColorSelected = { color ->
+                val selectedArgb = color.toArgb()
+                viewModel.setThemeColorArgb(selectedArgb)
+                themeColorPickerVisible = false
+                themeToneCorrectionSuggestionVisible =
+                    !state.themeToneCorrectionEnabled &&
+                    ThemeColorResolver.shouldSuggestToneCorrection(selectedArgb)
+            }
+        )
+    }
+
+    if (themeToneCorrectionSuggestionVisible) {
+        val dialogActionColor = MaterialTheme.colorScheme.onSurface
+        AlertDialog(
+            onDismissRequest = { themeToneCorrectionSuggestionVisible = false },
+            title = { Text("主题色可能影响可读性") },
+            text = {
+                Text(
+                    "当前颜色在亮色或暗色界面中可能过亮或过暗。是否开启主题色色调修正，自动生成适合当前亮暗模式的控件色和强调文字色？"
+                )
+            },
+            confirmButton = {
+                Md2TextButton(
+                    onClick = {
+                        viewModel.setThemeToneCorrectionEnabled(true)
+                        themeToneCorrectionSuggestionVisible = false
+                    },
+                    contentColor = dialogActionColor
+                ) {
+                    Text("开启修正")
+                }
+            },
+            dismissButton = {
+                Md2TextButton(
+                    onClick = { themeToneCorrectionSuggestionVisible = false },
+                    contentColor = dialogActionColor
+                ) {
+                    Text("保持原色")
+                }
+            }
+        )
     }
 
     if (restoreQuickTextPresetDialogVisible) {
@@ -1739,6 +1798,20 @@ fun SettingsScreen(
                             ) { Text(label) }
                         }
                     }
+                    ThemeColorSettingRow(
+                        colorArgb = state.themeColorArgb,
+                        onClick = { themeColorPickerVisible = true }
+                    )
+                    FontSettingEntryRow(
+                        usingSystemFont = state.appFontId == "system",
+                        onClick = onOpenFonts
+                    )
+                    Md2SettingSwitchRow(
+                        title = "主题色色调修正",
+                        checked = state.themeToneCorrectionEnabled,
+                        onCheckedChange = { viewModel.setThemeToneCorrectionEnabled(it) },
+                        supportingText = "默认关闭。开启后会在暗色主题中提亮过深的主题色，并在亮色主题中为过浅颜色生成更深的强调文字色；按钮内容色会自动保持高对比。"
+                    )
                     Md2SettingDropdownRow(
                         title = "悬浮窗主题模式",
                         value = themeModeOptions.firstOrNull { it.first == state.overlayThemeMode }?.second
@@ -1853,7 +1926,7 @@ fun SettingsScreen(
                         MsIcon(
                             name = "restore",
                             contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary
+                            tint = MaterialTheme.colorScheme.accentText
                         )
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
@@ -2197,12 +2270,12 @@ fun SettingsScreen(
             confirmButton = {
                 when (speakerEnrollStep) {
                     0 -> {
-                        TextButton(onClick = { speakerEnrollStep = 1 }) {
+                        Md2TextButton(onClick = { speakerEnrollStep = 1 }) {
                             Text("下一步")
                         }
                     }
                     1, 2, 3 -> {
-                        TextButton(
+                        Md2TextButton(
                             onClick = { startSpeakerEnrollStepCapture(speakerEnrollStep) },
                             enabled = !(speakerEnrollReading || speakerEnrollCountingDown)
                         ) {
@@ -2216,7 +2289,7 @@ fun SettingsScreen(
                         }
                     }
                     else -> {
-                        TextButton(onClick = { closeSpeakerEnrollDialog() }) {
+                        Md2TextButton(onClick = { closeSpeakerEnrollDialog() }) {
                             Text("完成")
                         }
                     }
@@ -2225,7 +2298,7 @@ fun SettingsScreen(
             dismissButton = {
                 when (speakerEnrollStep) {
                     0, 1, 2, 3 -> {
-                        TextButton(
+                        Md2TextButton(
                             onClick = { closeSpeakerEnrollDialog() },
                             enabled = !(speakerEnrollReading || speakerEnrollCountingDown)
                         ) {
@@ -2233,7 +2306,7 @@ fun SettingsScreen(
                         }
                     }
                     else -> {
-                        TextButton(onClick = {
+                        Md2TextButton(onClick = {
                             speakerEnrollSamples.clear()
                             speakerEnrollStep = 0
                             speakerEnrollCountingDown = false
@@ -2260,7 +2333,7 @@ fun SettingsScreen(
             title = { Text("录制失败") },
             text = { Text("${speakerEnrollMessage}\n请重录当前句子。") },
             confirmButton = {
-                TextButton(onClick = { speakerEnrollRetryDialog = false }) {
+                Md2TextButton(onClick = { speakerEnrollRetryDialog = false }) {
                     Text("重录")
                 }
             }
@@ -2479,7 +2552,7 @@ fun LogScreen(
                                     .height(220.dp),
                                 contentAlignment = Alignment.Center
                             ) {
-                                CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
+                                CircularProgressIndicator(color = MaterialTheme.colorScheme.accentText)
                             }
                         }
                     }
@@ -2500,7 +2573,7 @@ fun LogScreen(
                                 contentAlignment = Alignment.Center
                             ) {
                                 CircularProgressIndicator(
-                                    color = MaterialTheme.colorScheme.primary,
+                                    color = MaterialTheme.colorScheme.accentText,
                                     strokeWidth = 2.5.dp,
                                     modifier = Modifier.size(24.dp)
                                 )
@@ -2587,7 +2660,7 @@ internal fun LegalDocumentScreen(assetPath: String) {
                                 .height(220.dp),
                             contentAlignment = Alignment.Center
                         ) {
-                            CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
+                            CircularProgressIndicator(color = MaterialTheme.colorScheme.accentText)
                         }
                     }
                 }
@@ -2606,7 +2679,7 @@ internal fun LegalDocumentScreen(assetPath: String) {
                             contentAlignment = Alignment.Center
                         ) {
                             CircularProgressIndicator(
-                                color = MaterialTheme.colorScheme.primary,
+                                color = MaterialTheme.colorScheme.accentText,
                                 strokeWidth = 2.5.dp,
                                 modifier = Modifier.size(24.dp)
                             )

@@ -453,6 +453,8 @@ internal fun VoicePackAvatarPlaceholder(
 @Composable
 fun VoicePackScreen(viewModel: MainViewModel, state: UiState) {
     val context = LocalContext.current
+    val cropToolbarColor = MaterialTheme.colorScheme.primary.toArgb()
+    val cropToolbarContentColor = MaterialTheme.colorScheme.onPrimary.toArgb()
     var detailPackPath by remember { mutableStateOf<String?>(null) }
     var detailName by remember { mutableStateOf("") }
     var detailRemark by remember { mutableStateOf("") }
@@ -486,13 +488,13 @@ fun VoicePackScreen(viewModel: MainViewModel, state: UiState) {
             aspectRatioY = 1,
             activityTitle = "裁剪头像",
             cropMenuCropButtonTitle = "确认",
-            activityMenuIconColor = 0xFFFFFFFF.toInt(),
-            activityMenuTextColor = 0xFFFFFFFF.toInt(),
+            activityMenuIconColor = cropToolbarContentColor,
+            activityMenuTextColor = cropToolbarContentColor,
             activityBackgroundColor = 0xFF121212.toInt(),
-            toolbarColor = 0xFF038387.toInt(),
-            toolbarTitleColor = 0xFFFFFFFF.toInt(),
-            toolbarBackButtonColor = 0xFFFFFFFF.toInt(),
-            toolbarTintColor = 0xFFFFFFFF.toInt(),
+            toolbarColor = cropToolbarColor,
+            toolbarTitleColor = cropToolbarContentColor,
+            toolbarBackButtonColor = cropToolbarContentColor,
+            toolbarTintColor = cropToolbarContentColor,
             outputCompressFormat = android.graphics.Bitmap.CompressFormat.PNG,
             outputCompressQuality = 100,
             outputRequestWidth = 400,
@@ -1430,5 +1432,4 @@ internal fun resetVoicePackStaggerView(view: View) {
     view.alpha = 1f
     view.translationY = 0f
 }
-
 

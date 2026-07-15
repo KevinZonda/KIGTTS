@@ -795,7 +795,7 @@ fun FloatingOverlayScreen(
             },
             confirmButton = {
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    TextButton(
+                    Md2TextButton(
                         onClick = {
                             pendingVolumeHotkeyEnableSequence = null
                             dismissVolumeHotkeyEnableWarning = false
@@ -803,7 +803,7 @@ fun FloatingOverlayScreen(
                     ) {
                         Text("取消")
                     }
-                    TextButton(
+                    Md2TextButton(
                         onClick = {
                             persistVolumeHotkeyEnableWarningChoiceIfNeeded()
                             viewModel.setVolumeHotkeyEnabled(sequence, true)
@@ -813,7 +813,7 @@ fun FloatingOverlayScreen(
                     ) {
                         Text("开启热键")
                     }
-                    TextButton(
+                    Md2TextButton(
                         onClick = {
                             persistVolumeHotkeyEnableWarningChoiceIfNeeded()
                             viewModel.setVolumeHotkeyEnabled(sequence, true)
@@ -843,7 +843,7 @@ fun FloatingOverlayScreen(
                     Text("选择这个序列触发后的功能。", style = MaterialTheme.typography.bodySmall)
                     Text("直接打开", fontWeight = FontWeight.Bold)
                     VolumeHotkeyActions.directOptions.forEach { action ->
-                        TextButton(
+                        Md2TextButton(
                             onClick = {
                                 viewModel.setVolumeHotkeyAction(sequence, action)
                                 hotkeyActionPickerSequence = null
@@ -860,7 +860,7 @@ fun FloatingOverlayScreen(
                     Divider(color = MaterialTheme.colors.onSurface.copy(alpha = 0.12f))
                     Text("悬浮窗", fontWeight = FontWeight.Bold)
                     VolumeHotkeyActions.overlayOptions.forEach { action ->
-                        TextButton(
+                        Md2TextButton(
                             onClick = {
                                 viewModel.setVolumeHotkeyAction(sequence, action)
                                 hotkeyActionPickerSequence = null
@@ -875,7 +875,7 @@ fun FloatingOverlayScreen(
                         }
                     }
                     Divider(color = MaterialTheme.colors.onSurface.copy(alpha = 0.12f))
-                    TextButton(
+                    Md2TextButton(
                         onClick = {
                             externalShortcutSearchQuery = ""
                             externalShortcutPickerSequence = sequence
@@ -892,7 +892,7 @@ fun FloatingOverlayScreen(
                 }
             },
             confirmButton = {
-                TextButton(onClick = { hotkeyActionPickerSequence = null }) {
+                Md2TextButton(onClick = { hotkeyActionPickerSequence = null }) {
                     Text("关闭")
                 }
             }
@@ -912,7 +912,7 @@ fun FloatingOverlayScreen(
                 }
             },
             confirmButton = {
-                TextButton(
+                Md2TextButton(
                     onClick = {
                         accessibilityExplainDialogOpen = false
                         openAccessibilitySettingsWithGuide()
@@ -922,7 +922,7 @@ fun FloatingOverlayScreen(
                 }
             },
             dismissButton = {
-                TextButton(onClick = { accessibilityExplainDialogOpen = false }) {
+                Md2TextButton(onClick = { accessibilityExplainDialogOpen = false }) {
                     Text("取消")
                 }
             }
@@ -977,7 +977,7 @@ fun FloatingOverlayScreen(
                                     modifier = Modifier.fillMaxSize()
                                 ) {
                                     items(filteredExternalShortcutChoices) { choice ->
-                                        TextButton(
+                                        Md2TextButton(
                                             onClick = {
                                                 viewModel.setVolumeHotkeyAction(
                                                     sequence,
@@ -1012,7 +1012,7 @@ fun FloatingOverlayScreen(
                 }
             },
             confirmButton = {
-                TextButton(
+                Md2TextButton(
                     onClick = {
                         externalShortcutPickerSequence = null
                         externalShortcutLoading = false

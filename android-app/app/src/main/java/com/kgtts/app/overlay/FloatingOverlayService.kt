@@ -95,6 +95,8 @@ import com.lhtstudio.kigtts.app.data.parseSoundboardConfig
 import com.lhtstudio.kigtts.app.data.serializeSoundboardConfig
 import com.lhtstudio.kigtts.app.overlay.RealtimeRuntimeBridge
 import com.lhtstudio.kigtts.app.service.VolumeHotkeyAccessibilityService
+import com.lhtstudio.kigtts.app.theme.ThemeColorRoles
+import com.lhtstudio.kigtts.app.theme.ThemeColorResolver
 import com.lhtstudio.kigtts.app.ui.QuickCard
 import com.lhtstudio.kigtts.app.ui.QuickCardType
 import com.lhtstudio.kigtts.app.util.AlipayScannerSupport
@@ -141,6 +143,14 @@ class FloatingOverlayService : Service() {
     }
 
     private var settings = UserPrefs.AppSettings()
+    private var cachedThemeColorArgb = Int.MIN_VALUE
+    private var cachedThemeDark = false
+    private var cachedToneCorrectionEnabled = false
+    private var cachedThemeColorRoles = ThemeColorResolver.resolve(
+        UserPrefs.DEFAULT_THEME_COLOR_ARGB,
+        darkTheme = false,
+        toneCorrectionEnabled = false
+    )
     private var settingsJob: Job? = null
     private var screenStateReceiverRegistered = false
     private val screenStateReceiver =
@@ -2015,6 +2025,8 @@ class FloatingOverlayService : Service() {
             UserPrefs.observeSettings(this@FloatingOverlayService).collectLatest { next ->
                 val previousDarkTheme = overlayDarkTheme
                 val previousFontScaleBlockMode = settings.fontScaleBlockMode
+                val previousThemeColorArgb = settings.themeColorArgb
+                val previousThemeToneCorrectionEnabled = settings.themeToneCorrectionEnabled
                 val previousShowOnLockScreen = settings.floatingOverlayShowOnLockScreen
                 val previousBluetoothTitleSubtitle = settings.bluetoothMediaTitleSubtitle
                 settings = next
@@ -2029,6 +2041,13 @@ class FloatingOverlayService : Service() {
                     return@collectLatest
                 }
                 if (next.fontScaleBlockMode != previousFontScaleBlockMode) {
+                    rebuildWindowsPreservingState()
+                    return@collectLatest
+                }
+                if (
+                    next.themeColorArgb != previousThemeColorArgb ||
+                    next.themeToneCorrectionEnabled != previousThemeToneCorrectionEnabled
+                ) {
                     rebuildWindowsPreservingState()
                     return@collectLatest
                 }
@@ -2488,7 +2507,7 @@ class FloatingOverlayService : Service() {
             gravity = Gravity.CENTER
         }
 
-        panelActionFabIconView = symbolTextView("play_arrow", 30f, Color.WHITE)
+        panelActionFabIconView = symbolTextView("play_arrow", 30f, overlayOnPrimaryColor())
         panelActionFab = FrameLayout(this).apply {
             background = circleDrawable(overlayPrimaryColor())
             elevation = dp(8).toFloat()
@@ -3674,7 +3693,7 @@ class FloatingOverlayService : Service() {
         }
         miniBodyHostView = miniBodyHost
 
-        miniActionFabIconView = symbolTextView("play_arrow", 30f, Color.WHITE)
+        miniActionFabIconView = symbolTextView("play_arrow", 30f, overlayOnPrimaryColor())
         miniActionFab = FrameLayout(this).apply {
             background = circleDrawable(overlayPrimaryColor())
             elevation = dp(8).toFloat()
@@ -10345,7 +10364,7 @@ class FloatingOverlayService : Service() {
                     it.packageName == shortcut.packageName && it.className == shortcut.className
                 }) {
                 addView(spaceView(dp(8), 1))
-                addView(symbolTextView("check", 18f, overlayPrimaryColor()))
+                addView(symbolTextView("check", 18f, overlayAccentTextColor()))
             }
             setOnClickListener {
                 addOverlayShortcut(shortcut)
@@ -10553,9 +10572,13 @@ class FloatingOverlayService : Service() {
             refs.inputLabel.text = inputLabel
             refs.outputLabel.text = outputLabel
             refs.pttIcon.text = if (settings.pushToTalkMode) "toggle_on" else "toggle_off"
-            refs.pttIcon.setTextColor(if (settings.pushToTalkMode) overlayPrimaryColor() else overlayOnSurfaceVariantColor())
+            refs.pttIcon.setTextColor(
+                if (settings.pushToTalkMode) overlayAccentTextColor() else overlayOnSurfaceVariantColor()
+            )
             refs.ttsIcon.text = if (settings.ttsDisabled) "toggle_on" else "toggle_off"
-            refs.ttsIcon.setTextColor(if (settings.ttsDisabled) overlayPrimaryColor() else overlayOnSurfaceVariantColor())
+            refs.ttsIcon.setTextColor(
+                if (settings.ttsDisabled) overlayAccentTextColor() else overlayOnSurfaceVariantColor()
+            )
             refs.volumeLabel.text = "音量倍率：${settings.playbackGainPercent}%"
             refs.volumeSeekBar.progress = settings.playbackGainPercent.coerceIn(0, 1000)
         }
@@ -11378,7 +11401,29 @@ class FloatingOverlayService : Service() {
         return UserPrefs.resolveThemeMode(settings.overlayThemeMode, systemDark)
     }
 
-    private fun overlayPrimaryColor(): Int = 0xFF038387.toInt()
+    private fun overlayThemeColorRoles(): ThemeColorRoles {
+        if (
+            cachedThemeColorArgb != settings.themeColorArgb ||
+            cachedThemeDark != overlayDarkTheme ||
+            cachedToneCorrectionEnabled != settings.themeToneCorrectionEnabled
+        ) {
+            cachedThemeColorArgb = settings.themeColorArgb
+            cachedThemeDark = overlayDarkTheme
+            cachedToneCorrectionEnabled = settings.themeToneCorrectionEnabled
+            cachedThemeColorRoles = ThemeColorResolver.resolve(
+                seedArgb = settings.themeColorArgb,
+                darkTheme = overlayDarkTheme,
+                toneCorrectionEnabled = settings.themeToneCorrectionEnabled
+            )
+        }
+        return cachedThemeColorRoles
+    }
+
+    private fun overlayPrimaryColor(): Int = overlayThemeColorRoles().primaryArgb
+
+    private fun overlayOnPrimaryColor(): Int = overlayThemeColorRoles().onPrimaryArgb
+
+    private fun overlayAccentTextColor(): Int = overlayThemeColorRoles().accentTextArgb
 
     private fun performOverlayKeyHaptic(anchor: View? = null) {
         if (!settings.hapticFeedbackEnabled) return
@@ -11408,7 +11453,8 @@ class FloatingOverlayService : Service() {
         if (overlayDarkTheme) 0x88000000.toInt() else 0x55000000
 
     private fun overlaySliderTrackColor(): Int =
-        if (overlayDarkTheme) 0x40E4E8EB.toInt() else 0x33038387
+        if (overlayDarkTheme) 0x40E4E8EB.toInt()
+        else ColorUtils.setAlphaComponent(overlayPrimaryColor(), 51)
 
     private fun overlayNeutralCircleColor(): Int =
         if (overlayDarkTheme) 0xD93A3A3A.toInt() else 0xD960666B.toInt()
@@ -11497,6 +11543,7 @@ class FloatingOverlayService : Service() {
     private fun launcherFabIconView(): ImageView =
         ImageView(this).apply {
             setImageResource(R.drawable.ic_overlay_fab_foreground)
+            imageTintList = ColorStateList.valueOf(overlayOnPrimaryColor())
             scaleType = ImageView.ScaleType.FIT_CENTER
             adjustViewBounds = true
             layoutParams = FrameLayout.LayoutParams(dp(28), dp(28), Gravity.CENTER)

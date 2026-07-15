@@ -589,7 +589,7 @@ internal fun Md2OutlinedButton(
         shape = Md2ControlShape,
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.8f)),
         colors = ButtonDefaults.outlinedButtonColors(
-            contentColor = MaterialTheme.colorScheme.primary,
+            contentColor = MaterialTheme.colorScheme.accentText,
             disabledContentColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
         ),
         contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
@@ -632,16 +632,18 @@ internal fun Md2TextButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
+    contentColor: Color? = null,
     content: @Composable RowScope.() -> Unit
 ) {
     val hapticOnClick = rememberKigttsHapticClick(onClick)
+    val resolvedContentColor = contentColor ?: MaterialTheme.colorScheme.accentText
     TextButton(
         onClick = hapticOnClick,
         modifier = modifier,
         enabled = enabled,
         shape = Md2ControlShape,
         colors = ButtonDefaults.textButtonColors(
-            contentColor = MaterialTheme.colorScheme.primary,
+            contentColor = resolvedContentColor,
             disabledContentColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
         ),
         content = content
@@ -688,12 +690,11 @@ internal fun RecognitionResourceSourceDialog(
             )
         )
     }
-    AlertDialog(
+    Md2ScrollableDialog(
         onDismissRequest = onDismiss,
-        shape = RoundedCornerShape(UiTokens.Radius),
         title = { Text("语音识别资源包下载源") },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        contentSpacing = 12.dp,
+        content = {
                 Text(
                     "下载的资源包会安装到软件内部目录；安装完成后会自动清理下载得到的 7z 包。本地安装不会删除原文件。",
                     style = MaterialTheme.typography.bodySmall,
@@ -740,7 +741,6 @@ internal fun RecognitionResourceSourceDialog(
                     )
                     Text("Hugging Face")
                 }
-            }
         },
         confirmButton = {
             Md2TextButton(
@@ -777,12 +777,11 @@ internal fun KokoroSourceDialog(
             )
         )
     }
-    AlertDialog(
+    Md2ScrollableDialog(
         onDismissRequest = onDismiss,
-        shape = RoundedCornerShape(UiTokens.Radius),
         title = { Text("Kokoro 下载源") },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        contentSpacing = 12.dp,
+        content = {
                 Text(
                     "如果默认下载速度慢或下载失败，可以在这里切换下载来源。一般建议保持默认源；如果无法下载，再尝试另一个来源。",
                     style = MaterialTheme.typography.bodySmall,
@@ -854,7 +853,6 @@ internal fun KokoroSourceDialog(
                     )
                     Text("Hugging Face")
                 }
-            }
         },
         confirmButton = {
             Md2TextButton(
@@ -1051,8 +1049,8 @@ internal fun Md2Switch(
         modifier = modifier,
         enabled = enabled,
         colors = SwitchDefaults.colors(
-            checkedThumbColor = MaterialTheme.colorScheme.primary,
-            checkedTrackColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.48f),
+            checkedThumbColor = MaterialTheme.colorScheme.accentText,
+            checkedTrackColor = MaterialTheme.colorScheme.accentText.copy(alpha = 0.48f),
             uncheckedThumbColor = uncheckedThumb,
             uncheckedTrackColor = uncheckedTrack,
             disabledCheckedThumbColor = disabledThumb,
@@ -1080,11 +1078,11 @@ internal fun Md2OutlinedField(
         shape = Md2ControlShape,
         trailingIcon = trailingIcon,
         colors = TextFieldDefaults.outlinedTextFieldColors(
-            focusedBorderColor = MaterialTheme.colorScheme.primary,
+            focusedBorderColor = MaterialTheme.colorScheme.accentText,
             unfocusedBorderColor = MaterialTheme.colorScheme.outline,
-            focusedLabelColor = MaterialTheme.colorScheme.primary,
+            focusedLabelColor = MaterialTheme.colorScheme.accentText,
             unfocusedLabelColor = MaterialTheme.colorScheme.onSurfaceVariant,
-            cursorColor = MaterialTheme.colorScheme.primary
+            cursorColor = MaterialTheme.colorScheme.accentText
         )
     )
 }
@@ -1115,11 +1113,11 @@ internal fun Md2DialogOutlinedField(
             shape = Md2ControlShape,
             trailingIcon = trailingIcon,
             colors = TextFieldDefaults.outlinedTextFieldColors(
-                focusedBorderColor = MaterialTheme.colorScheme.primary,
+                focusedBorderColor = MaterialTheme.colorScheme.accentText,
                 unfocusedBorderColor = MaterialTheme.colorScheme.outline,
-                focusedLabelColor = MaterialTheme.colorScheme.primary,
+                focusedLabelColor = MaterialTheme.colorScheme.accentText,
                 unfocusedLabelColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                cursorColor = MaterialTheme.colorScheme.primary
+                cursorColor = MaterialTheme.colorScheme.accentText
             )
         )
     }
@@ -1421,9 +1419,9 @@ internal fun SettingsTabButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val indicatorColor = MaterialTheme.colorScheme.primary
+    val indicatorColor = MaterialTheme.colorScheme.accentText
     val contentColor =
-        if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+        if (selected) MaterialTheme.colorScheme.accentText else MaterialTheme.colorScheme.onSurfaceVariant
     val performHaptic = rememberKigttsKeyHaptic()
     val currentOnClick by rememberUpdatedState(onClick)
 

@@ -243,6 +243,7 @@ import com.lhtstudio.kigtts.app.audio.SpeechEnhancementMode
 import com.lhtstudio.kigtts.app.audio.SpeakerEnrollResult
 import com.lhtstudio.kigtts.app.audio.VadMode
 import com.lhtstudio.kigtts.app.data.ModelRepository
+import com.lhtstudio.kigtts.app.data.AppFontRepository
 import com.lhtstudio.kigtts.app.data.RecognitionResourceProgress
 import com.lhtstudio.kigtts.app.data.RecognitionResourceStatus
 import com.lhtstudio.kigtts.app.data.ResourceStorageCleaner
@@ -253,6 +254,7 @@ import com.lhtstudio.kigtts.app.data.SoundboardLayoutMode
 import com.lhtstudio.kigtts.app.data.SoundboardConfig
 import com.lhtstudio.kigtts.app.data.SoundboardPresetIo
 import com.lhtstudio.kigtts.app.data.KOKORO_VOICE_NAME
+import com.lhtstudio.kigtts.app.data.LedSubtitleSettings
 import com.lhtstudio.kigtts.app.data.SYSTEM_TTS_VOICE_NAME
 import com.lhtstudio.kigtts.app.data.VoicePackInfo
 import com.lhtstudio.kigtts.app.data.UserPrefs
@@ -308,6 +310,8 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.yield
 import org.json.JSONArray
@@ -395,6 +399,9 @@ class MainViewModel(
     }
     private var restartJob: Job? = null
     private var settingsObserveJob: Job? = null
+    private var ledSubtitleSettingsSaveJob: Job? = null
+    private var voicePackRefreshJob: Job? = null
+    private val voicePackRefreshMutex = Mutex()
     private val lastProgressUpdateAtMs = mutableMapOf<Long, Long>()
     private var lastLevelUpdateAtMs = 0L
     private var speakerProfiles = mutableListOf<UserPrefs.SpeakerVerifyProfile>()
@@ -842,6 +849,12 @@ class MainViewModel(
             solidTopBar = settings.solidTopBar,
             themeMode = settings.themeMode,
             overlayThemeMode = settings.overlayThemeMode,
+            themeColorArgb = settings.themeColorArgb,
+            themeToneCorrectionEnabled = settings.themeToneCorrectionEnabled,
+            appFontId = settings.appFontId,
+            appFontFilePath = AppFontRepository.resolveFontFile(appContext, settings.appFontId)
+                ?.absolutePath,
+            appFontWeight = settings.appFontWeight,
             fontScaleBlockMode = settings.fontScaleBlockMode,
             hapticFeedbackEnabled = settings.hapticFeedbackEnabled,
             onboardingCompleted = settings.onboardingCompleted,
@@ -876,6 +889,7 @@ class MainViewModel(
             quickSubtitleAllowLargeFont = settings.quickSubtitleAllowLargeFont,
             quickSubtitleCompactControls = settings.quickSubtitleCompactControls,
             quickSubtitleKeepInputPreview = settings.quickSubtitleKeepInputPreview,
+            ledSubtitleSettings = settings.ledSubtitleSettings,
             bluetoothMediaTitleSubtitle = settings.bluetoothMediaTitleSubtitle,
             liveSubtitleNotificationEnabled = settings.liveSubtitleNotificationEnabled,
             drawingKeepCanvasOrientationToDevice = settings.drawingKeepCanvasOrientationToDevice,
@@ -2974,9 +2988,12 @@ class MainViewModel(
     }
 
     fun refreshVoicePacks() {
-        viewModelScope.launch {
-            val packs = loadVoicePackList()
-            uiState = uiState.copy(voicePacks = packs)
+        voicePackRefreshJob?.cancel()
+        voicePackRefreshJob = viewModelScope.launch {
+            voicePackRefreshMutex.withLock {
+                val packs = loadVoicePackList()
+                uiState = uiState.copy(voicePacks = packs)
+            }
         }
     }
 
@@ -3559,6 +3576,21 @@ class MainViewModel(
         }
     }
 
+    fun updateLedSubtitleSettings(settings: LedSubtitleSettings) {
+        val normalized = settings.normalized()
+        if (uiState.ledSubtitleSettings == normalized) return
+        uiState = uiState.copy(ledSubtitleSettings = normalized)
+        ledSubtitleSettingsSaveJob?.cancel()
+        ledSubtitleSettingsSaveJob = viewModelScope.launch {
+            delay(160)
+            UserPrefs.setLedSubtitleSettings(appContext, normalized)
+        }
+    }
+
+    fun resetLedSubtitleSettings() {
+        updateLedSubtitleSettings(LedSubtitleSettings())
+    }
+
     fun setBluetoothMediaTitleSubtitle(enabled: Boolean) {
         uiState = uiState.copy(bluetoothMediaTitleSubtitle = enabled)
         BluetoothMediaTitleBridge.setEnabled(appContext, enabled, quickSubtitleCurrentText)
@@ -3860,6 +3892,21 @@ class MainViewModel(
         uiState = uiState.copy(overlayThemeMode = normalized)
         viewModelScope.launch {
             UserPrefs.setOverlayThemeMode(appContext, normalized)
+        }
+    }
+
+    fun setThemeColorArgb(colorArgb: Int) {
+        val normalized = UserPrefs.normalizeThemeColorArgb(colorArgb)
+        uiState = uiState.copy(themeColorArgb = normalized)
+        viewModelScope.launch {
+            UserPrefs.setThemeColorArgb(appContext, normalized)
+        }
+    }
+
+    fun setThemeToneCorrectionEnabled(enabled: Boolean) {
+        uiState = uiState.copy(themeToneCorrectionEnabled = enabled)
+        viewModelScope.launch {
+            UserPrefs.setThemeToneCorrectionEnabled(appContext, enabled)
         }
     }
 

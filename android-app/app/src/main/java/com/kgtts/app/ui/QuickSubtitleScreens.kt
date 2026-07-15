@@ -428,6 +428,7 @@ internal fun QuickSubtitleNavHost(
                 onFloatingInputPreviewChange = onFloatingInputPreviewChange,
                 onOpenHistory = onOpenHistory,
                 onOpenEditor = { navController.navigate(QuickSubtitleRoutes.Editor) },
+                onOpenLed = { navController.navigate(QuickSubtitleRoutes.Led) },
                 fullscreenMode = fullscreenMode,
                 forceLandscapeLayout = forceLandscapeLayout,
                 ultraSmallAdaptiveWindow = ultraSmallAdaptiveWindow
@@ -442,6 +443,13 @@ internal fun QuickSubtitleNavHost(
         }
         composable(QuickSubtitleRoutes.History) {
             RealtimeScreen(viewModel)
+        }
+        composable(QuickSubtitleRoutes.Led) {
+            LedSubtitleScreen(
+                viewModel = viewModel,
+                state = state,
+                onBack = { navController.popBackStack() }
+            )
         }
     }
 }
@@ -1082,6 +1090,7 @@ fun QuickSubtitleScreen(
     onFloatingInputPreviewChange: (QuickSubtitleFloatingInputPreviewState?) -> Unit = {},
     onOpenHistory: () -> Unit,
     onOpenEditor: () -> Unit,
+    onOpenLed: () -> Unit,
     fullscreenMode: Boolean,
     forceLandscapeLayout: Boolean = false,
     ultraSmallAdaptiveWindow: Boolean = false
@@ -1186,7 +1195,7 @@ fun QuickSubtitleScreen(
                 },
                 textRotationZ = if (rotated) 180f else 0f,
                 cursorIndex = cursorIndex,
-                cursorColor = MaterialTheme.colorScheme.primary
+                cursorColor = MaterialTheme.colorScheme.accentText
             )
         }
     }
@@ -1210,6 +1219,9 @@ fun QuickSubtitleScreen(
                 icon = "swap_vert",
                 contentDescription = if (subtitleRotated180) "恢复字幕方向" else "倒置字幕",
                 onClick = { viewModel.updateQuickSubtitleRotated180(!subtitleRotated180) }
+            )
+            LedSubtitleEntryButton(
+                onClick = onOpenLed
             )
             Md2IconButton(
                 icon = "cleaning_services",
@@ -1242,6 +1254,9 @@ fun QuickSubtitleScreen(
                 icon = "swap_vert",
                 contentDescription = if (subtitleRotated180) "恢复字幕方向" else "倒置字幕",
                 onClick = { viewModel.updateQuickSubtitleRotated180(!subtitleRotated180) }
+            )
+            LedSubtitleEntryButton(
+                onClick = onOpenLed
             )
             Md2IconButton(
                 icon = "cleaning_services",
@@ -2849,11 +2864,11 @@ fun QuickSubtitleScreen(
                             },
                             shape = RoundedCornerShape(UiTokens.Radius),
                             colors = TextFieldDefaults.outlinedTextFieldColors(
-                                focusedBorderColor = MaterialTheme.colorScheme.primary,
+                                focusedBorderColor = MaterialTheme.colorScheme.accentText,
                                 unfocusedBorderColor = MaterialTheme.colorScheme.outline,
-                                focusedLabelColor = MaterialTheme.colorScheme.primary,
+                                focusedLabelColor = MaterialTheme.colorScheme.accentText,
                                 unfocusedLabelColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                                cursorColor = MaterialTheme.colorScheme.primary
+                                cursorColor = MaterialTheme.colorScheme.accentText
                             )
                         )
                         if (!useOverlayFab) {
@@ -2927,11 +2942,11 @@ fun QuickSubtitleScreen(
                             },
                             shape = RoundedCornerShape(UiTokens.Radius),
                             colors = TextFieldDefaults.outlinedTextFieldColors(
-                                focusedBorderColor = MaterialTheme.colorScheme.primary,
+                                focusedBorderColor = MaterialTheme.colorScheme.accentText,
                                 unfocusedBorderColor = MaterialTheme.colorScheme.outline,
-                                focusedLabelColor = MaterialTheme.colorScheme.primary,
+                                focusedLabelColor = MaterialTheme.colorScheme.accentText,
                                 unfocusedLabelColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                                cursorColor = MaterialTheme.colorScheme.primary
+                                cursorColor = MaterialTheme.colorScheme.accentText
                             )
                         )
                         KigttsIconButton(

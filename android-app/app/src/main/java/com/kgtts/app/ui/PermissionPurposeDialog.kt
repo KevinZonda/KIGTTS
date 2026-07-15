@@ -39,12 +39,12 @@ internal fun PermissionPurposeDialog(
         title = { PermissionPurposeTitle(info) },
         text = { PermissionPurposeDetails(info) },
         confirmButton = {
-            TextButton(onClick = onConfirm) {
+            Md2TextButton(onClick = onConfirm) {
                 Text(info.confirmLabel)
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) {
+            Md2TextButton(onClick = onDismiss) {
                 Text("取消")
             }
         },

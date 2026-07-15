@@ -360,6 +360,7 @@ fun AppScaffold(viewModel: MainViewModel) {
     var quickSubtitleFullscreen by rememberSaveable { mutableStateOf(false) }
     var runningStripCollapsed by rememberSaveable { mutableStateOf(true) }
     var logTopBarActions by remember { mutableStateOf<LogTopBarActions?>(null) }
+    var fontTopBarActions by remember { mutableStateOf<FontTopBarActions?>(null) }
     var quickCardTopBarActions by remember { mutableStateOf<QuickCardTopBarActions?>(null) }
     var quickSubtitleEditorBatchTopBarActions by remember { mutableStateOf<EditorBatchTopBarActions?>(null) }
     var soundboardEditorBatchTopBarActions by remember { mutableStateOf<EditorBatchTopBarActions?>(null) }
@@ -414,7 +415,7 @@ fun AppScaffold(viewModel: MainViewModel) {
     val isDarkTheme = currentAppDarkTheme()
     val topBarColor = if (state.solidTopBar) md2CardContainerColor() else MaterialTheme.colorScheme.primary
     val topBarContentColor = if (state.solidTopBar) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onPrimary
-    val hiddenDrawerScrimColor = MaterialTheme.colorScheme.onSurface.copy(
+    val hiddenDrawerScrimColor = Color.Black.copy(
         alpha = if (isDarkTheme) 0.56f else 0.32f
     )
     LaunchedEffect(
@@ -510,6 +511,8 @@ fun AppScaffold(viewModel: MainViewModel) {
         basePage == pageQuickSubtitle && quickSubtitleRoute == QuickSubtitleRoutes.Editor
     val quickSubtitleHistoryOpen =
         basePage == pageQuickSubtitle && quickSubtitleRoute == QuickSubtitleRoutes.History
+    val quickSubtitleLedOpen =
+        basePage == pageQuickSubtitle && quickSubtitleRoute == QuickSubtitleRoutes.Led
     val quickSubtitleSubPageOpen =
         basePage == pageQuickSubtitle && quickSubtitleRoute != QuickSubtitleRoutes.Main
     val soundboardEditorOpen =
@@ -532,6 +535,8 @@ fun AppScaffold(viewModel: MainViewModel) {
         basePage == pageQuickCard && quickCardRoute != QuickCardRoutes.Main
     val settingsLogOpen =
         basePage == pageSettings && settingsRoute == SettingsRoutes.Log
+    val settingsFontsOpen =
+        basePage == pageSettings && settingsRoute == SettingsRoutes.Fonts
     val settingsLicensesOpen =
         basePage == pageSettings && settingsRoute == SettingsRoutes.Licenses
     val settingsPrivacyOpen =
@@ -540,7 +545,7 @@ fun AppScaffold(viewModel: MainViewModel) {
         basePage == pageSettings && settingsRoute == SettingsRoutes.Agreement
     var lastTopBarBackClickAtMs by remember { mutableLongStateOf(0L) }
     var drawerExpanded by rememberSaveable { mutableStateOf(false) }
-    val runningStripEligible = !(drawingFullscreen && basePage == pageDrawing)
+    val runningStripEligible = !(drawingFullscreen && basePage == pageDrawing) && !quickSubtitleLedOpen
     val showRunningStripButton = runningStripEligible
     val showRunningStripPanel = runningStripEligible && !runningStripCollapsed
     val topMicLevel = viewModel.realtimeInputLevel
@@ -743,6 +748,11 @@ fun AppScaffold(viewModel: MainViewModel) {
             logTopBarActions = null
         }
     }
+    LaunchedEffect(basePage, settingsFontsOpen) {
+        if (!settingsFontsOpen) {
+            fontTopBarActions = null
+        }
+    }
     LaunchedEffect(basePage, quickSubtitleRoute) {
         if (basePage != pageQuickSubtitle || quickSubtitleRoute != QuickSubtitleRoutes.Editor) {
             quickSubtitleEditorBatchTopBarActions = null
@@ -790,7 +800,7 @@ fun AppScaffold(viewModel: MainViewModel) {
             soundboardSubPageOpen -> {
                 soundboardNavController.popBackStack(SoundboardRoutes.Main, inclusive = false)
             }
-            settingsLogOpen || settingsLicensesOpen || settingsPrivacyOpen || settingsAgreementOpen -> {
+            settingsFontsOpen || settingsLogOpen || settingsLicensesOpen || settingsPrivacyOpen || settingsAgreementOpen -> {
                 settingsNavController.popBackStack(SettingsRoutes.Main, inclusive = false)
             }
             quickCardEditorOpen -> {
@@ -837,6 +847,9 @@ fun AppScaffold(viewModel: MainViewModel) {
         if (basePage != pageQuickSubtitle || quickSubtitleRoute != QuickSubtitleRoutes.Main) {
             clearFocusAndHideIme("leave_quick_subtitle_main")
         }
+    }
+    LaunchedEffect(quickSubtitleLedOpen) {
+        if (quickSubtitleLedOpen) runningStripCollapsed = true
     }
     LaunchedEffect(basePage, quickSubtitleRoute, quickSubtitleEditorOpen, inMultiWindowMode) {
         val mode = activity?.window?.attributes?.softInputMode ?: 0
@@ -1275,6 +1288,8 @@ fun AppScaffold(viewModel: MainViewModel) {
             "二维码结果"
         } else if (quickCardWebOpen) {
             "二维码网页"
+        } else if (settingsFontsOpen) {
+            "字体"
         } else if (settingsLogOpen) {
             "日志"
         } else if (settingsLicensesOpen) {
@@ -1358,7 +1373,7 @@ fun AppScaffold(viewModel: MainViewModel) {
                         targetState = when {
                             quickSubtitleSubPageOpen -> 1
                             soundboardSubPageOpen -> 2
-                            settingsLogOpen || settingsLicensesOpen || settingsPrivacyOpen || settingsAgreementOpen -> 3
+                            settingsFontsOpen || settingsLogOpen || settingsLicensesOpen || settingsPrivacyOpen || settingsAgreementOpen -> 3
                             quickCardSubPageOpen -> 4
                             else -> 0
                         },
@@ -1428,8 +1443,10 @@ fun AppScaffold(viewModel: MainViewModel) {
                     val showVoicePackActions = basePage == pageVoicePack
                     val showSettingsEntryActions =
                         basePage == pageSettings && settingsRoute == SettingsRoutes.Main
+                    val showSettingsFontActions = basePage == pageSettings && settingsFontsOpen
                     val showSettingsLogActions = basePage == pageSettings && settingsLogOpen
                     val settingsActions = logTopBarActions
+                    val fontActions = fontTopBarActions
 
                     val quickSubtitleAlpha by animateFloatAsState(
                         targetValue = if (showQuickSubtitleActions) 1f else 0f,
@@ -1491,8 +1508,14 @@ fun AppScaffold(viewModel: MainViewModel) {
                         animationSpec = tween(130, easing = FastOutSlowInEasing),
                         label = "topbar_settings_log_actions_alpha"
                     )
+                    val settingsFontAlpha by animateFloatAsState(
+                        targetValue = if (showSettingsFontActions) 1f else 0f,
+                        animationSpec = tween(130, easing = FastOutSlowInEasing),
+                        label = "topbar_settings_font_actions_alpha"
+                    )
                     val actionsWidthTarget = when {
                         showSettingsLogActions -> 144.dp
+                        showSettingsFontActions -> 96.dp
                         showQuickSubtitleEditorBatchActions || showSoundboardEditorBatchActions -> 144.dp
                         showQuickSubtitleEditorActions || showSoundboardEditorActions -> 96.dp
                         showQuickSubtitleCompactEditorAction -> 96.dp
@@ -1964,6 +1987,30 @@ fun AppScaffold(viewModel: MainViewModel) {
                                 }
                             }
                         }
+
+                        key("topbar_settings_font_actions_layer") {
+                            Row(
+                                modifier = Modifier
+                                    .align(Alignment.CenterEnd)
+                                    .graphicsLayer { alpha = settingsFontAlpha }
+                                    .zIndex(if (showSettingsFontActions) 2f else 0f),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.End
+                            ) {
+                                KigttsIconButton(
+                                    onClick = { fontActions?.onImport?.invoke() },
+                                    enabled = showSettingsFontActions && fontActions != null
+                                ) {
+                                    MsIcon("folder_open", contentDescription = "导入字体")
+                                }
+                                KigttsIconButton(
+                                    onClick = { fontActions?.onDownload?.invoke() },
+                                    enabled = showSettingsFontActions && fontActions != null
+                                ) {
+                                    MsIcon("download", contentDescription = "下载字体")
+                                }
+                            }
+                        }
                     }
                 },
                 backgroundColor = Color.Transparent,
@@ -2053,6 +2100,7 @@ fun AppScaffold(viewModel: MainViewModel) {
                         viewModel = viewModel,
                         state = state,
                         onTopBarActionsChange = { logTopBarActions = it },
+                        onFontTopBarActionsChange = { fontTopBarActions = it },
                         onOpenRecognitionResourceSources = { recognitionResourceSourceDialog = true },
                         onPickRecognitionResourcePackage = {
                             openFileManagerAfterPermission(recognitionResourceFileExtensions) {
@@ -2189,7 +2237,8 @@ fun AppScaffold(viewModel: MainViewModel) {
     val drawingImmersive = drawingFullscreen && basePage == pageDrawing
     val quickSubtitleImmersive =
         quickSubtitleFullscreen && basePage == pageQuickSubtitle && !quickSubtitleSubPageOpen
-    val fullScreenImmersive = drawingImmersive || quickSubtitleImmersive
+    val ledSubtitleImmersive = quickSubtitleLedOpen
+    val fullScreenImmersive = drawingImmersive || quickSubtitleImmersive || ledSubtitleImmersive
     BackHandler(enabled = drawingImmersive) {
         drawingFullscreen = false
     }
@@ -2202,16 +2251,23 @@ fun AppScaffold(viewModel: MainViewModel) {
             drawerState.close()
         }
     }
-    LaunchedEffect(drawingImmersive, inMultiWindowMode) {
+    LaunchedEffect(drawingImmersive, ledSubtitleImmersive, inMultiWindowMode) {
         val window = activity?.window ?: return@LaunchedEffect
         val controller = WindowCompat.getInsetsController(window, window.decorView)
-        if (drawingImmersive && !inMultiWindowMode) {
+        if ((drawingImmersive || ledSubtitleImmersive) && !inMultiWindowMode) {
             controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-            controller.hide(WindowInsetsCompat.Type.statusBars())
-            AppLogger.i("AppScaffold.statusBars=hidden drawingImmersive=true")
+            if (ledSubtitleImmersive) {
+                controller.hide(WindowInsetsCompat.Type.systemBars())
+            } else {
+                controller.hide(WindowInsetsCompat.Type.statusBars())
+                controller.show(WindowInsetsCompat.Type.navigationBars())
+            }
+            AppLogger.i(
+                "AppScaffold.systemBars=hidden drawing=$drawingImmersive led=$ledSubtitleImmersive"
+            )
         } else {
-            controller.show(WindowInsetsCompat.Type.statusBars())
-            AppLogger.i("AppScaffold.statusBars=shown drawingImmersive=false")
+            controller.show(WindowInsetsCompat.Type.systemBars())
+            AppLogger.i("AppScaffold.systemBars=shown immersive=false")
         }
     }
     val topBarVisible = !fullScreenImmersive
@@ -2221,10 +2277,15 @@ fun AppScaffold(viewModel: MainViewModel) {
         label = "permanent_drawer_rail_width"
     )
     val animatedContentStartPadding by animateDpAsState(
-        targetValue = if (fullScreenImmersive) landscapeCutoutStart else 0.dp,
+        targetValue = if (fullScreenImmersive && !ledSubtitleImmersive) {
+            landscapeCutoutStart
+        } else {
+            0.dp
+        },
         animationSpec = tween(durationMillis = 160, easing = FastOutSlowInEasing),
         label = "content_start_padding"
     )
+    val ledAwareContentEndPadding = if (ledSubtitleImmersive) 0.dp else landscapeChromeEndInset
     Box(modifier = Modifier.fillMaxSize()) {
         if (usePermanentDrawer) {
             Scaffold(
@@ -2285,7 +2346,10 @@ fun AppScaffold(viewModel: MainViewModel) {
                                 .fillMaxHeight()
                                 .graphicsLayer { clip = true }
                                 .zIndex(0f)
-                                .padding(start = animatedContentStartPadding, end = landscapeChromeEndInset)
+                                .padding(
+                                    start = animatedContentStartPadding,
+                                    end = ledAwareContentEndPadding
+                                )
                         )
                     }
 
@@ -2351,7 +2415,8 @@ fun AppScaffold(viewModel: MainViewModel) {
                 drawerState = drawerState,
                 gesturesEnabled = basePage != pageDrawing &&
                         !state.pushToTalkPressed &&
-                        !quickCardMainOpen,
+                        !quickCardMainOpen &&
+                        !quickSubtitleLedOpen,
                 drawerShape = RectangleShape,
                 drawerBackgroundColor = Color.Transparent,
                 drawerElevation = 0.dp,
@@ -2422,7 +2487,10 @@ fun AppScaffold(viewModel: MainViewModel) {
                             Modifier
                                 .fillMaxSize()
                                 .padding(innerPadding)
-                                .padding(start = landscapeChromeStartInset, end = landscapeChromeEndInset)
+                                .padding(
+                                    start = if (ledSubtitleImmersive) 0.dp else landscapeChromeStartInset,
+                                    end = ledAwareContentEndPadding
+                                )
                         )
                     }
                 }
@@ -2538,7 +2606,7 @@ internal fun QuickSubtitleFloatingInputPreviewOverlay(
                                 },
                                 textRotationZ = if (rotated) 180f else 0f,
                                 cursorIndex = cursorIndex,
-                                cursorColor = MaterialTheme.colorScheme.primary
+                                cursorColor = MaterialTheme.colorScheme.accentText
                             )
                         }
                     }

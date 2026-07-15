@@ -1,12 +1,16 @@
 <resources xmlns:tools="http://schemas.android.com/tools">
     <style name="Theme.KGTTS" parent="Theme.Material3.DayNight.NoActionBar">
-        <item name="android:windowBackground">@drawable/splash_screen</item>
+        <item name="android:windowBackground">@color/splash_background_day</item>
         <item name="android:statusBarColor" tools:targetApi="l">?attr/colorPrimary</item>
         <item name="android:navigationBarColor" tools:targetApi="l">?attr/colorSurface</item>
-        <item name="android:windowSplashScreenAnimatedIcon">@drawable/splash_logo_day</item>
-        <item name="android:windowSplashScreenBackground">@color/splash_background_day</item>
-        <item name="android:windowSplashScreenIconBackgroundColor">@android:color/transparent</item>
         <item name="android:popupBackground">@drawable/bg_overlay_popup</item>
+    </style>
+
+    <style name="Theme.KGTTS.Starting" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenAnimatedIcon">@drawable/splash_logo_day</item>
+        <item name="windowSplashScreenBackground">@color/splash_background_day</item>
+        <item name="windowSplashScreenIconBackgroundColor">@android:color/transparent</item>
+        <item name="postSplashScreenTheme">@style/Theme.KGTTS</item>
     </style>
 
     <style name="Theme.KGTTS.Cropper" parent="Theme.Material3.DayNight">

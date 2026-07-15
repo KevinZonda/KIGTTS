@@ -57,6 +57,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.browser.customtabs.CustomTabsClient
 import androidx.browser.customtabs.CustomTabsIntent
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.ContentTransform
@@ -385,7 +386,9 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        val splashScreen = installSplashScreen()
         super.onCreate(savedInstanceState)
+        splashScreen.setKeepOnScreenCondition { !viewModel.uiState.settingsLoaded }
         enableEdgeToEdge(
             statusBarStyle = SystemBarStyle.dark(android.graphics.Color.parseColor("#038387")),
             navigationBarStyle = SystemBarStyle.auto(
@@ -412,8 +415,23 @@ class MainActivity : ComponentActivity() {
             KigttsFontScaleProvider(state.fontScaleBlockMode) {
                 val systemDark = isSystemInDarkTheme()
                 val dark = UserPrefs.resolveThemeMode(state.themeMode, systemDark)
-                val colors = if (dark) KgtDarkColors else KgtLightColors
-                val extraColors = if (dark) KgtDarkExtraColors else KgtLightExtraColors
+                val colors = resolveKgtColors(
+                    darkTheme = dark,
+                    themeColorArgb = state.themeColorArgb,
+                    toneCorrectionEnabled = state.themeToneCorrectionEnabled
+                )
+                val extraColors = resolveKgtExtraColors(
+                    darkTheme = dark,
+                    themeColorArgb = state.themeColorArgb,
+                    toneCorrectionEnabled = state.themeToneCorrectionEnabled
+                )
+                val appFontFamily = rememberAppFontFamily(
+                    fontFilePath = state.appFontFilePath,
+                    preferredWeight = state.appFontWeight
+                )
+                val appTypography = remember(appFontFamily) {
+                    KgtTypography.withAppFontFamily(appFontFamily)
+                }
                 val textToolbarState = remember { KigttsTextToolbarState() }
                 val textToolbar = remember(textToolbarState) { KigttsTextToolbar(textToolbarState) }
                 CompositionLocalProvider(
@@ -421,27 +439,30 @@ class MainActivity : ComponentActivity() {
                     LocalKigttsHapticFeedbackEnabled provides state.hapticFeedbackEnabled
                 ) {
                     CompositionLocalProvider(LocalTextToolbar provides textToolbar) {
-                        MaterialTheme(colors = colors, typography = KgtTypography, shapes = Md2Shapes) {
+                        MaterialTheme(colors = colors, typography = appTypography, shapes = Md2Shapes) {
                             Surface(
                                 modifier = Modifier.fillMaxSize(),
                                 color = MaterialTheme.colorScheme.background
                             ) {
                                 Box(Modifier.fillMaxSize()) {
-                                    val appPhase = when {
-                                        !state.settingsLoaded -> 0
-                                        !state.onboardingCompleted -> 1
-                                        else -> 2
-                                    }
-                                    Crossfade(targetState = appPhase) { phase ->
-                                        when (phase) {
-                                            0 -> KigttsStartupLoadingScreen()
-                                            1 -> KigttsOnboardingScreen(
-                                                onComplete = { selectedPresetGroups ->
-                                                    viewModel.completeOnboarding(selectedPresetGroups)
-                                                }
-                                            )
-                                            else -> AppScaffold(viewModel)
+                                    if (state.settingsLoaded) {
+                                        Crossfade(targetState = state.onboardingCompleted) { completed ->
+                                            if (completed) {
+                                                AppScaffold(viewModel)
+                                            } else {
+                                                KigttsOnboardingScreen(
+                                                    onComplete = { selectedPresetGroups ->
+                                                        viewModel.completeOnboarding(selectedPresetGroups)
+                                                    }
+                                                )
+                                            }
                                         }
+                                    } else {
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxSize()
+                                                .background(MaterialTheme.colorScheme.background)
+                                        )
                                     }
                                     KigttsTextToolbarPopup(
                                         state = textToolbarState,
@@ -657,5 +678,3 @@ class MainActivity : ComponentActivity() {
         FloatingOverlayService.start(this)
     }
 }
-
-

@@ -29,6 +29,7 @@ object UserPrefs {
     const val THEME_MODE_FOLLOW_SYSTEM = 0
     const val THEME_MODE_LIGHT = 1
     const val THEME_MODE_DARK = 2
+    const val DEFAULT_THEME_COLOR_ARGB = -16546937 // #038387
     const val FONT_SCALE_BLOCK_NONE = 0
     const val FONT_SCALE_BLOCK_ICONS_ONLY = 1
     const val FONT_SCALE_BLOCK_ALL = 2
@@ -111,6 +112,10 @@ object UserPrefs {
     private val KEY_SOLID_TOP_BAR = booleanPreferencesKey("solid_top_bar")
     private val KEY_THEME_MODE = intPreferencesKey("theme_mode")
     private val KEY_OVERLAY_THEME_MODE = intPreferencesKey("overlay_theme_mode")
+    private val KEY_THEME_COLOR_ARGB = intPreferencesKey("theme_color_argb")
+    private val KEY_THEME_TONE_CORRECTION_ENABLED = booleanPreferencesKey("theme_tone_correction_enabled")
+    private val KEY_APP_FONT_ID = stringPreferencesKey("app_font_id")
+    private val KEY_APP_FONT_WEIGHT = intPreferencesKey("app_font_weight")
     private val KEY_FONT_SCALE_BLOCK_MODE = intPreferencesKey("font_scale_block_mode")
     private val KEY_HAPTIC_FEEDBACK_ENABLED = booleanPreferencesKey("haptic_feedback_enabled")
     private val KEY_ONBOARDING_COMPLETED = booleanPreferencesKey("onboarding_completed")
@@ -166,6 +171,7 @@ object UserPrefs {
         booleanPreferencesKey("quick_subtitle_list_popup_grid_mode")
     private val KEY_QUICK_SUBTITLE_KEEP_INPUT_PREVIEW =
         booleanPreferencesKey("quick_subtitle_keep_input_preview")
+    private val KEY_LED_SUBTITLE_SETTINGS = stringPreferencesKey("led_subtitle_settings")
     private val KEY_BLUETOOTH_MEDIA_TITLE_SUBTITLE =
         booleanPreferencesKey("bluetooth_media_title_subtitle")
     private val KEY_LIVE_SUBTITLE_NOTIFICATION_ENABLED =
@@ -220,6 +226,10 @@ object UserPrefs {
         val solidTopBar: Boolean = true,
         val themeMode: Int = THEME_MODE_FOLLOW_SYSTEM,
         val overlayThemeMode: Int = THEME_MODE_FOLLOW_SYSTEM,
+        val themeColorArgb: Int = DEFAULT_THEME_COLOR_ARGB,
+        val themeToneCorrectionEnabled: Boolean = false,
+        val appFontId: String = AppFontDefaults.SystemFontId,
+        val appFontWeight: Int = AppFontDefaults.DefaultWeight,
         val fontScaleBlockMode: Int = FONT_SCALE_BLOCK_ICONS_ONLY,
         val hapticFeedbackEnabled: Boolean = true,
         val onboardingCompleted: Boolean = false,
@@ -256,6 +266,7 @@ object UserPrefs {
         val quickSubtitleCompactControls: Boolean = false,
         val quickSubtitleListPopupGridMode: Boolean = true,
         val quickSubtitleKeepInputPreview: Boolean = true,
+        val ledSubtitleSettings: LedSubtitleSettings = LedSubtitleSettings(),
         val bluetoothMediaTitleSubtitle: Boolean = false,
         val liveSubtitleNotificationEnabled: Boolean = false,
         val drawingKeepCanvasOrientationToDevice: Boolean = true,
@@ -268,6 +279,20 @@ object UserPrefs {
 
     fun normalizeThemeMode(mode: Int): Int =
         mode.coerceIn(THEME_MODE_FOLLOW_SYSTEM, THEME_MODE_DARK)
+
+    fun normalizeThemeColorArgb(colorArgb: Int): Int = colorArgb or (0xFF shl 24)
+
+    fun normalizeAppFontId(id: String): String {
+        val normalized = id.trim().lowercase()
+        return if (Regex("^[a-z0-9][a-z0-9._-]{0,79}$").matches(normalized)) {
+            normalized
+        } else {
+            AppFontDefaults.SystemFontId
+        }
+    }
+
+    fun normalizeAppFontWeight(weight: Int): Int =
+        weight.coerceIn(AppFontDefaults.MinWeight, AppFontDefaults.MaxWeight)
 
     fun normalizeFontScaleBlockMode(mode: Int): Int =
         mode.coerceIn(FONT_SCALE_BLOCK_NONE, FONT_SCALE_BLOCK_ALL)
@@ -426,6 +451,12 @@ object UserPrefs {
             solidTopBar = this[KEY_SOLID_TOP_BAR] ?: true,
             themeMode = normalizeThemeMode(this[KEY_THEME_MODE] ?: THEME_MODE_FOLLOW_SYSTEM),
             overlayThemeMode = normalizeThemeMode(this[KEY_OVERLAY_THEME_MODE] ?: THEME_MODE_FOLLOW_SYSTEM),
+            themeColorArgb = normalizeThemeColorArgb(this[KEY_THEME_COLOR_ARGB] ?: DEFAULT_THEME_COLOR_ARGB),
+            themeToneCorrectionEnabled = this[KEY_THEME_TONE_CORRECTION_ENABLED] ?: false,
+            appFontId = normalizeAppFontId(this[KEY_APP_FONT_ID] ?: AppFontDefaults.SystemFontId),
+            appFontWeight = normalizeAppFontWeight(
+                this[KEY_APP_FONT_WEIGHT] ?: AppFontDefaults.DefaultWeight
+            ),
             fontScaleBlockMode = normalizeFontScaleBlockMode(
                 this[KEY_FONT_SCALE_BLOCK_MODE] ?: FONT_SCALE_BLOCK_ICONS_ONLY
             ),
@@ -473,6 +504,7 @@ object UserPrefs {
             quickSubtitleCompactControls = this[KEY_QUICK_SUBTITLE_COMPACT_CONTROLS] ?: false,
             quickSubtitleListPopupGridMode = this[KEY_QUICK_SUBTITLE_LIST_POPUP_GRID_MODE] ?: true,
             quickSubtitleKeepInputPreview = this[KEY_QUICK_SUBTITLE_KEEP_INPUT_PREVIEW] ?: true,
+            ledSubtitleSettings = decodeLedSubtitleSettings(this[KEY_LED_SUBTITLE_SETTINGS]),
             bluetoothMediaTitleSubtitle = this[KEY_BLUETOOTH_MEDIA_TITLE_SUBTITLE] ?: false,
             liveSubtitleNotificationEnabled = this[KEY_LIVE_SUBTITLE_NOTIFICATION_ENABLED] ?: false,
             drawingKeepCanvasOrientationToDevice = this[KEY_DRAWING_KEEP_CANVAS_ORIENTATION_TO_DEVICE] ?: true,
@@ -723,6 +755,25 @@ object UserPrefs {
         }
     }
 
+    suspend fun setThemeColorArgb(context: Context, colorArgb: Int) {
+        context.dataStore.edit { prefs ->
+            prefs[KEY_THEME_COLOR_ARGB] = normalizeThemeColorArgb(colorArgb)
+        }
+    }
+
+    suspend fun setThemeToneCorrectionEnabled(context: Context, enabled: Boolean) {
+        context.dataStore.edit { prefs ->
+            prefs[KEY_THEME_TONE_CORRECTION_ENABLED] = enabled
+        }
+    }
+
+    suspend fun setAppFont(context: Context, id: String, weight: Int) {
+        context.dataStore.edit { prefs ->
+            prefs[KEY_APP_FONT_ID] = normalizeAppFontId(id)
+            prefs[KEY_APP_FONT_WEIGHT] = normalizeAppFontWeight(weight)
+        }
+    }
+
     suspend fun setFontScaleBlockMode(context: Context, mode: Int) {
         context.dataStore.edit { prefs ->
             prefs[KEY_FONT_SCALE_BLOCK_MODE] = normalizeFontScaleBlockMode(mode)
@@ -943,6 +994,12 @@ object UserPrefs {
     suspend fun setQuickSubtitleKeepInputPreview(context: Context, enabled: Boolean) {
         context.dataStore.edit { prefs ->
             prefs[KEY_QUICK_SUBTITLE_KEEP_INPUT_PREVIEW] = enabled
+        }
+    }
+
+    suspend fun setLedSubtitleSettings(context: Context, settings: LedSubtitleSettings) {
+        context.dataStore.edit { prefs ->
+            prefs[KEY_LED_SUBTITLE_SETTINGS] = encodeLedSubtitleSettings(settings)
         }
     }
 
