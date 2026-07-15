@@ -101,8 +101,9 @@ npm run dist:inno
 
 额外在线资源：
 
-- `Piper CUDA 运行时` 由训练器在用户机器上在线创建
-- `VoxCPM2 运行时` 和模型由训练器在线安装 / 下载
+- `Piper CUDA 运行时` 和 `VoxCPM2 运行时` 由训练器下载 7z 运行时包并解压安装
+- RTX 50 系显卡会自动优先使用 `piper_env_cuda128.7z` 和 `voxcpm_env_cuda128.7z`
+- `VoxCPM2` 模型由训练器在线下载
 - `GPT-SoVITS` 模式使用用户自己准备的外部整合包
 
 ## 许可证

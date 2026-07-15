@@ -84,7 +84,7 @@ def _load_voicepack_base(voicepack_path: Path, temp_dir: Path) -> Tuple[Path, di
             if zip_candidate is not None:
                 return _load_voicepack_base(zip_candidate, temp_dir)
             raise FileNotFoundError("这个语音包目录不完整，无法试听。")
-        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8-sig"))
         return voicepack_path, manifest
     if not zipfile.is_zipfile(voicepack_path):
         raise RuntimeError("这个文件不是有效的语音包，无法试听。")
@@ -93,7 +93,7 @@ def _load_voicepack_base(voicepack_path: Path, temp_dir: Path) -> Tuple[Path, di
     manifest_path = temp_dir / "manifest.json"
     if not manifest_path.exists():
         raise FileNotFoundError("这个语音包文件不完整，无法试听。")
-    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8-sig"))
     return temp_dir, manifest
 
 
@@ -371,7 +371,7 @@ def _run_preview_in_runtime(
         "from pathlib import Path\n"
         f"sys.path.insert(0, {str(backend_root)!r})\n"
         "from engine.voice_preview import _synthesize_voicepack_inprocess\n"
-        "payload=json.loads(Path(sys.argv[1]).read_text(encoding='utf-8'))\n"
+        "payload=json.loads(Path(sys.argv[1]).read_text(encoding='utf-8-sig'))\n"
         "def progress(stage,value,message):\n"
         "    print(json.dumps({'type':'progress','stage':stage,'value':value,'message':message}, ensure_ascii=False), flush=True)\n"
         "try:\n"
@@ -456,7 +456,7 @@ def _synthesize_voicepack_inprocess(
         base_dir, manifest = _load_voicepack_base(voicepack_path, Path(tmp_dir))
         _progress(progress, 0.15, "解析语音包配置")
         model_path, config_path, dict_path = _resolve_voicepack_files(base_dir, manifest)
-        cfg = json.loads(config_path.read_text(encoding="utf-8"))
+        cfg = json.loads(config_path.read_text(encoding="utf-8-sig"))
         phoneme_type = str(cfg.get("phoneme_type", "text")).lower()
         id_map = cfg.get("phoneme_id_map") or {}
         if not id_map:

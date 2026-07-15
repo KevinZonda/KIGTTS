@@ -287,7 +287,7 @@ VoxCPM2 蒸馏模式适合通过音色描述、可控声音克隆或高保真克
 
 ### 运行时与导出
 
-训练器内置 CPU 基线训练环境。需要 GPU/CUDA 时，可在训练设置中安装 Piper CUDA 运行时；VoxCPM2 运行时和模型也可由训练器在线安装 / 下载。
+训练器内置 CPU 基线训练环境。需要 GPU/CUDA 时，可在训练设置中安装 Piper CUDA 运行时；VoxCPM2 运行时和模型也可由训练器在线安装 / 下载。RTX 50 系显卡会自动优先使用 CUDA 12.8 / RTX 50 专用运行时包。
 
 Windows 下在线安装资源默认位于：
 
@@ -299,7 +299,9 @@ Windows 下在线安装资源默认位于：
 
 ```text
 %LOCALAPPDATA%\kgtts-trainer\runtimes\piper_env_cuda
+%LOCALAPPDATA%\kgtts-trainer\runtimes\piper_env_cuda128
 %LOCALAPPDATA%\kgtts-trainer\runtimes\voxcpm_env
+%LOCALAPPDATA%\kgtts-trainer\runtimes\voxcpm_env_cuda128
 %LOCALAPPDATA%\kgtts-trainer\models\voxcpm2
 ```
 

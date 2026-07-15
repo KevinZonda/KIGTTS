@@ -184,7 +184,7 @@ def _config_num_symbols(config_path: Path) -> Optional[int]:
     if not config_path.exists():
         return None
     try:
-        config = json.loads(config_path.read_text(encoding="utf-8"))
+        config = json.loads(config_path.read_text(encoding="utf-8-sig"))
     except Exception:
         return None
     num_symbols = config.get("num_symbols")
@@ -413,7 +413,7 @@ def _prep_num_speakers(prep_dir: Path) -> Optional[int]:
     if not config_path.exists():
         return None
     try:
-        config = json.loads(config_path.read_text(encoding="utf-8"))
+        config = json.loads(config_path.read_text(encoding="utf-8-sig"))
     except Exception:
         return None
     num_speakers = config.get("num_speakers")
@@ -824,6 +824,9 @@ def run_piper_training(
                     "storage has wrong size",
                     "cannot instantiate 'windowspath' on your system",
                     "cannot instantiate 'posixpath' on your system",
+                    "weights only load failed",
+                    "weights_only",
+                    "unsupported global: global pathlib.posixpath",
                 )
             )
 
@@ -974,6 +977,9 @@ def run_piper_training(
                 bootstrap = (
                     "import pathlib,runpy,sys; "
                     "pathlib.PosixPath = pathlib.WindowsPath; "
+                    "import torch; "
+                    "lr=torch.optim.lr_scheduler; "
+                    "lr._LRScheduler=getattr(lr,'LRScheduler',getattr(lr,'_LRScheduler',object)); "
                     "sys.argv=['piper_train'] + sys.argv[1:]; "
                     "runpy.run_module('piper_train', run_name='__main__')"
                 )
@@ -1235,13 +1241,31 @@ def export_onnx(
     piper_python = _find_piper_python(prefer_cuda=prefer_cuda)
     if piper_python:
         env = _piper_env(piper_python)
-        cmd = [
-            str(piper_python),
-            "-m",
-            "piper_train.export_onnx",
-            str(checkpoint),
-            str(model_out),
-        ]
+        if os.name == "nt":
+            bootstrap = (
+                "import pathlib,runpy,sys,torch; "
+                "pathlib.PosixPath = pathlib.WindowsPath; "
+                "orig=torch.load; "
+                "torch.load=lambda *a, **kw: (kw.setdefault('weights_only', False), orig(*a, **kw))[1]; "
+                "getattr(torch.serialization,'add_safe_globals',lambda _x: None)([pathlib.WindowsPath, pathlib.PosixPath]); "
+                "sys.argv=['piper_train.export_onnx'] + sys.argv[1:]; "
+                "runpy.run_module('piper_train.export_onnx', run_name='__main__')"
+            )
+            cmd = [
+                str(piper_python),
+                "-c",
+                bootstrap,
+                str(checkpoint),
+                str(model_out),
+            ]
+        else:
+            cmd = [
+                str(piper_python),
+                "-m",
+                "piper_train.export_onnx",
+                str(checkpoint),
+                str(model_out),
+            ]
         code = _run_export(cmd, env=env, cwd=piper_python.parent)
         if code != 0:
             raise RuntimeError(f"Piper 导出失败，详见 {log_path}")

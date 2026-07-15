@@ -136,6 +136,20 @@ declare global {
     archive_sources?: Array<{ id: string; label: string; url: string }>
   }
 
+  type RuntimeStorageStatus = {
+    ok: boolean
+    runtime_root: string
+    default_runtime_root: string
+    configured_runtime_root: string
+    configured: boolean
+    config_path: string
+    free_bytes: number
+    total_bytes: number
+    free_gb: number
+    total_gb: number
+    message: string
+  }
+
   type PiperCudaRuntimeStatus = {
     ok: boolean
     available: boolean
@@ -148,6 +162,11 @@ declare global {
     bundled_micromamba_path?: string
     archive_source_config?: string
     archive_sources_configured?: number
+    runtime_variant?: 'legacy' | 'cu128' | string
+    runtime_label?: string
+    recommended_runtime_variant?: 'legacy' | 'cu128' | string
+    rtx50_detected?: boolean
+    effective_source_key?: string
     seven_zip_path?: string
     requirements_path?: string
     piper_train_wheel?: string
@@ -168,6 +187,7 @@ declare global {
     nvidia_smi_path?: string
     driver_version?: string
     gpu_name?: string
+    gpu_names?: string
     gpu_memory?: string
     archive_sources?: Array<{ id: string; label: string; url: string }>
   }
@@ -184,6 +204,11 @@ declare global {
     bundled_micromamba_path?: string
     archive_source_config?: string
     archive_sources_configured?: number
+    runtime_variant?: 'legacy' | 'cu128' | string
+    runtime_label?: string
+    recommended_runtime_variant?: 'legacy' | 'cu128' | string
+    rtx50_detected?: boolean
+    effective_source_key?: string
     seven_zip_path?: string
     source?: string
     source_label?: string
@@ -200,6 +225,7 @@ declare global {
     nvidia_smi_path?: string
     driver_version?: string
     gpu_name?: string
+    gpu_names?: string
     gpu_memory?: string
     archive_sources?: Array<{ id: string; label: string; url: string }>
   }

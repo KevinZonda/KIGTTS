@@ -57,7 +57,7 @@ def main(argv: list[str]) -> int:
 
     request_path = Path(argv[1])
     try:
-        request = json.loads(request_path.read_text(encoding="utf-8"))
+        request = json.loads(request_path.read_text(encoding="utf-8-sig"))
         paths = _project_paths_from_payload(request["paths"])
         opts = _training_options_from_payload(request["training_options"])
 

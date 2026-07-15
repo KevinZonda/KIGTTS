@@ -27,7 +27,7 @@ def load_dict(dict_path: Path) -> Dict[str, List[str]]:
 def load_piper_config(config_path: Path) -> tuple[dict, Dict[str, List[int]], Dict[str, List[str]], str]:
     if not config_path.exists():
         raise FileNotFoundError(f"Piper config not found: {config_path}")
-    cfg = json.loads(config_path.read_text(encoding="utf-8"))
+    cfg = json.loads(config_path.read_text(encoding="utf-8-sig"))
     raw_id_map = cfg.get("phoneme_id_map") or {}
     id_map: Dict[str, List[int]] = {}
     for key, value in raw_id_map.items():

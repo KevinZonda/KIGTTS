@@ -136,6 +136,8 @@ export type SettingsPageProps = {
   device: 'cpu' | 'cuda'
   downloadSourceConfig: DownloadSourceConfig | null
   downloadSourceBusy: boolean
+  runtimeStorageStatus: RuntimeStorageStatus | null
+  runtimeStorageBusy: boolean
   pipelineRunning: boolean
   trainerResourcesStatus: TrainerResourceStatus | null
   trainerResourcesBusy: boolean
@@ -171,6 +173,9 @@ export type SettingsPageProps = {
   onRefreshDownloadSourceConfig: () => unknown | Promise<unknown>
   onOpenDownloadSourceDialog: () => unknown | Promise<unknown>
   onSavePreferredDownloadSource: (groupKey: string, sourceId: string) => unknown | Promise<unknown>
+  onRefreshRuntimeStorageStatus: () => unknown | Promise<unknown>
+  onPickRuntimeStorageRoot: () => unknown | Promise<unknown>
+  onResetRuntimeStorageRoot: () => unknown | Promise<unknown>
   onRefreshTrainerResourcesStatus: () => unknown | Promise<unknown>
   onInstallTrainerResources: (force: boolean) => unknown | Promise<unknown>
   onInstallTrainerResourcesFromLocal: () => unknown | Promise<unknown>
@@ -204,6 +209,8 @@ export function SettingsPage({
   device,
   downloadSourceConfig,
   downloadSourceBusy,
+  runtimeStorageStatus,
+  runtimeStorageBusy,
   pipelineRunning,
   trainerResourcesStatus,
   trainerResourcesBusy,
@@ -239,6 +246,9 @@ export function SettingsPage({
   onRefreshDownloadSourceConfig,
   onOpenDownloadSourceDialog,
   onSavePreferredDownloadSource,
+  onRefreshRuntimeStorageStatus,
+  onPickRuntimeStorageRoot,
+  onResetRuntimeStorageRoot,
   onRefreshTrainerResourcesStatus,
   onInstallTrainerResources,
   onInstallTrainerResourcesFromLocal,
@@ -446,6 +456,73 @@ export function SettingsPage({
             </Stack>
           ) : (
             <Alert severity="info">尚未读取下载源设置。</Alert>
+          )}
+        </Stack>
+      </Paper>
+
+      <Paper sx={cardPaperSx}>
+        <Stack spacing={1.5}>
+          <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.25} alignItems={{ xs: 'flex-start', md: 'center' }} justifyContent="space-between">
+            <Stack spacing={0.25} sx={{ minWidth: 0 }}>
+              <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
+                <Typography variant="subtitle1" fontWeight={600}>
+                  运行时存储目录
+                </Typography>
+                {runtimeStorageStatus?.configured ? <Chip size="small" color="info" label="已自定义" /> : <Chip size="small" label="默认目录" />}
+              </Stack>
+              <Typography variant="body2" sx={{ opacity: 0.72 }}>
+                Piper、Piper CUDA 和 VoxCPM2 运行时都会安装到这里。运行时包较大，建议选择可用空间充足的磁盘。
+              </Typography>
+            </Stack>
+            <Box sx={runtimeActionRowSx}>
+              <Button
+                variant="outlined"
+                startIcon={<MsIcon name="refresh" size={18} />}
+                onClick={() => {
+                  void onRefreshRuntimeStorageStatus()
+                }}
+                disabled={runtimeStorageBusy || pipelineRunning}
+              >
+                刷新状态
+              </Button>
+              <Button
+                variant="contained"
+                startIcon={<MsIcon name="folder_open" size={18} />}
+                onClick={() => {
+                  void onPickRuntimeStorageRoot()
+                }}
+                disabled={runtimeStorageBusy || pipelineRunning}
+              >
+                选择目录
+              </Button>
+              <Button
+                variant="outlined"
+                startIcon={<MsIcon name="restore" size={18} />}
+                onClick={() => {
+                  void onResetRuntimeStorageRoot()
+                }}
+                disabled={runtimeStorageBusy || pipelineRunning || !runtimeStorageStatus?.configured}
+              >
+                恢复默认
+              </Button>
+            </Box>
+          </Stack>
+          {runtimeStorageStatus ? (
+            <Alert severity={runtimeStorageStatus.free_gb && runtimeStorageStatus.free_gb < 8 ? 'warning' : 'info'}>
+              <Stack spacing={0.5}>
+                <Typography variant="body2">{runtimeStorageStatus.message}</Typography>
+                <Typography variant="caption" sx={{ opacity: 0.78, wordBreak: 'break-all' }}>
+                  当前目录：{runtimeStorageStatus.runtime_root}
+                </Typography>
+                {runtimeStorageStatus.configured && (
+                  <Typography variant="caption" sx={{ opacity: 0.68, wordBreak: 'break-all' }}>
+                    默认目录：{runtimeStorageStatus.default_runtime_root}
+                  </Typography>
+                )}
+              </Stack>
+            </Alert>
+          ) : (
+            <Alert severity="info">尚未读取运行时存储目录。</Alert>
           )}
         </Stack>
       </Paper>
@@ -756,6 +833,17 @@ export function SettingsPage({
             <Alert severity={cudaRuntimeStatus.status === 'error' ? 'error' : cudaRuntimeStatus.cuda_available === false ? 'warning' : cudaRuntimeStatus.available ? 'success' : 'info'}>
               <Stack spacing={0.5}>
                 <Typography variant="body2">{cudaRuntimeStatus.message}</Typography>
+                {cudaRuntimeStatus.runtime_label && (
+                  <Typography variant="caption" sx={{ opacity: 0.8 }}>
+                    运行时类型：{cudaRuntimeStatus.runtime_label}
+                    {cudaRuntimeStatus.runtime_variant ? `（${cudaRuntimeStatus.runtime_variant}）` : ''}
+                  </Typography>
+                )}
+                {cudaRuntimeStatus.rtx50_detected && (
+                  <Typography variant="caption" sx={{ opacity: 0.8 }}>
+                    已检测到 RTX 50 系显卡，软件会优先使用 CUDA 12.8 / RTX 50 专用运行时。
+                  </Typography>
+                )}
                 <Typography variant="caption" sx={{ opacity: 0.8 }}>
                   运行时目录：{cudaRuntimeStatus.env_path}
                 </Typography>

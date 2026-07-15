@@ -1426,6 +1426,8 @@ function App() {
   const [trainerResourcesBusy, setTrainerResourcesBusy] = useState(false)
   const [trainerResourcesProgressMessage, setTrainerResourcesProgressMessage] = useState('')
   const [trainerResourcesProgressValue, setTrainerResourcesProgressValue] = useState(0)
+  const [runtimeStorageStatus, setRuntimeStorageStatus] = useState<RuntimeStorageStatus | null>(null)
+  const [runtimeStorageBusy, setRuntimeStorageBusy] = useState(false)
   const [downloadSourceConfig, setDownloadSourceConfig] = useState<DownloadSourceConfig | null>(null)
   const [downloadSourceDraft, setDownloadSourceDraft] = useState<DownloadSourceConfig | null>(null)
   const [downloadSourceBusy, setDownloadSourceBusy] = useState(false)
@@ -2810,6 +2812,62 @@ function App() {
     }
   }
 
+  const refreshRuntimeStorageStatus = async (silent = false) => {
+    try {
+      if (!silent) {
+        setRuntimeStorageBusy(true)
+      }
+      const status = await requestBackend<RuntimeStorageStatus>('get_runtime_storage_status', {}, 30000)
+      setRuntimeStorageStatus(status)
+      if (!silent) {
+        appendLog(`[runtime] ${status.message}`)
+      }
+      return status
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '读取运行时存储目录失败'
+      if (!silent) {
+        showToast(message, 'error')
+      }
+      throw error
+    } finally {
+      if (!silent) {
+        setRuntimeStorageBusy(false)
+      }
+    }
+  }
+
+  const saveRuntimeStorageRoot = async (runtimeRoot: string) => {
+    try {
+      setRuntimeStorageBusy(true)
+      const status = await requestBackend<RuntimeStorageStatus>('save_runtime_storage_config', { runtime_root: runtimeRoot }, 30000)
+      setRuntimeStorageStatus(status)
+      await Promise.allSettled([
+        refreshPiperRuntimeStatus(true),
+        refreshCudaRuntimeStatus(true),
+        refreshVoxcpmRuntimeStatus(true),
+      ])
+      appendLog(`[runtime] ${status.message}`)
+      showToast(runtimeRoot ? '运行时存储目录已更新，后续安装会使用新目录。' : '已恢复默认运行时存储目录。', 'success')
+      return status
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '保存运行时存储目录失败'
+      showToast(message, 'error')
+      throw error
+    } finally {
+      setRuntimeStorageBusy(false)
+    }
+  }
+
+  const pickRuntimeStorageRoot = async () => {
+    const dir = await window.dialogs?.openDir()
+    if (!dir) return
+    await saveRuntimeStorageRoot(dir)
+  }
+
+  const resetRuntimeStorageRoot = async () => {
+    await saveRuntimeStorageRoot('')
+  }
+
   const installPiperRuntime = async (force = false, localArchivePath = '') => {
     const actionLabel = localArchivePath
       ? '本地安装 Piper 基础运行时'
@@ -3563,6 +3621,7 @@ function App() {
           void refreshVoxcpmRuntimeStatus(true).catch(() => undefined)
           void refreshVoxcpmModelStatus(true).catch(() => undefined)
           void refreshTrainerResourcesStatus(true).catch(() => undefined)
+          void refreshRuntimeStorageStatus(true).catch(() => undefined)
           void refreshDownloadSourceConfig(true).catch(() => undefined)
         }
         return
@@ -6657,6 +6716,17 @@ function App() {
                 <Alert severity={voxcpmRuntimeStatus.status === 'error' ? 'error' : voxcpmRuntimeStatus.cuda_available === false ? 'warning' : voxcpmRuntimeStatus.available ? 'success' : 'info'}>
                   <Stack spacing={0.5}>
                     <Typography variant="body2">{voxcpmRuntimeStatus.message}</Typography>
+                    {voxcpmRuntimeStatus.runtime_label && (
+                      <Typography variant="caption" sx={{ opacity: 0.8 }}>
+                        运行时类型：{voxcpmRuntimeStatus.runtime_label}
+                        {voxcpmRuntimeStatus.runtime_variant ? `（${voxcpmRuntimeStatus.runtime_variant}）` : ''}
+                      </Typography>
+                    )}
+                    {voxcpmRuntimeStatus.rtx50_detected && (
+                      <Typography variant="caption" sx={{ opacity: 0.8 }}>
+                        已检测到 RTX 50 系显卡，软件会优先使用 CUDA 12.8 / RTX 50 专用运行时。
+                      </Typography>
+                    )}
                     <Typography variant="caption" sx={{ opacity: 0.8 }}>
                       运行时目录：{voxcpmRuntimeStatus.env_path}
                     </Typography>
@@ -7201,6 +7271,8 @@ function App() {
       device={device}
       downloadSourceConfig={downloadSourceConfig}
       downloadSourceBusy={downloadSourceBusy}
+      runtimeStorageStatus={runtimeStorageStatus}
+      runtimeStorageBusy={runtimeStorageBusy}
       pipelineRunning={pipelineRunning}
       trainerResourcesStatus={trainerResourcesStatus}
       trainerResourcesBusy={trainerResourcesBusy}
@@ -7236,6 +7308,9 @@ function App() {
       onRefreshDownloadSourceConfig={refreshDownloadSourceConfig}
       onOpenDownloadSourceDialog={openDownloadSourceDialog}
       onSavePreferredDownloadSource={savePreferredDownloadSource}
+      onRefreshRuntimeStorageStatus={refreshRuntimeStorageStatus}
+      onPickRuntimeStorageRoot={pickRuntimeStorageRoot}
+      onResetRuntimeStorageRoot={resetRuntimeStorageRoot}
       onRefreshTrainerResourcesStatus={refreshTrainerResourcesStatus}
       onInstallTrainerResources={installTrainerResources}
       onInstallTrainerResourcesFromLocal={installTrainerResourcesFromLocal}

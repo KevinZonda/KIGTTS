@@ -60,7 +60,7 @@ def main() -> int:
     args = parser.parse_args()
 
     request_path = Path(args.request).resolve()
-    payload = json.loads(request_path.read_text(encoding="utf-8"))
+    payload = json.loads(request_path.read_text(encoding="utf-8-sig"))
 
     gsv_root = Path(payload["gsv_root"]).resolve()
     wav_dir = Path(payload["wav_dir"]).resolve()

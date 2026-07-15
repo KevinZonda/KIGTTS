@@ -63,7 +63,7 @@ def main() -> int:
     args = parser.parse_args()
 
     request_path = Path(args.request)
-    req = json.loads(request_path.read_text(encoding="utf-8"))
+    req = json.loads(request_path.read_text(encoding="utf-8-sig"))
     texts = [str(item).strip() for item in req.get("texts") or [] if str(item).strip()]
     wav_dir = Path(req["wav_dir"])
     metadata_path = Path(req["metadata_path"])
