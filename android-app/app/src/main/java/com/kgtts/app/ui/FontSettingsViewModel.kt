@@ -99,15 +99,14 @@ internal class FontSettingsViewModel(application: Application) : AndroidViewMode
 
     fun selectFont(font: InstalledAppFont) {
         viewModelScope.launch {
-            val weight = font.weightAxis?.clamp(font.preferredWeight)
-                ?: AppFontDefaults.DefaultWeight
+            val weight = font.normalizeWeight(font.preferredWeight)
             UserPrefs.setAppFont(getApplication(), font.id, weight)
             notify("已使用 ${font.displayName}")
         }
     }
 
     fun updateFontWeight(font: InstalledAppFont, weight: Int) {
-        if (!font.isVariable || _state.value.operationBusy) return
+        if (!font.supportsWeightSelection || _state.value.operationBusy) return
         viewModelScope.launch {
             _state.update { it.copy(operationBusy = true) }
             runCatching { repository.updatePreferredWeight(font.id, weight) }

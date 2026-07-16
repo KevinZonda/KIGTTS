@@ -50,6 +50,7 @@ import com.lhtstudio.kigtts.app.data.InstalledAppFont
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.withContext
+import kotlin.math.roundToInt
 
 internal data class FontTopBarActions(
     val onImport: () -> Unit,
@@ -160,7 +161,7 @@ internal fun FontSettingsScreen(
         }
         FontDownloadDialog(
             state = state,
-            installedIds = state.fonts.mapTo(mutableSetOf()) { it.id },
+            installedFonts = state.fonts.associateBy { it.id },
             onSelectSource = { fontViewModel.loadCatalog(it) },
             onInstall = { fontViewModel.installRemoteFont(it) },
             onDismiss = { showDownloadDialog = false }
@@ -194,7 +195,11 @@ private fun FontListItem(
     onLicense: () -> Unit,
     onDelete: () -> Unit
 ) {
-    val previewWeight = if (selected && font.isVariable) selectedWeight else font.preferredWeight
+    val previewWeight = if (selected && font.supportsWeightSelection) {
+        font.normalizeWeight(selectedWeight)
+    } else {
+        font.preferredWeight
+    }
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = Md2ControlShape,
@@ -219,7 +224,7 @@ private fun FontListItem(
                                 AppFontOrigin.Downloaded -> font.licenseName
                             }
                         )
-                        if (font.isVariable) append(" · 字重 $previewWeight")
+                        if (font.supportsWeightSelection) append(" · 字重 $previewWeight")
                         if (selected) append(" · 当前使用")
                     },
                     style = MaterialTheme.typography.bodySmall,
@@ -240,7 +245,7 @@ private fun FontListItem(
                     onClick = onSelect,
                     enabled = !selected && !busy
                 )
-                if (font.isVariable) {
+                if (font.supportsWeightSelection) {
                     Md2IconButton(
                         icon = "tune",
                         contentDescription = "设置字重",
@@ -270,12 +275,12 @@ private fun FontListItem(
 
 @Composable
 private fun ProgressiveFontName(font: InstalledAppFont, weight: Int) {
-    val path = font.fontFile?.absolutePath
-    val lastModified = font.fontFile?.lastModified() ?: 0L
-    val previewFamily by produceState<FontFamily?>(null, path, lastModified, weight) {
+    val source = font.familySource().takeIf { it.files.isNotEmpty() }
+    val lastModified = font.weightFiles.sumOf { it.file.lastModified() }
+    val previewFamily by produceState<FontFamily?>(null, source, lastModified, weight) {
         value = withContext(Dispatchers.IO) {
-            font.fontFile?.takeIf { it.isFile }?.let { file ->
-                runCatching { loadAppFontFamily(file, weight) }.getOrNull()
+            source?.let {
+                runCatching { loadAppFontFamily(it, weight) }.getOrNull()
             }
         }
     }
@@ -302,33 +307,61 @@ private fun FontWeightDialog(
     onDismiss: () -> Unit,
     onConfirm: (Int) -> Unit
 ) {
-    val axis = font.weightAxis ?: return
-    var weight by remember(font.id, font.preferredWeight) {
-        mutableFloatStateOf(font.preferredWeight.toFloat())
+    if (!font.supportsWeightSelection) return
+    val axis = font.weightAxis
+    val availableWeights = font.availableWeights
+    val initialPosition = if (axis != null) {
+        font.preferredWeight.toFloat()
+    } else {
+        availableWeights.indexOf(font.normalizeWeight(font.preferredWeight))
+            .coerceAtLeast(0)
+            .toFloat()
     }
-    val roundedWeight = weight.toInt().coerceIn(axis.min, axis.max)
+    var sliderPosition by remember(font.id, font.preferredWeight) {
+        mutableFloatStateOf(initialPosition)
+    }
+    val selectedWeight = if (axis != null) {
+        sliderPosition.roundToInt().coerceIn(axis.min, axis.max)
+    } else {
+        availableWeights[sliderPosition.roundToInt().coerceIn(availableWeights.indices)]
+    }
     Md2ScrollableDialog(
         onDismissRequest = onDismiss,
         title = { Text("${font.displayName} 字重") },
         contentSpacing = 10.dp,
         content = {
-            Text("当前字重：$roundedWeight", style = MaterialTheme.typography.bodyLarge)
-            Slider(
-                value = weight,
-                onValueChange = { weight = it },
-                valueRange = axis.min.toFloat()..axis.max.toFloat(),
-                modifier = Modifier.fillMaxWidth()
-            )
-            Text(
-                "支持范围 ${axis.min}-${axis.max}，字体默认值 ${axis.default}",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            val previewFont = font.copy(preferredWeight = roundedWeight)
-            ProgressiveFontName(previewFont, roundedWeight)
+            Text("当前字重：$selectedWeight", style = MaterialTheme.typography.bodyLarge)
+            if (axis != null) {
+                Slider(
+                    value = sliderPosition,
+                    onValueChange = { sliderPosition = it },
+                    valueRange = axis.min.toFloat()..axis.max.toFloat(),
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Text(
+                    "连续范围 ${axis.min}-${axis.max}，字体默认值 ${axis.default}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            } else {
+                Slider(
+                    value = sliderPosition,
+                    onValueChange = { sliderPosition = it },
+                    valueRange = 0f..availableWeights.lastIndex.toFloat(),
+                    steps = (availableWeights.size - 2).coerceAtLeast(0),
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Text(
+                    "真实字重 ${availableWeights.joinToString(" / ")}，拖动时按档位吸附",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            val previewFont = font.copy(preferredWeight = selectedWeight)
+            ProgressiveFontName(previewFont, selectedWeight)
         },
         confirmButton = {
-            Md2TextButton(onClick = { onConfirm(roundedWeight) }) { Text("应用") }
+            Md2TextButton(onClick = { onConfirm(selectedWeight) }) { Text("应用") }
         },
         dismissButton = {
             Md2TextButton(onClick = onDismiss) { Text("取消") }

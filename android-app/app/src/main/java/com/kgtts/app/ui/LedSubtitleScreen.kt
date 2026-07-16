@@ -175,7 +175,6 @@ internal fun LedSubtitleScreenContent(
         animationSpec = tween(240),
         label = "led_controls_alpha"
     )
-    val disabledControlAlpha = if (locked) 0.12f else controlAlpha
     val gestureThresholdPx = with(density) { 54.dp.toPx() }
     val quickSwipeDistanceThresholdPx = with(density) { 42.dp.toPx() }
     val quickSwipeVelocityThresholdPxPerSecond = density.density * 1_100f
@@ -370,53 +369,62 @@ internal fun LedSubtitleScreenContent(
                 .windowInsetsPadding(WindowInsets.safeDrawing)
                 .zIndex(1f)
         ) {
-            LedOverlayIconButton(
-                icon = "arrow_back",
-                description = "返回便捷字幕",
-                enabled = !locked,
-                alpha = disabledControlAlpha,
-                tint = contentColor,
-                onClick = {
-                    registerInteraction()
-                    onBack()
-                },
-                modifier = Modifier
-                    .align(Alignment.TopStart)
-                    .padding(8.dp)
-            )
-            LedOverlayIconButton(
-                icon = "settings",
-                description = "LED 设置",
-                enabled = !locked,
-                alpha = disabledControlAlpha,
-                tint = contentColor,
-                onClick = { openPanel(LedSubtitlePanel.Settings) },
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(8.dp)
-            )
-            Column(
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .padding(8.dp),
-                verticalArrangement = Arrangement.spacedBy(2.dp)
+            AnimatedVisibility(
+                visible = !locked,
+                modifier = Modifier.fillMaxSize(),
+                enter = fadeIn(tween(180)),
+                exit = fadeOut(tween(140))
             ) {
-                LedOverlayIconButton(
-                    icon = "view_list",
-                    description = "快捷文本",
-                    enabled = !locked,
-                    alpha = disabledControlAlpha,
-                    tint = contentColor,
-                    onClick = { openPanel(LedSubtitlePanel.QuickText) }
-                )
-                LedOverlayIconButton(
-                    icon = "keyboard",
-                    description = "输入文本",
-                    enabled = !locked,
-                    alpha = disabledControlAlpha,
-                    tint = contentColor,
-                    onClick = { openPanel(LedSubtitlePanel.Input) }
-                )
+                Box(Modifier.fillMaxSize()) {
+                    LedOverlayIconButton(
+                        icon = "arrow_back",
+                        description = "返回便捷字幕",
+                        enabled = !locked,
+                        alpha = controlAlpha,
+                        tint = contentColor,
+                        onClick = {
+                            registerInteraction()
+                            onBack()
+                        },
+                        modifier = Modifier
+                            .align(Alignment.TopStart)
+                            .padding(8.dp)
+                    )
+                    LedOverlayIconButton(
+                        icon = "settings",
+                        description = "LED 设置",
+                        enabled = !locked,
+                        alpha = controlAlpha,
+                        tint = contentColor,
+                        onClick = { openPanel(LedSubtitlePanel.Settings) },
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(8.dp)
+                    )
+                    Column(
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .padding(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(2.dp)
+                    ) {
+                        LedOverlayIconButton(
+                            icon = "view_list",
+                            description = "快捷文本",
+                            enabled = !locked,
+                            alpha = controlAlpha,
+                            tint = contentColor,
+                            onClick = { openPanel(LedSubtitlePanel.QuickText) }
+                        )
+                        LedOverlayIconButton(
+                            icon = "keyboard",
+                            description = "输入文本",
+                            enabled = !locked,
+                            alpha = controlAlpha,
+                            tint = contentColor,
+                            onClick = { openPanel(LedSubtitlePanel.Input) }
+                        )
+                    }
+                }
             }
             LedOverlayIconButton(
                 icon = if (locked) "lock_open" else "lock",

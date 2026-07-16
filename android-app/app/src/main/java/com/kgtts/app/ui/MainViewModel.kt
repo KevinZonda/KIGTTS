@@ -244,6 +244,7 @@ import com.lhtstudio.kigtts.app.audio.SpeakerEnrollResult
 import com.lhtstudio.kigtts.app.audio.VadMode
 import com.lhtstudio.kigtts.app.data.ModelRepository
 import com.lhtstudio.kigtts.app.data.AppFontRepository
+import com.lhtstudio.kigtts.app.data.AppFontChangeBus
 import com.lhtstudio.kigtts.app.data.RecognitionResourceProgress
 import com.lhtstudio.kigtts.app.data.RecognitionResourceStatus
 import com.lhtstudio.kigtts.app.data.ResourceStorageCleaner
@@ -306,6 +307,7 @@ import com.google.zxing.common.HybridBinarizer
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
@@ -582,6 +584,20 @@ class MainViewModel(
         refreshKokoroVoiceStatus()
         observeSoundboardPlayback()
         observeSettingsChanges()
+        observeAppFontChanges()
+    }
+
+    private fun observeAppFontChanges() {
+        viewModelScope.launch {
+            AppFontChangeBus.changes.collect {
+                uiState = uiState.copy(
+                    appFontFamilySource = AppFontRepository.resolveFontFamilySource(
+                        appContext,
+                        uiState.appFontId
+                    )
+                )
+            }
+        }
     }
 
     fun ensureInitialFloatingOverlayShortcuts() {
@@ -852,8 +868,8 @@ class MainViewModel(
             themeColorArgb = settings.themeColorArgb,
             themeToneCorrectionEnabled = settings.themeToneCorrectionEnabled,
             appFontId = settings.appFontId,
-            appFontFilePath = AppFontRepository.resolveFontFile(appContext, settings.appFontId)
-                ?.absolutePath,
+            appFontFamilySource =
+                AppFontRepository.resolveFontFamilySource(appContext, settings.appFontId),
             appFontWeight = settings.appFontWeight,
             fontScaleBlockMode = settings.fontScaleBlockMode,
             hapticFeedbackEnabled = settings.hapticFeedbackEnabled,

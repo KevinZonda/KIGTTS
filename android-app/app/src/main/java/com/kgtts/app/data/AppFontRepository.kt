@@ -8,7 +8,6 @@ import android.provider.OpenableColumns
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
-import org.json.JSONObject
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
@@ -60,9 +59,9 @@ internal class AppFontRepository(context: Context) {
             val fontFile = File(staging, "font.$extension")
             if (!temp.renameTo(fontFile)) temp.copyTo(fontFile, overwrite = true)
             val preferredWeight = parsed.weightAxis?.default ?: AppFontDefaults.DefaultWeight
-            writeMetadata(
+            AppFontMetadataStore.write(
                 staging,
-                StoredFontMetadata(
+                StoredAppFontMetadata(
                     id = id,
                     displayName = parsed.familyName.ifBlank { sourceName.substringBeforeLast('.') },
                     origin = AppFontOrigin.Imported,
@@ -74,11 +73,16 @@ internal class AppFontRepository(context: Context) {
                     licenseUrl = "",
                     sourceUrl = "",
                     weightAxis = parsed.weightAxis,
+                    fontFiles = listOf(
+                        StoredAppFontFile(preferredWeight, fontFile.name, sha256)
+                    ),
+                    defaultWeight = preferredWeight,
                     preferredWeight = preferredWeight,
                     installedAt = System.currentTimeMillis()
                 )
             )
             moveStagingIntoPlace(staging, File(root, id))
+            AppFontChangeBus.notifyChanged()
             readInstalledFont(File(root, id)) ?: throw IOException("字体导入后无法读取")
         } finally {
             temp.delete()
@@ -88,17 +92,7 @@ internal class AppFontRepository(context: Context) {
     suspend fun fetchCatalog(source: AppFontRemoteSource): List<RemoteAppFont> =
         withContext(Dispatchers.IO) {
             val raw = readUrlText(source.manifestUrl, MaxManifestBytes)
-            val rootJson = JSONObject(raw)
-            if (rootJson.optInt("schemaVersion", 0) != 1) {
-                throw IOException("字体清单版本不受支持")
-            }
-            val entries = rootJson.optJSONArray("fonts") ?: throw IOException("字体清单缺少 fonts")
-            buildList {
-                for (index in 0 until entries.length()) {
-                    val item = entries.optJSONObject(index) ?: continue
-                    add(parseRemoteFont(item))
-                }
-            }
+            AppFontCatalogParser.parse(raw)
         }
 
     suspend fun installRemoteFont(
@@ -113,18 +107,51 @@ internal class AppFontRepository(context: Context) {
         val staging = File(root, ".staging-${UUID.randomUUID()}")
         staging.mkdirs()
         try {
-            val fontFile = File(staging, "font.$extension")
-            onProgress(AppFontInstallProgress(0f, "正在下载 ${font.displayName}"))
-            downloadFile(source.assetUrl(font.fontPath), fontFile) { current, total ->
-                val fraction = if (total > 0L) current.toFloat() / total.toFloat() else null
-                onProgress(AppFontInstallProgress(fraction, "正在下载 ${font.displayName}"))
+            val declaredPrimary = font.weightFiles.firstOrNull { it.path == font.fontPath }
+            val primarySpec = RemoteAppFontWeightFile(
+                weight = declaredPrimary?.weight ?: font.defaultWeight,
+                path = font.fontPath,
+                sha256 = font.fontSha256,
+                sizeBytes = font.sizeBytes
+            )
+            val specs = (listOf(primarySpec) + font.weightFiles)
+                .distinctBy { it.path }
+            val storedFiles = mutableListOf<StoredAppFontFile>()
+            lateinit var fontFile: File
+            lateinit var primaryParsed: OpenTypeFontInfo
+            specs.forEachIndexed { index, spec ->
+                val fileExtension = spec.path.substringAfterLast('.', "ttf").lowercase()
+                if (fileExtension !in SupportedExtensions) {
+                    throw IOException("远端字体格式不受支持")
+                }
+                val target = if (index == 0) {
+                    File(staging, "font.$fileExtension")
+                } else {
+                    File(staging, "font-${spec.weight}.$fileExtension")
+                }
+                val stage = if (specs.size == 1) {
+                    "正在下载 ${font.displayName}"
+                } else {
+                    "正在下载 ${font.displayName}（${index + 1}/${specs.size}）"
+                }
+                onProgress(AppFontInstallProgress(0f, stage))
+                downloadFile(source.assetUrl(spec.path), target) { current, total ->
+                    val fraction = if (total > 0L) current.toFloat() / total.toFloat() else null
+                    onProgress(AppFontInstallProgress(fraction, stage))
+                }
+                onProgress(AppFontInstallProgress(null, "正在校验 ${spec.weight} 字重"))
+                if (target.length() != spec.sizeBytes) throw IOException("字体文件大小校验失败")
+                val hash = sha256(target)
+                if (!hash.equals(spec.sha256, ignoreCase = true)) {
+                    throw IOException("字体文件校验失败")
+                }
+                val parsed = validateFont(target)
+                if (index == 0) {
+                    fontFile = target
+                    primaryParsed = parsed
+                }
+                storedFiles += StoredAppFontFile(spec.weight, target.name, hash)
             }
-            onProgress(AppFontInstallProgress(null, "正在校验字体文件"))
-            val actualHash = sha256(fontFile)
-            if (!actualHash.equals(font.fontSha256, ignoreCase = true)) {
-                throw IOException("字体文件校验失败")
-            }
-            val parsed = validateFont(fontFile)
             val licenseFile = font.licensePath.takeIf { it.isNotBlank() }?.let { path ->
                 onProgress(AppFontInstallProgress(null, "正在下载许可证"))
                 File(staging, "LICENSE.txt").also { target ->
@@ -136,27 +163,38 @@ internal class AppFontRepository(context: Context) {
                     }
                 }
             }
-            val axis = parsed.weightAxis ?: font.weightAxis
-            writeMetadata(
+            val axis = primaryParsed.weightAxis?.let { parsedAxis ->
+                font.weightAxis?.let { declaredAxis ->
+                    parsedAxis.withDefault(declaredAxis.default)
+                } ?: parsedAxis
+            } ?: font.weightAxis
+            val availableWeights = storedFiles.map { it.weight }
+            val defaultWeight = axis?.default
+                ?: availableWeights.nearestTo(font.defaultWeight)
+                ?: AppFontDefaults.DefaultWeight
+            AppFontMetadataStore.write(
                 staging,
-                StoredFontMetadata(
+                StoredAppFontMetadata(
                     id = safeId,
                     displayName = font.displayName,
                     origin = AppFontOrigin.Downloaded,
                     fontFileName = fontFile.name,
-                    sha256 = actualHash,
+                    sha256 = storedFiles.first().sha256,
                     version = font.version,
                     licenseName = font.licenseName,
                     licenseFileName = licenseFile?.name.orEmpty(),
                     licenseUrl = font.licenseUrl,
                     sourceUrl = font.sourceUrl,
                     weightAxis = axis,
-                    preferredWeight = axis?.default ?: AppFontDefaults.DefaultWeight,
+                    fontFiles = storedFiles,
+                    defaultWeight = defaultWeight,
+                    preferredWeight = defaultWeight,
                     installedAt = System.currentTimeMillis()
                 )
             )
             onProgress(AppFontInstallProgress(null, "正在安装字体"))
             moveStagingIntoPlace(staging, File(root, safeId))
+            AppFontChangeBus.notifyChanged()
             readInstalledFont(File(root, safeId)) ?: throw IOException("字体安装后无法读取")
         } finally {
             if (staging.exists()) staging.deleteRecursively()
@@ -166,9 +204,11 @@ internal class AppFontRepository(context: Context) {
     suspend fun updatePreferredWeight(id: String, weight: Int): InstalledAppFont =
         withContext(Dispatchers.IO) {
             val dir = checkedFontDirectory(id)
-            val current = readStoredMetadata(dir) ?: throw IOException("字体不存在")
-            val normalized = current.weightAxis?.clamp(weight) ?: AppFontDefaults.DefaultWeight
-            writeMetadata(dir, current.copy(preferredWeight = normalized))
+            val current = AppFontMetadataStore.read(dir) ?: throw IOException("字体不存在")
+            val normalized = current.weightAxis?.clamp(weight)
+                ?: current.fontFiles.map { it.weight }.nearestTo(weight)
+                ?: AppFontDefaults.DefaultWeight
+            AppFontMetadataStore.write(dir, current.copy(preferredWeight = normalized))
             readInstalledFont(dir) ?: throw IOException("无法更新字体字重")
         }
 
@@ -185,11 +225,25 @@ internal class AppFontRepository(context: Context) {
     }
 
     private fun readInstalledFont(dir: File): InstalledAppFont? {
-        val meta = readStoredMetadata(dir) ?: return null
+        val meta = AppFontMetadataStore.read(dir) ?: return null
         val fontFile = File(dir, meta.fontFileName).takeIf { it.isFile } ?: return null
+        val weightFiles = meta.fontFiles.mapNotNull { stored ->
+            File(dir, stored.fileName).takeIf { it.isFile }?.let { file ->
+                InstalledAppFontWeightFile(stored.weight, file, stored.sha256)
+            }
+        }.ifEmpty {
+            listOf(InstalledAppFontWeightFile(meta.defaultWeight, fontFile, meta.sha256))
+        }
         val licenseFile = meta.licenseFileName.takeIf { it.isNotBlank() }
             ?.let { File(dir, it) }
             ?.takeIf { it.isFile }
+        val availableWeights = weightFiles.map { it.weight }
+        val defaultWeight = meta.weightAxis?.default
+            ?: availableWeights.nearestTo(meta.defaultWeight)
+            ?: AppFontDefaults.DefaultWeight
+        val preferredWeight = meta.weightAxis?.clamp(meta.preferredWeight)
+            ?: availableWeights.nearestTo(meta.preferredWeight)
+            ?: defaultWeight
         return InstalledAppFont(
             id = meta.id,
             displayName = meta.displayName,
@@ -202,85 +256,10 @@ internal class AppFontRepository(context: Context) {
             licenseUrl = meta.licenseUrl,
             sourceUrl = meta.sourceUrl,
             weightAxis = meta.weightAxis,
-            preferredWeight = meta.weightAxis?.clamp(meta.preferredWeight)
-                ?: AppFontDefaults.DefaultWeight,
+            weightFiles = weightFiles,
+            defaultWeight = defaultWeight,
+            preferredWeight = preferredWeight,
             installedAt = meta.installedAt
-        )
-    }
-
-    private fun readStoredMetadata(dir: File): StoredFontMetadata? = runCatching {
-        val json = JSONObject(File(dir, AppFontDefaults.MetadataFileName).readText(Charsets.UTF_8))
-        val min = json.optInt("weightMin", 0)
-        val max = json.optInt("weightMax", 0)
-        val axis = if (min > 0 && max >= min) {
-            AppFontWeightAxis(min, json.optInt("weightDefault", 400).coerceIn(min, max), max)
-        } else {
-            null
-        }
-        StoredFontMetadata(
-            id = sanitizeId(json.getString("id")),
-            displayName = json.getString("displayName").trim().take(100),
-            origin = AppFontOrigin.fromWireName(json.optString("origin")),
-            fontFileName = json.getString("fontFileName"),
-            sha256 = json.optString("sha256"),
-            version = json.optString("version"),
-            licenseName = json.optString("licenseName", "未提供许可证"),
-            licenseFileName = json.optString("licenseFileName"),
-            licenseUrl = json.optString("licenseUrl"),
-            sourceUrl = json.optString("sourceUrl"),
-            weightAxis = axis,
-            preferredWeight = json.optInt("preferredWeight", axis?.default ?: 400),
-            installedAt = json.optLong("installedAt", 0L)
-        )
-    }.getOrNull()
-
-    private fun writeMetadata(dir: File, meta: StoredFontMetadata) {
-        dir.mkdirs()
-        val json = JSONObject().apply {
-            put("schemaVersion", 1)
-            put("id", meta.id)
-            put("displayName", meta.displayName)
-            put("origin", meta.origin.wireName)
-            put("fontFileName", meta.fontFileName)
-            put("sha256", meta.sha256)
-            put("version", meta.version)
-            put("licenseName", meta.licenseName)
-            put("licenseFileName", meta.licenseFileName)
-            put("licenseUrl", meta.licenseUrl)
-            put("sourceUrl", meta.sourceUrl)
-            put("weightMin", meta.weightAxis?.min ?: 0)
-            put("weightDefault", meta.weightAxis?.default ?: 0)
-            put("weightMax", meta.weightAxis?.max ?: 0)
-            put("preferredWeight", meta.preferredWeight)
-            put("installedAt", meta.installedAt)
-        }
-        writeTextAtomically(File(dir, AppFontDefaults.MetadataFileName), json.toString(2))
-    }
-
-    private fun parseRemoteFont(json: JSONObject): RemoteAppFont {
-        val min = json.optInt("weightMin", 0)
-        val max = json.optInt("weightMax", 0)
-        val axis = if (min > 0 && max >= min) {
-            AppFontWeightAxis(min, json.optInt("weightDefault", 400).coerceIn(min, max), max)
-        } else {
-            null
-        }
-        return RemoteAppFont(
-            id = sanitizeId(json.getString("id")),
-            displayName = json.getString("displayName").trim().take(100),
-            version = json.optString("version"),
-            description = json.optString("description"),
-            fontPath = checkedRelativePath(json.getString("fontPath")),
-            fontSha256 = json.getString("fontSha256").lowercase(),
-            sizeBytes = json.optLong("sizeBytes", 0L),
-            licenseName = json.optString("licenseName", "未标注"),
-            licensePath = json.optString("licensePath").let {
-                if (it.isBlank()) "" else checkedRelativePath(it)
-            },
-            licenseSha256 = json.optString("licenseSha256").lowercase(),
-            licenseUrl = json.optString("licenseUrl"),
-            sourceUrl = json.optString("sourceUrl"),
-            weightAxis = axis
         )
     }
 
@@ -384,28 +363,9 @@ internal class AppFontRepository(context: Context) {
         return digest.digest().joinToString("") { "%02x".format(it) }
     }
 
-    private fun writeTextAtomically(target: File, text: String) {
-        val temp = File(target.parentFile, ".${target.name}.${UUID.randomUUID()}.tmp")
-        try {
-            temp.writeText(text, Charsets.UTF_8)
-            if (target.exists() && !target.delete()) throw IOException("无法更新字体元数据")
-            if (!temp.renameTo(target)) temp.copyTo(target, overwrite = true)
-        } finally {
-            temp.delete()
-        }
-    }
-
     private fun sanitizeId(value: String): String {
         val normalized = value.trim().lowercase()
         if (!IdPattern.matches(normalized)) throw IOException("字体 ID 无效")
-        return normalized
-    }
-
-    private fun checkedRelativePath(value: String): String {
-        val normalized = value.replace('\\', '/').trimStart('/')
-        if (normalized.isBlank() || normalized.split('/').any { it.isBlank() || it == "." || it == ".." }) {
-            throw IOException("字体清单路径无效")
-        }
         return normalized
     }
 
@@ -421,22 +381,6 @@ internal class AppFontRepository(context: Context) {
             if (cursor.moveToFirst()) cursor.getString(0).orEmpty() else ""
         }.orEmpty()
     }.getOrDefault("")
-
-    private data class StoredFontMetadata(
-        val id: String,
-        val displayName: String,
-        val origin: AppFontOrigin,
-        val fontFileName: String,
-        val sha256: String,
-        val version: String,
-        val licenseName: String,
-        val licenseFileName: String,
-        val licenseUrl: String,
-        val sourceUrl: String,
-        val weightAxis: AppFontWeightAxis?,
-        val preferredWeight: Int,
-        val installedAt: Long
-    )
 
     companion object {
         private const val FontsDirectoryName = "fonts"
@@ -457,16 +401,30 @@ internal class AppFontRepository(context: Context) {
             licenseUrl = "",
             sourceUrl = "",
             weightAxis = null,
+            weightFiles = emptyList(),
+            defaultWeight = AppFontDefaults.DefaultWeight,
             preferredWeight = AppFontDefaults.DefaultWeight,
             installedAt = 0L
         )
 
-        fun resolveFontFile(context: Context, id: String): File? {
+        fun resolveFontFamilySource(context: Context, id: String): AppFontFamilySource? {
             if (id == AppFontDefaults.SystemFontId || !IdPattern.matches(id)) return null
             val dir = File(File(context.filesDir, FontsDirectoryName), id)
-            return dir.listFiles()?.firstOrNull {
-                it.isFile && it.extension.lowercase() in SupportedExtensions
+            val metadata = AppFontMetadataStore.read(dir) ?: return null
+            val files = metadata.fontFiles.mapNotNull { stored ->
+                File(dir, stored.fileName).takeIf { it.isFile }?.let { file ->
+                    AppFontFileSource(file.absolutePath, stored.weight)
+                }
+            }.ifEmpty {
+                File(dir, metadata.fontFileName).takeIf { it.isFile }?.let { file ->
+                    listOf(AppFontFileSource(file.absolutePath, metadata.defaultWeight))
+                }.orEmpty()
             }
+            if (files.isEmpty()) return null
+            return AppFontFamilySource(
+                files = files.distinctBy { it.path }.sortedBy { it.weight },
+                defaultWeight = metadata.weightAxis?.default ?: metadata.defaultWeight
+            )
         }
     }
 }

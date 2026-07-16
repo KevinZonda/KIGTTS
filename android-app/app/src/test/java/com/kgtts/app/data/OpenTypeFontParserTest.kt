@@ -28,6 +28,14 @@ class OpenTypeFontParserTest {
         assertThrows(IOException::class.java) { OpenTypeFontParser.parse(file) }
     }
 
+    @Test
+    fun catalogDefaultIsClampedToTheRealVariableAxis() {
+        val axis = AppFontWeightAxis(min = 200, default = 200, max = 900)
+
+        assertEquals(AppFontWeightAxis(200, 400, 900), axis.withDefault(400))
+        assertEquals(AppFontWeightAxis(200, 900, 900), axis.withDefault(1_000))
+    }
+
     private fun buildTestFont(familyName: String): ByteArray {
         val familyBytes = familyName.toByteArray(Charsets.UTF_16BE)
         val nameTable = ByteBuffer.allocate(18 + familyBytes.size).order(ByteOrder.BIG_ENDIAN).apply {

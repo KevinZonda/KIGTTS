@@ -16,12 +16,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.lhtstudio.kigtts.app.data.AppFontRemoteSource
+import com.lhtstudio.kigtts.app.data.InstalledAppFont
 import com.lhtstudio.kigtts.app.data.RemoteAppFont
 
 @Composable
 internal fun FontDownloadDialog(
     state: FontSettingsUiState,
-    installedIds: Set<String>,
+    installedFonts: Map<String, InstalledAppFont>,
     onSelectSource: (AppFontRemoteSource) -> Unit,
     onInstall: (RemoteAppFont) -> Unit,
     onDismiss: () -> Unit
@@ -63,7 +64,7 @@ internal fun FontDownloadDialog(
                 state.catalog.forEachIndexed { index, font ->
                     RemoteFontDownloadRow(
                         font = font,
-                        installed = font.id in installedIds,
+                        installedFont = installedFonts[font.id],
                         installing = state.installingFontId == font.id,
                         progress = if (state.installingFontId == font.id) state.installProgress else null,
                         enabled = state.installingFontId == null,
@@ -86,12 +87,18 @@ internal fun FontDownloadDialog(
 @Composable
 private fun RemoteFontDownloadRow(
     font: RemoteAppFont,
-    installed: Boolean,
+    installedFont: InstalledAppFont?,
     installing: Boolean,
     progress: com.lhtstudio.kigtts.app.data.AppFontInstallProgress?,
     enabled: Boolean,
     onInstall: () -> Unit
 ) {
+    val installed = installedFont != null
+    val updateAvailable = installedFont?.let { local ->
+        local.version != font.version ||
+            (font.weightAxis != null && local.weightAxis == null) ||
+            font.weightFiles.map { it.weight }.any { it !in local.availableWeights }
+    } == true
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -108,8 +115,13 @@ private fun RemoteFontDownloadRow(
                 Text(
                     buildString {
                         append(font.licenseName)
-                        if (font.sizeBytes > 0L) append(" · ${formatFontSize(font.sizeBytes)}")
+                        if (font.downloadSizeBytes > 0L) {
+                            append(" · ${formatFontSize(font.downloadSizeBytes)}")
+                        }
                         font.weightAxis?.let { append(" · 可变 ${it.min}-${it.max}") }
+                        if (font.weightAxis == null && font.weightFiles.size > 1) {
+                            append(" · ${font.weightFiles.size} 档字重")
+                        }
                     },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -117,14 +129,24 @@ private fun RemoteFontDownloadRow(
             }
             Md2TextButton(
                 onClick = onInstall,
-                enabled = enabled && !installed
+                enabled = enabled && (!installed || updateAvailable)
             ) {
                 MsIcon(
-                    if (installed) "check" else "download",
+                    when {
+                        updateAvailable -> "update"
+                        installed -> "check"
+                        else -> "download"
+                    },
                     contentDescription = null,
                     iconSize = 18.dp
                 )
-                Text(if (installed) "已安装" else "安装")
+                Text(
+                    when {
+                        updateAvailable -> "更新"
+                        installed -> "已安装"
+                        else -> "安装"
+                    }
+                )
             }
         }
         if (font.description.isNotBlank()) {

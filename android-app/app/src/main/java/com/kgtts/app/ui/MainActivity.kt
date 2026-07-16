@@ -426,7 +426,7 @@ class MainActivity : ComponentActivity() {
                     toneCorrectionEnabled = state.themeToneCorrectionEnabled
                 )
                 val appFontFamily = rememberAppFontFamily(
-                    fontFilePath = state.appFontFilePath,
+                    source = state.appFontFamilySource,
                     preferredWeight = state.appFontWeight
                 )
                 val appTypography = remember(appFontFamily) {

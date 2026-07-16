@@ -243,6 +243,7 @@ import com.lhtstudio.kigtts.app.audio.SpeechEnhancementMode
 import com.lhtstudio.kigtts.app.audio.SpeakerEnrollResult
 import com.lhtstudio.kigtts.app.audio.VadMode
 import com.lhtstudio.kigtts.app.data.ModelRepository
+import com.lhtstudio.kigtts.app.data.AppFontFamilySource
 import com.lhtstudio.kigtts.app.data.RecognitionResourceProgress
 import com.lhtstudio.kigtts.app.data.RecognitionResourceStatus
 import com.lhtstudio.kigtts.app.data.KokoroVoiceStatus
@@ -404,7 +405,7 @@ data class UiState(
     val themeColorArgb: Int = UserPrefs.DEFAULT_THEME_COLOR_ARGB,
     val themeToneCorrectionEnabled: Boolean = false,
     val appFontId: String = "system",
-    val appFontFilePath: String? = null,
+    val appFontFamilySource: AppFontFamilySource? = null,
     val appFontWeight: Int = 400,
     val fontScaleBlockMode: Int = UserPrefs.FONT_SCALE_BLOCK_ICONS_ONLY,
     val hapticFeedbackEnabled: Boolean = true,
