@@ -1,6 +1,7 @@
 package com.lhtstudio.kigtts.app.ui
 
 import android.app.Activity
+import android.graphics.Typeface
 import android.os.Build
 import android.view.WindowManager
 import androidx.compose.animation.animateColorAsState
@@ -9,11 +10,15 @@ import androidx.compose.material.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalContext
 import com.lhtstudio.kigtts.app.data.LedSubtitleSettings
+import com.lhtstudio.kigtts.app.overlay.OverlayTypefaceLoader
+import com.lhtstudio.kigtts.app.overlay.OverlayTypefaceRequest
+import com.lhtstudio.kigtts.app.overlay.OverlayTypefaces
 
 @Composable
 internal fun LedSubtitleScreen(
@@ -21,7 +26,31 @@ internal fun LedSubtitleScreen(
     state: UiState,
     onBack: () -> Unit
 ) {
+    val context = LocalContext.current
     val settings = state.ledSubtitleSettings
+    val appTypefaces by produceState<OverlayTypefaces?>(
+        initialValue = null,
+        context,
+        state.appFontId,
+        state.appFontWeight,
+        state.appFontFamilySource
+    ) {
+        value = runCatching {
+            OverlayTypefaceLoader.load(
+                context = context,
+                request = OverlayTypefaceRequest(
+                    useSystemFont = false,
+                    appFontId = state.appFontId,
+                    preferredWeight = state.appFontWeight
+                )
+            )
+        }.getOrNull()
+    }
+    val subtitleTypeface = if (viewModel.quickSubtitleBold) {
+        appTypefaces?.bold ?: Typeface.DEFAULT_BOLD
+    } else {
+        appTypefaces?.regular ?: Typeface.DEFAULT
+    }
     val backgroundColor by animateColorAsState(
         targetValue = Color(settings.backgroundColorArgb),
         animationSpec = tween(180),
@@ -36,6 +65,7 @@ internal fun LedSubtitleScreen(
         backgroundColor = backgroundColor,
         contentColor = contentColor,
         accentColor = accentColor,
+        subtitleTypeface = subtitleTypeface,
         onBack = onBack
     )
 }

@@ -625,6 +625,21 @@ fun FloatingOverlayScreen(
                     style = MaterialTheme.typography.bodySmall
                 )
                 Spacer(Modifier.height(8.dp))
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Md2Switch(
+                        checked = state.floatingOverlayFabPrefersKeyboard,
+                        onCheckedChange = { viewModel.setFloatingOverlayFabPrefersKeyboard(it) }
+                    )
+                    Text("悬浮窗 FAB 优先使用键盘输入")
+                }
+                Text(
+                    "开启后 FAB 显示键盘图标。关闭按住说话时，点按打开输入、长按切换语音识别；开启按住说话时，点按打开输入、长按进行按住说话。",
+                    style = MaterialTheme.typography.bodySmall
+                )
+                Spacer(Modifier.height(8.dp))
                 Md2OutlinedButton(onClick = onOpenMainSettings) {
                     Text("前往主设置页")
                 }
@@ -1138,6 +1153,7 @@ internal fun RecognizedQueueItemCard(
 internal fun RunningStatusTopStrip(
     viewModel: MainViewModel,
     status: String,
+    recognitionResourceInstalled: Boolean,
     pushToTalkMode: Boolean,
     pushToTalkPressed: Boolean,
     ttsDisabled: Boolean,
@@ -1152,10 +1168,10 @@ internal fun RunningStatusTopStrip(
     val inputLevel = viewModel.realtimeInputLevel
     val playbackProgress = viewModel.realtimePlaybackProgress
     val micIcon = when {
-        ttsDisabled -> "mic_off"
         pushToTalkMode && pushToTalkPressed -> "settings_voice"
         else -> "mic"
     }
+    val audioIcon = if (ttsDisabled) "graphic_eq_off" else "graphic_eq"
     var inputExpanded by remember { mutableStateOf(false) }
     var outputExpanded by remember { mutableStateOf(false) }
     val inputTypeOptions = remember {
@@ -1206,29 +1222,31 @@ internal fun RunningStatusTopStrip(
                     onClick = onToggleCollapsed
                 )
             }
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Crossfade(
-                    targetState = micIcon,
-                    animationSpec = tween(durationMillis = 180),
-                    label = "running_strip_panel_mic_icon"
-                ) { icon ->
-                    MsIcon(icon, contentDescription = "麦克风音量")
+            if (recognitionResourceInstalled) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Crossfade(
+                        targetState = micIcon,
+                        animationSpec = tween(durationMillis = 180),
+                        label = "running_strip_panel_mic_icon"
+                    ) { icon ->
+                        MsIcon(icon, contentDescription = "麦克风音量")
+                    }
+                    LinearProgressIndicator(
+                        progress = inputLevel.coerceIn(0f, 1f),
+                        modifier = Modifier.weight(1f)
+                    )
                 }
-                LinearProgressIndicator(
-                    progress = inputLevel.coerceIn(0f, 1f),
-                    modifier = Modifier.weight(1f)
-                )
             }
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                MsIcon("graphic_eq", contentDescription = "识别进度")
+                MsIcon(audioIcon, contentDescription = "播放进度")
                 LinearProgressIndicator(
                     progress = playbackProgress.coerceIn(0f, 1f),
                     modifier = Modifier.weight(1f)
@@ -1239,46 +1257,48 @@ internal fun RunningStatusTopStrip(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                Box(modifier = Modifier.weight(1f)) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable(
-                                interactionSource = remember { MutableInteractionSource() },
-                                indication = rememberRipple(bounded = true)
-                            ) { inputExpanded = true }
-                            .padding(vertical = 2.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        MsIcon("mic", contentDescription = "输入设备")
-                        Text(
-                            text = inputDeviceLabel,
-                            modifier = Modifier.weight(1f),
-                            style = MaterialTheme.typography.bodySmall,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                        MsIcon(
-                            name = if (inputExpanded) "expand_less" else "expand_more",
-                            contentDescription = "选择首选输入设备"
-                        )
-                    }
-                    Md2AnimatedOptionMenu(
-                        expanded = inputExpanded,
-                        onDismissRequest = { inputExpanded = false }
-                    ) {
-                        inputTypeOptions.forEach { (value, label) ->
-                            M2DropdownMenuItem(
-                                onClick = {
-                                    inputExpanded = false
-                                    viewModel.setPreferredInputType(value)
+                if (recognitionResourceInstalled) {
+                    Box(modifier = Modifier.weight(1f)) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable(
+                                    interactionSource = remember { MutableInteractionSource() },
+                                    indication = rememberRipple(bounded = true)
+                                ) { inputExpanded = true }
+                                .padding(vertical = 2.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            MsIcon("mic", contentDescription = "输入设备")
+                            Text(
+                                text = inputDeviceLabel,
+                                modifier = Modifier.weight(1f),
+                                style = MaterialTheme.typography.bodySmall,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            MsIcon(
+                                name = if (inputExpanded) "expand_less" else "expand_more",
+                                contentDescription = "选择首选输入设备"
+                            )
+                        }
+                        Md2AnimatedOptionMenu(
+                            expanded = inputExpanded,
+                            onDismissRequest = { inputExpanded = false }
+                        ) {
+                            inputTypeOptions.forEach { (value, label) ->
+                                M2DropdownMenuItem(
+                                    onClick = {
+                                        inputExpanded = false
+                                        viewModel.setPreferredInputType(value)
+                                    }
+                                ) {
+                                    Text(
+                                        text = label,
+                                        fontWeight = if (value == preferredInputType) FontWeight.SemiBold else null
+                                    )
                                 }
-                            ) {
-                                Text(
-                                    text = label,
-                                    fontWeight = if (value == preferredInputType) FontWeight.SemiBold else null
-                                )
                             }
                         }
                     }
@@ -1328,22 +1348,24 @@ internal fun RunningStatusTopStrip(
                     }
                 }
             }
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
+            if (recognitionResourceInstalled) {
                 Row(
+                    modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    MsIcon("mic", contentDescription = "按住说话")
-                    Text("按住说话", style = MaterialTheme.typography.bodySmall)
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        MsIcon("mic", contentDescription = "按住说话")
+                        Text("按住说话", style = MaterialTheme.typography.bodySmall)
+                    }
+                    Md2Switch(
+                        checked = pushToTalkMode,
+                        onCheckedChange = { viewModel.setPushToTalkMode(it) }
+                    )
                 }
-                Md2Switch(
-                    checked = pushToTalkMode,
-                    onCheckedChange = { viewModel.setPushToTalkMode(it) }
-                )
             }
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -1354,7 +1376,7 @@ internal fun RunningStatusTopStrip(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    MsIcon("mic_off", contentDescription = "禁用TTS")
+                    MsIcon("graphic_eq_off", contentDescription = "禁用TTS")
                     Text("禁用TTS", style = MaterialTheme.typography.bodySmall)
                 }
                 Md2Switch(
@@ -1385,6 +1407,7 @@ internal fun RunningStripTopBarToggle(
     micLevel: Float,
     playbackProgress: Float,
     expanded: Boolean,
+    recognitionResourceInstalled: Boolean,
     pushToTalkMode: Boolean,
     pushToTalkPressed: Boolean,
     ttsDisabled: Boolean,
@@ -1393,10 +1416,10 @@ internal fun RunningStripTopBarToggle(
 ) {
     val hapticToggle = rememberKigttsHapticClick(onToggle)
     val micIcon = when {
-        ttsDisabled -> "mic_off"
         pushToTalkMode && pushToTalkPressed -> "settings_voice"
         else -> "mic"
     }
+    val audioIcon = if (ttsDisabled) "graphic_eq_off" else "graphic_eq"
     Surface(
         modifier = Modifier
             .clip(RoundedCornerShape(4.dp))
@@ -1414,31 +1437,33 @@ internal fun RunningStripTopBarToggle(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(2.dp)
-            ) {
-                Crossfade(
-                    targetState = micIcon,
-                    animationSpec = tween(durationMillis = 180),
-                    label = "running_strip_toggle_mic_icon"
-                ) { icon ->
-                    MsIcon(icon, contentDescription = "麦克风音量", tint = contentColor)
+            if (recognitionResourceInstalled) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(2.dp)
+                ) {
+                    Crossfade(
+                        targetState = micIcon,
+                        animationSpec = tween(durationMillis = 180),
+                        label = "running_strip_toggle_mic_icon"
+                    ) { icon ->
+                        MsIcon(icon, contentDescription = "麦克风音量", tint = contentColor)
+                    }
+                    LinearProgressIndicator(
+                        progress = micLevel.coerceIn(0f, 1f),
+                        modifier = Modifier
+                            .width(30.dp)
+                            .height(2.dp),
+                        color = contentColor,
+                        backgroundColor = contentColor.copy(alpha = 0.24f)
+                    )
                 }
-                LinearProgressIndicator(
-                    progress = micLevel.coerceIn(0f, 1f),
-                    modifier = Modifier
-                        .width(30.dp)
-                        .height(2.dp),
-                    color = contentColor,
-                    backgroundColor = contentColor.copy(alpha = 0.24f)
-                )
             }
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(2.dp)
             ) {
-                MsIcon("graphic_eq", contentDescription = "播放进度", tint = contentColor)
+                MsIcon(audioIcon, contentDescription = "播放进度", tint = contentColor)
                 LinearProgressIndicator(
                     progress = playbackProgress.coerceIn(0f, 1f),
                     modifier = Modifier

@@ -17,6 +17,7 @@ internal fun Modifier.ledSubtitleDragGestures(
     quickSwipeEnabled: Boolean,
     quickSwipeDistanceThresholdPx: Float,
     quickSwipeVelocityThresholdPxPerSecond: Float,
+    quickSwipeReleaseThresholdMillis: Long,
     onInteraction: () -> Unit,
     onOpenInput: () -> Unit,
     onOpenQuickText: () -> Unit
@@ -26,19 +27,22 @@ internal fun Modifier.ledSubtitleDragGestures(
     verticalOpenThresholdPx,
     quickSwipeEnabled,
     quickSwipeDistanceThresholdPx,
-    quickSwipeVelocityThresholdPxPerSecond
+    quickSwipeVelocityThresholdPxPerSecond,
+    quickSwipeReleaseThresholdMillis
 ) {
     if (!enabled) return@pointerInput
     var totalDrag = Offset.Zero
     var dragAxis = LedDragAxis.Undetermined
     var velocityTracker = VelocityTracker()
+    var dragStartUptimeMillis = 0L
 
     detectDragGestures(
         onDragStart = { startPosition ->
             totalDrag = Offset.Zero
             dragAxis = LedDragAxis.Undetermined
+            dragStartUptimeMillis = SystemClock.uptimeMillis()
             velocityTracker = VelocityTracker().apply {
-                addPosition(SystemClock.uptimeMillis(), startPosition)
+                addPosition(dragStartUptimeMillis, startPosition)
             }
             onInteraction()
         },
@@ -46,17 +50,24 @@ internal fun Modifier.ledSubtitleDragGestures(
             motionState.cancelHorizontalDrag()
             totalDrag = Offset.Zero
             dragAxis = LedDragAxis.Undetermined
+            dragStartUptimeMillis = 0L
         },
         onDragEnd = {
             val velocityX = velocityTracker.calculateVelocity().x
+            val releaseElapsedMillis =
+                (SystemClock.uptimeMillis() - dragStartUptimeMillis).coerceAtLeast(0L)
             when (dragAxis) {
                 LedDragAxis.Horizontal -> {
                     motionState.endHorizontalDrag(velocityX)
-                    if (
-                        quickSwipeEnabled &&
-                        totalDrag.x <= -quickSwipeDistanceThresholdPx &&
-                        velocityX <= -quickSwipeVelocityThresholdPxPerSecond
-                    ) {
+                    if (shouldOpenLedQuickText(
+                            enabled = quickSwipeEnabled,
+                            totalDragX = totalDrag.x,
+                            velocityX = velocityX,
+                            releaseElapsedMillis = releaseElapsedMillis,
+                            distanceThresholdPx = quickSwipeDistanceThresholdPx,
+                            velocityThresholdPxPerSecond = quickSwipeVelocityThresholdPxPerSecond,
+                            releaseThresholdMillis = quickSwipeReleaseThresholdMillis
+                        )) {
                         onOpenQuickText()
                     }
                 }
@@ -68,6 +79,7 @@ internal fun Modifier.ledSubtitleDragGestures(
             }
             totalDrag = Offset.Zero
             dragAxis = LedDragAxis.Undetermined
+            dragStartUptimeMillis = 0L
         }
     ) { change, dragAmount ->
         velocityTracker.addPosition(change.uptimeMillis, change.position)
@@ -88,5 +100,19 @@ internal fun Modifier.ledSubtitleDragGestures(
         change.consume()
     }
 }
+
+internal fun shouldOpenLedQuickText(
+    enabled: Boolean,
+    totalDragX: Float,
+    velocityX: Float,
+    releaseElapsedMillis: Long,
+    distanceThresholdPx: Float,
+    velocityThresholdPxPerSecond: Float,
+    releaseThresholdMillis: Long
+): Boolean =
+    enabled &&
+        totalDragX <= -distanceThresholdPx &&
+        velocityX <= -velocityThresholdPxPerSecond &&
+        releaseElapsedMillis <= releaseThresholdMillis
 
 private const val AXIS_LOCK_BIAS = 1.08f

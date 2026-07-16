@@ -157,7 +157,7 @@ internal fun LedSubtitleDisplay(
     text: String,
     settings: LedSubtitleSettings,
     motionState: LedMarqueeMotionState,
-    bold: Boolean,
+    typeface: Typeface,
     modifier: Modifier = Modifier
 ) {
     val target = remember(text, settings.dotMatrixEnabled) {
@@ -175,7 +175,7 @@ internal fun LedSubtitleDisplay(
                 text = current.text,
                 settings = settings,
                 motionState = motionState,
-                bold = bold,
+                typeface = typeface,
                 modifier = Modifier.fillMaxSize()
             )
         } else {
@@ -183,7 +183,7 @@ internal fun LedSubtitleDisplay(
                 text = current.text,
                 settings = settings,
                 motionState = motionState,
-                bold = bold,
+                typeface = typeface,
                 modifier = Modifier.fillMaxSize()
             )
         }
@@ -195,7 +195,7 @@ private fun LedNormalFontMarqueeDisplay(
     text: String,
     settings: LedSubtitleSettings,
     motionState: LedMarqueeMotionState,
-    bold: Boolean,
+    typeface: Typeface,
     modifier: Modifier = Modifier
 ) {
     BoxWithConstraints(modifier = modifier) {
@@ -208,21 +208,21 @@ private fun LedNormalFontMarqueeDisplay(
             normalizedText,
             settings.ledColorArgb,
             settings.displayHeightFraction,
-            bold,
+            typeface,
             viewportHeightPx
         ) {
             val displayHeight = viewportHeightPx * settings.displayHeightFraction
             AndroidPaint(AndroidPaint.ANTI_ALIAS_FLAG).apply {
                 color = settings.ledColorArgb
                 textSize = (displayHeight * 0.78f).coerceAtLeast(1f)
-                typeface = if (bold) Typeface.DEFAULT_BOLD else Typeface.DEFAULT
+                this.typeface = typeface
                 val measuredWidth = measureText(normalizedText)
                 if (measuredWidth > MAXIMUM_STRIP_WIDTH) {
                     textSize *= (MAXIMUM_STRIP_WIDTH / measuredWidth).coerceAtLeast(0.2f)
                 }
             }
         }
-        val textWidthPx = remember(normalizedText, textPaint.textSize, bold) {
+        val textWidthPx = remember(normalizedText, textPaint.textSize, typeface) {
             textPaint.measureText(normalizedText)
         }
         val gapPx = settings.loopGapDp * densityScale
@@ -263,7 +263,7 @@ internal fun LedMarqueeDisplay(
     text: String,
     settings: LedSubtitleSettings,
     motionState: LedMarqueeMotionState,
-    bold: Boolean,
+    typeface: Typeface,
     modifier: Modifier = Modifier
 ) {
     BoxWithConstraints(modifier = modifier) {
@@ -293,7 +293,7 @@ internal fun LedMarqueeDisplay(
             initialValue = null,
             normalizedText,
             settledRenderSettings,
-            bold,
+            typeface,
             viewportHeightPx,
             densityScale
         ) {
@@ -303,7 +303,7 @@ internal fun LedMarqueeDisplay(
                     viewportHeightPx = viewportHeightPx,
                     densityScale = densityScale,
                     settings = settledRenderSettings,
-                    bold = bold
+                    typeface = typeface
                 )
             }
         }
@@ -356,7 +356,7 @@ private suspend fun renderLedStrip(
     viewportHeightPx: Float,
     densityScale: Float,
     settings: LedSubtitleSettings,
-    bold: Boolean
+    typeface: Typeface
 ): LedRenderedStrip? {
     if (text.isBlank() || viewportHeightPx <= 1f) return null
     val value = settings.normalized()
@@ -369,7 +369,7 @@ private suspend fun renderLedStrip(
     val textPaint = AndroidPaint(AndroidPaint.ANTI_ALIAS_FLAG).apply {
         color = AndroidColor.WHITE
         textSize = stripHeight * 0.78f
-        typeface = if (bold) Typeface.DEFAULT_BOLD else Typeface.DEFAULT
+        this.typeface = typeface
     }
     val initialWidth = textPaint.measureText(text) + horizontalPadding * 2f
     if (initialWidth > MAXIMUM_STRIP_WIDTH) {

@@ -1,5 +1,6 @@
 package com.lhtstudio.kigtts.app.ui
 
+import android.graphics.Typeface
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -63,6 +64,7 @@ internal fun LedSubtitleScreenContent(
     backgroundColor: Color,
     contentColor: Color,
     accentColor: Color,
+    subtitleTypeface: Typeface,
     onBack: () -> Unit
 ) {
     val density = LocalDensity.current
@@ -178,6 +180,7 @@ internal fun LedSubtitleScreenContent(
     val gestureThresholdPx = with(density) { 54.dp.toPx() }
     val quickSwipeDistanceThresholdPx = with(density) { 42.dp.toPx() }
     val quickSwipeVelocityThresholdPxPerSecond = density.density * 1_100f
+    val quickSwipeReleaseThresholdMillis = 420L
     val screenWidthDp = configuration.screenWidthDp.dp
     val sidePanelWidth = if (configuration.screenWidthDp > configuration.screenHeightDp) {
         (screenWidthDp * 0.40f).coerceIn(280.dp, 460.dp)
@@ -210,6 +213,7 @@ internal fun LedSubtitleScreenContent(
                     quickSwipeDistanceThresholdPx = quickSwipeDistanceThresholdPx,
                     quickSwipeVelocityThresholdPxPerSecond =
                         quickSwipeVelocityThresholdPxPerSecond,
+                    quickSwipeReleaseThresholdMillis = quickSwipeReleaseThresholdMillis,
                     onInteraction = { registerInteraction() },
                     onOpenInput = { openPanel(LedSubtitlePanel.Input) },
                     onOpenQuickText = { openPanel(LedSubtitlePanel.QuickText) }
@@ -224,6 +228,7 @@ internal fun LedSubtitleScreenContent(
                 textColor = contentColor,
                 textAlign = if (viewModel.quickSubtitleCentered) TextAlign.Center else TextAlign.Start,
                 fontWeight = if (viewModel.quickSubtitleBold) FontWeight.Bold else FontWeight.Normal,
+                typeface = subtitleTypeface,
                 maxFontSizeSp = viewModel.quickSubtitleFontSizeSp,
                 autoFitEnabled = state.quickSubtitleAutoFit,
                 rotated180 = viewModel.quickSubtitleRotated180,
@@ -408,7 +413,7 @@ internal fun LedSubtitleScreenContent(
                         verticalArrangement = Arrangement.spacedBy(2.dp)
                     ) {
                         LedOverlayIconButton(
-                            icon = "view_list",
+                            icon = "subtitles",
                             description = "快捷文本",
                             enabled = !locked,
                             alpha = controlAlpha,

@@ -590,7 +590,13 @@ internal fun QuickSubtitleMicFab(
             pressedElevation = 0.dp
         )
     ) {
-        if (state.pushToTalkMode) {
+        if (!state.recognitionResourceInstalled) {
+            MsIcon(
+                name = "mic_off",
+                contentDescription = "语音识别资源未安装",
+                tint = MaterialTheme.colorScheme.onPrimary
+            )
+        } else if (state.pushToTalkMode) {
             Crossfade(
                 targetState = pushToTalkPressed,
                 animationSpec = tween(durationMillis = 180),
@@ -1079,6 +1085,168 @@ internal fun quickSubtitlePopupGroupSwitchTransform(
 }
 
 @Composable
+private fun QuickSubtitleRotatedText(
+    text: AnnotatedString,
+    color: Color,
+    maxFontSizeSp: Float,
+    minFontSizeSp: Float,
+    lineHeightMultiplier: Float,
+    subtitleRotated180: Boolean,
+    subtitleCentered: Boolean,
+    subtitleBold: Boolean,
+    autoFitEnabled: Boolean,
+    cursorIndex: Int?,
+    rotateEnabled: Boolean,
+    modifier: Modifier = Modifier
+) {
+    Crossfade(
+        targetState = subtitleRotated180 && rotateEnabled,
+        animationSpec = tween(160),
+        label = "quick_subtitle_rotation_fade"
+    ) { rotated ->
+        QuickSubtitleAdaptiveText(
+            text = text,
+            color = color,
+            textAlign = if (subtitleCentered) TextAlign.Center else TextAlign.Start,
+            fontWeight = if (subtitleBold) FontWeight.Bold else FontWeight.Normal,
+            maxFontSizeSp = maxFontSizeSp,
+            minFontSizeSp = minFontSizeSp,
+            lineHeightMultiplier = lineHeightMultiplier,
+            autoFitEnabled = autoFitEnabled,
+            modifier = modifier,
+            contentAlignment = if (rotated) {
+                if (subtitleCentered) Alignment.BottomCenter else Alignment.BottomStart
+            } else {
+                Alignment.TopStart
+            },
+            textRotationZ = if (rotated) 180f else 0f,
+            cursorIndex = cursorIndex,
+            cursorColor = MaterialTheme.colorScheme.accentText
+        )
+    }
+}
+
+@Composable
+private fun QuickSubtitleActionButtons(
+    vertical: Boolean,
+    subtitleBold: Boolean,
+    subtitleCentered: Boolean,
+    subtitleRotated180: Boolean,
+    onToggleBold: () -> Unit,
+    onToggleCentered: () -> Unit,
+    onToggleRotated: () -> Unit,
+    onOpenLed: () -> Unit,
+    onClear: () -> Unit,
+    onOpenHistory: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val content: @Composable () -> Unit = {
+        Md2IconButton(
+            icon = "format_bold",
+            contentDescription = if (subtitleBold) "关闭粗体" else "开启粗体",
+            onClick = onToggleBold
+        )
+        Md2IconButton(
+            icon = if (subtitleCentered) "format_align_center" else "format_align_left",
+            contentDescription = if (subtitleCentered) "左对齐文本" else "居中文本",
+            onClick = onToggleCentered
+        )
+        Md2IconButton(
+            icon = "swap_vert",
+            contentDescription = if (subtitleRotated180) "恢复字幕方向" else "倒置字幕",
+            onClick = onToggleRotated
+        )
+        LedSubtitleEntryButton(onClick = onOpenLed)
+        Md2IconButton(
+            icon = "cleaning_services",
+            contentDescription = "清屏",
+            onClick = onClear
+        )
+        Md2IconButton(
+            icon = "history",
+            contentDescription = "历史记录",
+            onClick = onOpenHistory
+        )
+    }
+    if (vertical) {
+        Column(
+            modifier = modifier,
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(2.dp)
+        ) {
+            content()
+        }
+    } else {
+        Row(
+            modifier = modifier,
+            horizontalArrangement = Arrangement.Start
+        ) {
+            content()
+        }
+    }
+}
+
+@Composable
+private fun QuickSubtitleDisplayContent(
+    preview: Boolean,
+    displayText: AnnotatedString,
+    cursorIndex: Int?,
+    subtitleSize: Float,
+    subtitleRotated180: Boolean,
+    subtitleCentered: Boolean,
+    subtitleBold: Boolean,
+    autoFitEnabled: Boolean,
+    keyboardVisible: Boolean,
+    modifier: Modifier = Modifier
+) {
+    AnimatedContent(
+        targetState = Triple(preview, displayText, cursorIndex),
+        transitionSpec = {
+            val previewTextEditTransition = initialState.first && targetState.first
+            ContentTransform(
+                targetContentEnter = if (previewTextEditTransition) {
+                    fadeIn(initialAlpha = 0.45f, animationSpec = tween(140))
+                } else {
+                    fadeIn(animationSpec = tween(180)) +
+                        slideInVertically(
+                            initialOffsetY = { full -> full / 8 },
+                            animationSpec = tween(200, easing = FastOutSlowInEasing)
+                        )
+                },
+                initialContentExit = if (previewTextEditTransition) {
+                    fadeOut(targetAlpha = 0.45f, animationSpec = tween(160))
+                } else {
+                    fadeOut(animationSpec = tween(120))
+                },
+                sizeTransform = null
+            )
+        },
+        label = "quick_subtitle_display_text_change"
+    ) { (activePreview, text, activeCursorIndex) ->
+        val textColor = when {
+            activePreview -> MaterialTheme.colorScheme.onSurface
+            text.text == QUICK_SUBTITLE_CLEARED_HINT ->
+                MaterialTheme.colorScheme.onSurface.copy(alpha = 0.45f)
+            else -> MaterialTheme.colorScheme.onSurface
+        }
+        QuickSubtitleRotatedText(
+            text = text,
+            color = textColor,
+            maxFontSizeSp = subtitleSize,
+            minFontSizeSp = 14f,
+            lineHeightMultiplier = 1.15f,
+            subtitleRotated180 = subtitleRotated180,
+            subtitleCentered = subtitleCentered,
+            subtitleBold = subtitleBold,
+            autoFitEnabled = autoFitEnabled,
+            cursorIndex = if (activePreview) activeCursorIndex else null,
+            rotateEnabled = !activePreview || !keyboardVisible,
+            modifier = modifier
+        )
+    }
+}
+
+@Composable
 @OptIn(ExperimentalFoundationApi::class, ExperimentalMaterialApi::class)
 fun QuickSubtitleScreen(
     viewModel: MainViewModel,
@@ -1116,7 +1284,6 @@ fun QuickSubtitleScreen(
     } else {
         MaterialTheme.colorScheme.onSurface
     }
-    val subtitleAlign = if (subtitleCentered) TextAlign.Center else TextAlign.Start
     val inputText = viewModel.quickSubtitleInputText
     val playOnSend = viewModel.quickSubtitlePlayOnSend
     val quickInputCollapsed = viewModel.quickSubtitleInputCollapsed
@@ -1162,113 +1329,6 @@ fun QuickSubtitleScreen(
             groupHintState.show(groups[index].title.ifBlank { "未命名分组" }, holdHintUntilRelease)
         }
         viewModel.selectQuickSubtitleGroup(index)
-    }
-    val rotatedSubtitleText: @Composable (
-        text: AnnotatedString,
-        color: Color,
-        maxFontSizeSp: Float,
-        minFontSizeSp: Float,
-        lineHeightMultiplier: Float,
-        modifier: Modifier,
-        cursorIndex: Int?,
-        rotateEnabled: Boolean
-    ) -> Unit = { text, color, maxFontSizeSp, minFontSizeSp, lineHeightMultiplier, modifier, cursorIndex, rotateEnabled ->
-        Crossfade(
-            targetState = subtitleRotated180 && rotateEnabled,
-            animationSpec = tween(160),
-            label = "quick_subtitle_rotation_fade"
-        ) { rotated ->
-            QuickSubtitleAdaptiveText(
-                text = text,
-                color = color,
-                textAlign = subtitleAlign,
-                fontWeight = if (subtitleBold) FontWeight.Bold else FontWeight.Normal,
-                maxFontSizeSp = maxFontSizeSp,
-                minFontSizeSp = minFontSizeSp,
-                lineHeightMultiplier = lineHeightMultiplier,
-                autoFitEnabled = quickSubtitleAutoFit,
-                modifier = modifier,
-                contentAlignment = if (rotated) {
-                    if (subtitleCentered) Alignment.BottomCenter else Alignment.BottomStart
-                } else {
-                    Alignment.TopStart
-                },
-                textRotationZ = if (rotated) 180f else 0f,
-                cursorIndex = cursorIndex,
-                cursorColor = MaterialTheme.colorScheme.accentText
-            )
-        }
-    }
-    val subtitleActionButtonsColumn: @Composable (Modifier) -> Unit = { modifier ->
-        Column(
-            modifier = modifier,
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(2.dp)
-        ) {
-            Md2IconButton(
-                icon = "format_bold",
-                contentDescription = if (subtitleBold) "关闭粗体" else "开启粗体",
-                onClick = { viewModel.updateQuickSubtitleBold(!subtitleBold) }
-            )
-            Md2IconButton(
-                icon = if (subtitleCentered) "format_align_center" else "format_align_left",
-                contentDescription = if (subtitleCentered) "左对齐文本" else "居中文本",
-                onClick = { viewModel.updateQuickSubtitleCentered(!subtitleCentered) }
-            )
-            Md2IconButton(
-                icon = "swap_vert",
-                contentDescription = if (subtitleRotated180) "恢复字幕方向" else "倒置字幕",
-                onClick = { viewModel.updateQuickSubtitleRotated180(!subtitleRotated180) }
-            )
-            LedSubtitleEntryButton(
-                onClick = onOpenLed
-            )
-            Md2IconButton(
-                icon = "cleaning_services",
-                contentDescription = "清屏",
-                onClick = { viewModel.clearQuickSubtitleText() }
-            )
-            Md2IconButton(
-                icon = "history",
-                contentDescription = "历史记录",
-                onClick = onOpenHistory
-            )
-        }
-    }
-    val subtitleActionButtonsRow: @Composable (Modifier) -> Unit = { modifier ->
-        Row(
-            modifier = modifier,
-            horizontalArrangement = Arrangement.Start
-        ) {
-            Md2IconButton(
-                icon = "format_bold",
-                contentDescription = if (subtitleBold) "关闭粗体" else "开启粗体",
-                onClick = { viewModel.updateQuickSubtitleBold(!subtitleBold) }
-            )
-            Md2IconButton(
-                icon = if (subtitleCentered) "format_align_center" else "format_align_left",
-                contentDescription = if (subtitleCentered) "左对齐文本" else "居中文本",
-                onClick = { viewModel.updateQuickSubtitleCentered(!subtitleCentered) }
-            )
-            Md2IconButton(
-                icon = "swap_vert",
-                contentDescription = if (subtitleRotated180) "恢复字幕方向" else "倒置字幕",
-                onClick = { viewModel.updateQuickSubtitleRotated180(!subtitleRotated180) }
-            )
-            LedSubtitleEntryButton(
-                onClick = onOpenLed
-            )
-            Md2IconButton(
-                icon = "cleaning_services",
-                contentDescription = "清屏",
-                onClick = { viewModel.clearQuickSubtitleText() }
-            )
-            Md2IconButton(
-                icon = "history",
-                contentDescription = "历史记录",
-                onClick = onOpenHistory
-            )
-        }
     }
     var pttDragTarget by remember { mutableStateOf(PttConfirmDragTarget.DefaultSend) }
     val showPttConfirmOverlay =
@@ -1473,49 +1533,6 @@ fun QuickSubtitleScreen(
     DisposableEffect(Unit) {
         onDispose { onFloatingInputPreviewChange(null) }
     }
-    val subtitleDisplayContent: @Composable (Boolean, AnnotatedString, Int?, Modifier) -> Unit =
-        { preview, displayText, cursorIndex, modifier ->
-        AnimatedContent(
-            targetState = Triple(preview, displayText, cursorIndex),
-            transitionSpec = {
-                val previewTextEditTransition = initialState.first && targetState.first
-                ContentTransform(
-                    targetContentEnter = if (previewTextEditTransition) {
-                        fadeIn(initialAlpha = 0.45f, animationSpec = tween(140))
-                    } else {
-                        fadeIn(animationSpec = tween(180)) +
-                            slideInVertically(
-                                initialOffsetY = { full -> full / 8 },
-                                animationSpec = tween(200, easing = FastOutSlowInEasing)
-                        )
-                    },
-                    initialContentExit = if (previewTextEditTransition) {
-                        fadeOut(targetAlpha = 0.45f, animationSpec = tween(160))
-                    } else {
-                        fadeOut(animationSpec = tween(120))
-                    },
-                    sizeTransform = null
-                )
-            },
-            label = "quick_subtitle_display_text_change"
-        ) { (preview, text, cursorIndex) ->
-            val textColor = when {
-                preview -> MaterialTheme.colorScheme.onSurface
-                text.text == QUICK_SUBTITLE_CLEARED_HINT -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.45f)
-                else -> MaterialTheme.colorScheme.onSurface
-            }
-            rotatedSubtitleText(
-                text,
-                textColor,
-                subtitleSize,
-                14f,
-                1.15f,
-                modifier,
-                if (preview) cursorIndex else null,
-                !preview || !keyboardVisible
-            )
-        }
-    }
     val quickPanelExpanded = !quickInputCollapsed
     val quickPanelAnimatedWidth by animateDpAsState(
         targetValue = if (isLandscape && quickPanelExpanded) landscapeQuickPanelWidth else 0.dp,
@@ -1600,11 +1617,19 @@ fun QuickSubtitleScreen(
                                     Box(
                                         modifier = Modifier.fillMaxSize()
                                     ) {
-                                        subtitleDisplayContent(
-                                            inlineInputPreviewActive,
-                                            displayedSubtitleText,
-                                            if (editingInputPreviewActive && inlineInputPreviewActive) inputPreviewCursorIndex else null,
-                                            Modifier.fillMaxSize()
+                                        QuickSubtitleDisplayContent(
+                                            preview = inlineInputPreviewActive,
+                                            displayText = displayedSubtitleText,
+                                            cursorIndex = if (
+                                                editingInputPreviewActive && inlineInputPreviewActive
+                                            ) inputPreviewCursorIndex else null,
+                                            subtitleSize = subtitleSize,
+                                            subtitleRotated180 = subtitleRotated180,
+                                            subtitleCentered = subtitleCentered,
+                                            subtitleBold = subtitleBold,
+                                            autoFitEnabled = quickSubtitleAutoFit,
+                                            keyboardVisible = keyboardVisible,
+                                            modifier = Modifier.fillMaxSize()
                                         )
                                     }
                                 }
@@ -1646,8 +1671,24 @@ fun QuickSubtitleScreen(
                                                                 .fillMaxSize(),
                                                             contentAlignment = Alignment.TopCenter
                                                         ) {
-                                                            subtitleActionButtonsColumn(
-                                                                Modifier
+                                                            QuickSubtitleActionButtons(
+                                                                vertical = true,
+                                                                subtitleBold = subtitleBold,
+                                                                subtitleCentered = subtitleCentered,
+                                                                subtitleRotated180 = subtitleRotated180,
+                                                                onToggleBold = {
+                                                                    viewModel.updateQuickSubtitleBold(!subtitleBold)
+                                                                },
+                                                                onToggleCentered = {
+                                                                    viewModel.updateQuickSubtitleCentered(!subtitleCentered)
+                                                                },
+                                                                onToggleRotated = {
+                                                                    viewModel.updateQuickSubtitleRotated180(!subtitleRotated180)
+                                                                },
+                                                                onOpenLed = onOpenLed,
+                                                                onClear = viewModel::clearQuickSubtitleText,
+                                                                onOpenHistory = onOpenHistory,
+                                                                modifier = Modifier
                                                                     .fillMaxWidth()
                                                                     .verticalScroll(rememberScrollState())
                                                                     .padding(top = 4.dp, bottom = 4.dp)
@@ -2125,11 +2166,19 @@ fun QuickSubtitleScreen(
                                 Box(
                                     modifier = Modifier.fillMaxSize()
                                 ) {
-                                    subtitleDisplayContent(
-                                        inlineInputPreviewActive,
-                                        displayedSubtitleText,
-                                        if (editingInputPreviewActive && inlineInputPreviewActive) inputPreviewCursorIndex else null,
-                                        Modifier.fillMaxSize()
+                                    QuickSubtitleDisplayContent(
+                                        preview = inlineInputPreviewActive,
+                                        displayText = displayedSubtitleText,
+                                        cursorIndex = if (
+                                            editingInputPreviewActive && inlineInputPreviewActive
+                                        ) inputPreviewCursorIndex else null,
+                                        subtitleSize = subtitleSize,
+                                        subtitleRotated180 = subtitleRotated180,
+                                        subtitleCentered = subtitleCentered,
+                                        subtitleBold = subtitleBold,
+                                        autoFitEnabled = quickSubtitleAutoFit,
+                                        keyboardVisible = keyboardVisible,
+                                        modifier = Modifier.fillMaxSize()
                                     )
                                 }
                             }
@@ -2165,7 +2214,25 @@ fun QuickSubtitleScreen(
                                                             .offset(y = portraitSubtitleControlBaselineOffset),
                                                         verticalAlignment = Alignment.CenterVertically
                                                     ) {
-                                                        subtitleActionButtonsRow(Modifier.weight(1f))
+                                                        QuickSubtitleActionButtons(
+                                                            vertical = false,
+                                                            subtitleBold = subtitleBold,
+                                                            subtitleCentered = subtitleCentered,
+                                                            subtitleRotated180 = subtitleRotated180,
+                                                            onToggleBold = {
+                                                                viewModel.updateQuickSubtitleBold(!subtitleBold)
+                                                            },
+                                                            onToggleCentered = {
+                                                                viewModel.updateQuickSubtitleCentered(!subtitleCentered)
+                                                            },
+                                                            onToggleRotated = {
+                                                                viewModel.updateQuickSubtitleRotated180(!subtitleRotated180)
+                                                            },
+                                                            onOpenLed = onOpenLed,
+                                                            onClear = viewModel::clearQuickSubtitleText,
+                                                            onOpenHistory = onOpenHistory,
+                                                            modifier = Modifier.weight(1f)
+                                                        )
                                                     }
                                                 }
                                             } else {
@@ -3085,17 +3152,22 @@ fun QuickSubtitleScreen(
                         backgroundColor = md2CardContainerColor(),
                         elevation = UiTokens.MenuElevation
                     ) {
-                        rotatedSubtitleText(
-                            AnnotatedString(subtitleText),
-                            subtitleTextColor,
-                            (subtitleSize * 1.25f).coerceIn(36f, fullscreenPreviewFontSizeMax),
-                            18f,
-                            1.36f,
-                            Modifier
+                        QuickSubtitleRotatedText(
+                            text = AnnotatedString(subtitleText),
+                            color = subtitleTextColor,
+                            maxFontSizeSp = (subtitleSize * 1.25f)
+                                .coerceIn(36f, fullscreenPreviewFontSizeMax),
+                            minFontSizeSp = 18f,
+                            lineHeightMultiplier = 1.36f,
+                            subtitleRotated180 = subtitleRotated180,
+                            subtitleCentered = subtitleCentered,
+                            subtitleBold = subtitleBold,
+                            autoFitEnabled = quickSubtitleAutoFit,
+                            cursorIndex = null,
+                            rotateEnabled = true,
+                            modifier = Modifier
                                 .fillMaxSize()
-                                .padding(16.dp),
-                            null,
-                            true
+                                .padding(16.dp)
                         )
                     }
                 }

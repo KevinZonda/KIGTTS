@@ -116,6 +116,8 @@ object UserPrefs {
     private val KEY_THEME_TONE_CORRECTION_ENABLED = booleanPreferencesKey("theme_tone_correction_enabled")
     private val KEY_APP_FONT_ID = stringPreferencesKey("app_font_id")
     private val KEY_APP_FONT_WEIGHT = intPreferencesKey("app_font_weight")
+    private val KEY_FLOATING_OVERLAY_USE_SYSTEM_FONT =
+        booleanPreferencesKey("floating_overlay_use_system_font")
     private val KEY_FONT_SCALE_BLOCK_MODE = intPreferencesKey("font_scale_block_mode")
     private val KEY_HAPTIC_FEEDBACK_ENABLED = booleanPreferencesKey("haptic_feedback_enabled")
     private val KEY_ONBOARDING_COMPLETED = booleanPreferencesKey("onboarding_completed")
@@ -137,6 +139,10 @@ object UserPrefs {
     private val KEY_FLOATING_OVERLAY_AUTO_DOCK = booleanPreferencesKey("floating_overlay_auto_dock")
     private val KEY_FLOATING_OVERLAY_SHOW_ON_LOCK_SCREEN =
         booleanPreferencesKey("floating_overlay_show_on_lock_screen")
+    private val KEY_FLOATING_OVERLAY_FAB_PREFERS_KEYBOARD =
+        booleanPreferencesKey("floating_overlay_fab_prefers_keyboard")
+    private val KEY_FLOATING_OVERLAY_FAB_INPUT_GUIDE_SHOWN =
+        booleanPreferencesKey("floating_overlay_fab_input_guide_shown")
     private val KEY_FLOATING_OVERLAY_HARDCODED_SHORTCUT_SUPPLEMENT =
         booleanPreferencesKey("floating_overlay_hardcoded_shortcut_supplement")
     private val KEY_VOLUME_HOTKEY_UP_DOWN_ENABLED = booleanPreferencesKey("volume_hotkey_up_down_enabled")
@@ -230,6 +236,7 @@ object UserPrefs {
         val themeToneCorrectionEnabled: Boolean = false,
         val appFontId: String = AppFontDefaults.SystemFontId,
         val appFontWeight: Int = AppFontDefaults.DefaultWeight,
+        val floatingOverlayUseSystemFont: Boolean = false,
         val fontScaleBlockMode: Int = FONT_SCALE_BLOCK_ICONS_ONLY,
         val hapticFeedbackEnabled: Boolean = true,
         val onboardingCompleted: Boolean = false,
@@ -246,6 +253,8 @@ object UserPrefs {
         val floatingOverlayEnabled: Boolean = false,
         val floatingOverlayAutoDock: Boolean = true,
         val floatingOverlayShowOnLockScreen: Boolean = false,
+        val floatingOverlayFabPrefersKeyboard: Boolean = false,
+        val floatingOverlayFabInputGuideShown: Boolean = false,
         val floatingOverlayHardcodedShortcutSupplement: Boolean = false,
         val volumeHotkeyUpDownEnabled: Boolean = false,
         val volumeHotkeyDownUpEnabled: Boolean = false,
@@ -457,6 +466,7 @@ object UserPrefs {
             appFontWeight = normalizeAppFontWeight(
                 this[KEY_APP_FONT_WEIGHT] ?: AppFontDefaults.DefaultWeight
             ),
+            floatingOverlayUseSystemFont = this[KEY_FLOATING_OVERLAY_USE_SYSTEM_FONT] ?: false,
             fontScaleBlockMode = normalizeFontScaleBlockMode(
                 this[KEY_FONT_SCALE_BLOCK_MODE] ?: FONT_SCALE_BLOCK_ICONS_ONLY
             ),
@@ -476,6 +486,10 @@ object UserPrefs {
             floatingOverlayEnabled = this[KEY_FLOATING_OVERLAY_ENABLED] ?: false,
             floatingOverlayAutoDock = this[KEY_FLOATING_OVERLAY_AUTO_DOCK] ?: true,
             floatingOverlayShowOnLockScreen = this[KEY_FLOATING_OVERLAY_SHOW_ON_LOCK_SCREEN] ?: false,
+            floatingOverlayFabPrefersKeyboard =
+                this[KEY_FLOATING_OVERLAY_FAB_PREFERS_KEYBOARD] ?: false,
+            floatingOverlayFabInputGuideShown =
+                this[KEY_FLOATING_OVERLAY_FAB_INPUT_GUIDE_SHOWN] ?: false,
             floatingOverlayHardcodedShortcutSupplement =
                 this[KEY_FLOATING_OVERLAY_HARDCODED_SHORTCUT_SUPPLEMENT] ?: false,
             volumeHotkeyUpDownEnabled = this[KEY_VOLUME_HOTKEY_UP_DOWN_ENABLED] ?: false,
@@ -774,6 +788,12 @@ object UserPrefs {
         }
     }
 
+    suspend fun setFloatingOverlayUseSystemFont(context: Context, enabled: Boolean) {
+        context.dataStore.edit { prefs ->
+            prefs[KEY_FLOATING_OVERLAY_USE_SYSTEM_FONT] = enabled
+        }
+    }
+
     suspend fun setFontScaleBlockMode(context: Context, mode: Int) {
         context.dataStore.edit { prefs ->
             prefs[KEY_FONT_SCALE_BLOCK_MODE] = normalizeFontScaleBlockMode(mode)
@@ -880,6 +900,25 @@ object UserPrefs {
     suspend fun setFloatingOverlayShowOnLockScreen(context: Context, enabled: Boolean) {
         context.dataStore.edit { prefs ->
             prefs[KEY_FLOATING_OVERLAY_SHOW_ON_LOCK_SCREEN] = enabled
+        }
+    }
+
+    suspend fun setFloatingOverlayFabPrefersKeyboard(context: Context, enabled: Boolean) {
+        context.dataStore.edit { prefs ->
+            prefs[KEY_FLOATING_OVERLAY_FAB_PREFERS_KEYBOARD] = enabled
+        }
+    }
+
+    suspend fun setFloatingOverlayFabInputGuideShown(context: Context, shown: Boolean) {
+        context.dataStore.edit { prefs ->
+            prefs[KEY_FLOATING_OVERLAY_FAB_INPUT_GUIDE_SHOWN] = shown
+        }
+    }
+
+    suspend fun setFloatingOverlayFabModeChoice(context: Context, keyboardFirst: Boolean) {
+        context.dataStore.edit { prefs ->
+            prefs[KEY_FLOATING_OVERLAY_FAB_PREFERS_KEYBOARD] = keyboardFirst
+            prefs[KEY_FLOATING_OVERLAY_FAB_INPUT_GUIDE_SHOWN] = true
         }
     }
 

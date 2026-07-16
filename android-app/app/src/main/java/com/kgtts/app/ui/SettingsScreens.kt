@@ -1807,6 +1807,12 @@ fun SettingsScreen(
                         onClick = onOpenFonts
                     )
                     Md2SettingSwitchRow(
+                        title = "悬浮窗使用系统字体",
+                        checked = state.floatingOverlayUseSystemFont,
+                        onCheckedChange = { viewModel.setFloatingOverlayUseSystemFont(it) },
+                        supportingText = "默认关闭。关闭时悬浮窗跟随当前应用字体和字重；开启后仅悬浮窗使用 Android 系统字体。"
+                    )
+                    Md2SettingSwitchRow(
                         title = "主题色色调修正",
                         checked = state.themeToneCorrectionEnabled,
                         onCheckedChange = { viewModel.setThemeToneCorrectionEnabled(it) },

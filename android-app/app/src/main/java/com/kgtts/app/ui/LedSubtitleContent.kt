@@ -1,5 +1,6 @@
 package com.lhtstudio.kigtts.app.ui
 
+import android.graphics.Typeface
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.fillMaxSize
@@ -25,6 +26,7 @@ internal fun LedSubtitleMainContent(
     textColor: Color,
     textAlign: TextAlign,
     fontWeight: FontWeight,
+    typeface: Typeface,
     maxFontSizeSp: Float,
     autoFitEnabled: Boolean,
     rotated180: Boolean,
@@ -57,7 +59,7 @@ internal fun LedSubtitleMainContent(
                 text = subtitleText,
                 settings = settings,
                 motionState = motionState,
-                bold = fontWeight == FontWeight.Bold,
+                typeface = typeface,
                 modifier = Modifier.fillMaxSize()
             )
         }

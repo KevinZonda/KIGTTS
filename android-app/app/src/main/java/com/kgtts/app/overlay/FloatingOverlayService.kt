@@ -84,6 +84,9 @@ import androidx.viewpager2.widget.ViewPager2
 import com.lhtstudio.kigtts.app.R
 import com.lhtstudio.kigtts.app.audio.SoundboardManager
 import com.lhtstudio.kigtts.app.audio.SoundboardPlaybackState
+import com.lhtstudio.kigtts.app.data.AppFontChangeBus
+import com.lhtstudio.kigtts.app.data.AppFontDefaults
+import com.lhtstudio.kigtts.app.data.RecognitionResourceRepository
 import com.lhtstudio.kigtts.app.data.SoundboardConfig
 import com.lhtstudio.kigtts.app.data.SoundboardGroup
 import com.lhtstudio.kigtts.app.data.SoundboardItem
@@ -105,6 +108,7 @@ import com.lhtstudio.kigtts.app.util.BluetoothMediaTitleBridge
 import com.lhtstudio.kigtts.app.util.QqScannerSupport
 import com.lhtstudio.kigtts.app.util.QuickCardRenderCache
 import com.lhtstudio.kigtts.app.util.snapPlaybackGainPercent
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -143,6 +147,12 @@ class FloatingOverlayService : Service() {
     }
 
     private var settings = UserPrefs.AppSettings()
+    private var recognitionResourceInstalled = false
+    private val overlayFontApplier = OverlayViewFontApplier()
+    private var overlayTextInputWindow: OverlayTextInputWindow? = null
+    private var overlayFabModeGuideWindow: OverlayFabModeGuideWindow? = null
+    private var overlayTypefaceRequest: OverlayTypefaceRequest? = null
+    private var overlayTypefaceLoadGeneration = 0L
     private var cachedThemeColorArgb = Int.MIN_VALUE
     private var cachedThemeDark = false
     private var cachedToneCorrectionEnabled = false
@@ -152,6 +162,7 @@ class FloatingOverlayService : Service() {
         toneCorrectionEnabled = false
     )
     private var settingsJob: Job? = null
+    private var fontChangeJob: Job? = null
     private var screenStateReceiverRegistered = false
     private val screenStateReceiver =
         object : BroadcastReceiver() {
@@ -193,6 +204,7 @@ class FloatingOverlayService : Service() {
     private var panelStatusLogoView: ImageView? = null
     private var panelStatusMicContainer: LinearLayout? = null
     private var panelStatusEqContainer: LinearLayout? = null
+    private var panelStatusMicSpacerView: View? = null
     private var panelStatusMicIconView: TextView? = null
     private var panelStatusEqIconView: TextView? = null
     private var panelStatusMicProgressView: ProgressBar? = null
@@ -228,6 +240,7 @@ class FloatingOverlayService : Service() {
     private var miniStatusLogoView: ImageView? = null
     private var miniStatusMicContainer: LinearLayout? = null
     private var miniStatusEqContainer: LinearLayout? = null
+    private var miniStatusMicSpacerView: View? = null
     private var miniStatusMicIconView: TextView? = null
     private var miniStatusEqIconView: TextView? = null
     private var miniStatusMicProgressView: ProgressBar? = null
@@ -311,6 +324,13 @@ class FloatingOverlayService : Service() {
     private var pttTemporaryStart = false
     private var overlayHintText = ""
     private var currentDragAction = OverlayReleaseAction.SendToSubtitle
+    private var actionDownRawX = 0f
+    private var actionDownRawY = 0f
+    private var actionLongPressTriggered = false
+    private var actionKeyboardGesture = false
+    private var actionPttSessionStarted = false
+    private var actionPointerMoved = false
+    private var actionLongPressJob: Job? = null
     private var overlayDarkTheme = false
     private var overlayStatusExpanded = false
     private var fabIdleDockJob: Job? = null
@@ -358,6 +378,7 @@ class FloatingOverlayService : Service() {
                         ) {
                             lastAppliedRealtimeQuickSubtitleConfigRevision = configRevision
                             applyRealtimeQuickSubtitleConfig(configJson)
+                            overlayTextInputWindow?.updateDraft(quickSubtitleInputText)
                         }
                         val requestId = snapshot.quickSubtitleRequestId
                         val subtitleText = snapshot.quickSubtitleText.trim()
@@ -668,12 +689,14 @@ class FloatingOverlayService : Service() {
         val card: LinearLayout,
         val inputProgress: ProgressBar,
         val playbackProgress: ProgressBar,
+        val playbackIcon: TextView,
         val inputLabel: TextView,
         val outputLabel: TextView,
         val pttIcon: TextView,
         val ttsIcon: TextView,
         val volumeLabel: TextView,
-        val volumeSeekBar: SeekBar
+        val volumeSeekBar: SeekBar,
+        val recognitionOnlyViews: List<View>
     )
 
     private inner class MiniQuickCardPagerAdapter :
@@ -1612,6 +1635,8 @@ class FloatingOverlayService : Service() {
         val root = fabRoot ?: return
         fabIdleDockJob?.cancel()
         fabIdleDockJob = null
+        actionLongPressJob?.cancel()
+        actionLongPressJob = null
         cancelFabSnapAnimation()
         cancelFabInnerFoldAnimation()
         cancelFabDockAlphaAnimation()
@@ -1903,17 +1928,24 @@ class FloatingOverlayService : Service() {
         ensureWindows()
         RealtimeRuntimeBridge.addListener(runtimeBridgeListener)
         observeSettings()
+        observeAppFontChanges()
         observeSoundboardPlayback()
         scope.launch {
             settings = UserPrefs.getSettings(this@FloatingOverlayService)
+            refreshRecognitionResourceAvailability()
+            val typefaceChanged = refreshOverlayTypefaces(settings)
             applyOverlayWindowFlags()
             loadQuickSubtitleConfig()
             loadOverlayShortcuts()
             loadOverlayLauncherLayout()
-            restoreFabPositionForCurrentOrientation(allowOppositeConversion = true)
-            refreshPanelUi()
-            refreshQuickSubtitleUi()
-            updateFabUi()
+            if (typefaceChanged) {
+                rebuildWindowsPreservingState()
+            } else {
+                restoreFabPositionForCurrentOrientation(allowOppositeConversion = true)
+                refreshPanelUi()
+                refreshQuickSubtitleUi()
+                updateFabUi()
+            }
         }
     }
 
@@ -1938,6 +1970,8 @@ class FloatingOverlayService : Service() {
             ACTION_REFRESH -> {
                 scope.launch {
                     settings = UserPrefs.getSettings(this@FloatingOverlayService)
+                    refreshRecognitionResourceAvailability()
+                    val typefaceChanged = refreshOverlayTypefaces(settings)
                     applyOverlayWindowFlags()
                     loadQuickSubtitleConfig()
                     loadOverlayShortcuts()
@@ -1947,10 +1981,14 @@ class FloatingOverlayService : Service() {
                         loadMiniSoundboardLayout()
                         refreshMiniSoundboardUi()
                     }
-                    restoreFabPositionForCurrentOrientation(allowOppositeConversion = true)
-                    refreshPanelUi()
-                    refreshQuickSubtitleUi()
-                    updateFabUi()
+                    if (typefaceChanged) {
+                        rebuildWindowsPreservingState()
+                    } else {
+                        restoreFabPositionForCurrentOrientation(allowOppositeConversion = true)
+                        refreshPanelUi()
+                        refreshQuickSubtitleUi()
+                        updateFabUi()
+                    }
                 }
             }
         }
@@ -1960,6 +1998,8 @@ class FloatingOverlayService : Service() {
     override fun onDestroy() {
         settingsJob?.cancel()
         settingsJob = null
+        fontChangeJob?.cancel()
+        fontChangeJob = null
         soundboardPlaybackJob?.cancel()
         soundboardPlaybackJob = null
         fabIdleDockJob?.cancel()
@@ -2034,9 +2074,14 @@ class FloatingOverlayService : Service() {
                     stopSelf()
                     return@collectLatest
                 }
+                val typefaceChanged = refreshOverlayTypefaces(next)
                 val darkNow = isOverlayDarkTheme()
                 if (darkNow != previousDarkTheme) {
                     overlayDarkTheme = darkNow
+                    rebuildWindowsPreservingState()
+                    return@collectLatest
+                }
+                if (typefaceChanged) {
                     rebuildWindowsPreservingState()
                     return@collectLatest
                 }
@@ -2064,6 +2109,56 @@ class FloatingOverlayService : Service() {
                 refreshFabIdleDockState()
             }
         }
+    }
+
+    private fun observeAppFontChanges() {
+        fontChangeJob?.cancel()
+        fontChangeJob = scope.launch {
+            AppFontChangeBus.changes.collectLatest {
+                if (
+                    settings.floatingOverlayUseSystemFont ||
+                    settings.appFontId == AppFontDefaults.SystemFontId
+                ) {
+                    return@collectLatest
+                }
+                if (refreshOverlayTypefaces(settings, force = true)) {
+                    rebuildWindowsPreservingState()
+                }
+            }
+        }
+    }
+
+    private suspend fun refreshOverlayTypefaces(
+        next: UserPrefs.AppSettings,
+        force: Boolean = false
+    ): Boolean {
+        val request = if (next.floatingOverlayUseSystemFont) {
+            OverlayTypefaceRequest(
+                useSystemFont = true,
+                appFontId = AppFontDefaults.SystemFontId,
+                preferredWeight = AppFontDefaults.DefaultWeight
+            )
+        } else {
+            OverlayTypefaceRequest(
+                useSystemFont = false,
+                appFontId = next.appFontId,
+                preferredWeight = next.appFontWeight
+            )
+        }
+        if (!force && request == overlayTypefaceRequest) return false
+        val generation = ++overlayTypefaceLoadGeneration
+        val loaded = try {
+            OverlayTypefaceLoader.load(this, request)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Throwable) {
+            AppLogger.e("FloatingOverlayService custom font load failed", error)
+            null
+        }
+        if (generation != overlayTypefaceLoadGeneration) return false
+        overlayTypefaceRequest = request
+        overlayFontApplier.updateTypefaces(loaded)
+        return true
     }
 
     private fun observeSoundboardPlayback() {
@@ -2379,7 +2474,7 @@ class FloatingOverlayService : Service() {
             }
             setPadding(dp(4), dp(2), dp(4), dp(2))
             addView(panelStatusMicContainer)
-            addView(spaceView(dp(12), 1))
+            addView(spaceView(dp(12), 1).also { panelStatusMicSpacerView = it })
             addView(panelStatusEqContainer)
             setOnClickListener { toggleOverlayStatusExpanded() }
         }
@@ -2862,7 +2957,7 @@ class FloatingOverlayService : Service() {
             }
             setPadding(dp(4), dp(2), dp(4), dp(2))
             addView(miniStatusMicContainer)
-            addView(spaceView(dp(12), 1))
+            addView(spaceView(dp(12), 1).also { miniStatusMicSpacerView = it })
             addView(miniStatusEqContainer)
             setOnClickListener { toggleOverlayStatusExpanded() }
         }
@@ -3945,11 +4040,14 @@ class FloatingOverlayService : Service() {
             gravity = Gravity.TOP or Gravity.START
         }
         windowManager.addView(confirmOverlay, confirmParams)
+        overlayFontApplier.applyTo(fabRoot, panelRoot, panelPickerOverlay, miniRoot, confirmOverlay)
         refreshQuickSubtitleUi()
         updateFabUi()
     }
 
     private fun removeWindows() {
+        overlayTextInputWindow?.dismiss(immediate = true)
+        overlayFabModeGuideWindow?.dismiss()
         cancelFabSnapAnimation()
         cancelFabInnerFoldAnimation()
         confirmOverlay?.let { runCatching { windowManager.removeView(it) } }
@@ -3970,6 +4068,7 @@ class FloatingOverlayService : Service() {
         panelStatusLogoView = null
         panelStatusMicContainer = null
         panelStatusEqContainer = null
+        panelStatusMicSpacerView = null
         panelStatusMicIconView = null
         panelStatusEqIconView = null
         panelStatusMicProgressView = null
@@ -3997,6 +4096,7 @@ class FloatingOverlayService : Service() {
         miniStatusLogoView = null
         miniStatusMicContainer = null
         miniStatusEqContainer = null
+        miniStatusMicSpacerView = null
         miniStatusMicIconView = null
         miniStatusEqIconView = null
         miniStatusMicProgressView = null
@@ -4118,6 +4218,8 @@ class FloatingOverlayService : Service() {
         val playbackProgress = effectivePlaybackProgress()
         val pttPressedState = effectivePttPressedState()
         val actionIcon = when {
+            !recognitionResourceInstalled -> "keyboard"
+            settings.floatingOverlayFabPrefersKeyboard -> "keyboard"
             settings.pushToTalkMode && pttPressedState -> "settings_voice"
             settings.pushToTalkMode -> "mic"
             runningState -> "stop"
@@ -4127,23 +4229,27 @@ class FloatingOverlayService : Service() {
         bubbleRow?.visibility = View.GONE
         val hasLatestResult = latestText.isNotBlank()
         val topMicIcon = when {
-            settings.ttsDisabled -> "mic_off"
             settings.pushToTalkMode && pttPressedState -> "settings_voice"
             else -> "mic"
         }
+        val topAudioIcon = if (settings.ttsDisabled) "graphic_eq_off" else "graphic_eq"
         syncTopStatusContent(latestText)
         panelStatusMicIconView?.text = topMicIcon
-        panelStatusEqIconView?.text = "graphic_eq"
+        panelStatusEqIconView?.text = topAudioIcon
         panelStatusMicProgressView?.progress = (inputLevel * 1000f).roundToInt().coerceIn(0, 1000)
         panelStatusEqProgressView?.progress = (playbackProgress * 1000f).roundToInt().coerceIn(0, 1000)
         panelStatusMicContainer?.alpha = if (settings.pushToTalkMode || pttPressedState) 1f else 0.68f
         panelStatusEqContainer?.alpha = if (runningState || hasLatestResult) 1f else 0.68f
+        panelStatusMicContainer?.visibility = if (recognitionResourceInstalled) View.VISIBLE else View.GONE
+        panelStatusMicSpacerView?.visibility = if (recognitionResourceInstalled) View.VISIBLE else View.GONE
         miniStatusMicIconView?.text = topMicIcon
-        miniStatusEqIconView?.text = "graphic_eq"
+        miniStatusEqIconView?.text = topAudioIcon
         miniStatusMicProgressView?.progress = (inputLevel * 1000f).roundToInt().coerceIn(0, 1000)
         miniStatusEqProgressView?.progress = (playbackProgress * 1000f).roundToInt().coerceIn(0, 1000)
         miniStatusMicContainer?.alpha = if (settings.pushToTalkMode || pttPressedState) 1f else 0.68f
         miniStatusEqContainer?.alpha = if (runningState || hasLatestResult) 1f else 0.68f
+        miniStatusMicContainer?.visibility = if (recognitionResourceInstalled) View.VISIBLE else View.GONE
+        miniStatusMicSpacerView?.visibility = if (recognitionResourceInstalled) View.VISIBLE else View.GONE
         panelActionFabIconView?.text = actionIcon
         miniActionFabIconView?.text = actionIcon
         refreshStatusDetailUi()
@@ -4154,6 +4260,93 @@ class FloatingOverlayService : Service() {
         if (fabIdleDocked) {
             bubbleRow?.visibility = View.GONE
         }
+    }
+
+    private suspend fun refreshRecognitionResourceAvailability() {
+        val installed = withContext(Dispatchers.IO) {
+            runCatching {
+                RecognitionResourceRepository(this@FloatingOverlayService).status().installed
+            }.onFailure {
+                AppLogger.e("FloatingOverlayService recognition resource status failed", it)
+            }.getOrDefault(false)
+        }
+        recognitionResourceInstalled = installed
+        updateFabUi()
+    }
+
+    private fun overlayInteractionStyle(): OverlayInteractionStyle = OverlayInteractionStyle(
+        accentColor = overlayPrimaryColor(),
+        onAccentColor = overlayOnPrimaryColor(),
+        surfaceColor = overlayCardColor(),
+        onSurfaceColor = overlayOnSurfaceColor(),
+        onSurfaceVariantColor = overlayOnSurfaceVariantColor(),
+        previewScrimColor = overlayPreviewScrimColor(),
+        regularTypeface = overlayFontApplier.typeface(bold = false),
+        boldTypeface = overlayFontApplier.typeface(bold = true),
+        iconTypeface = iconTypeface,
+        usesCustomFontMetrics = overlayFontApplier.hasCustomTypeface
+    )
+
+    private fun textInputWindow(): OverlayTextInputWindow =
+        overlayTextInputWindow ?: OverlayTextInputWindow(
+            context = this,
+            windowManager = windowManager,
+            styleProvider = ::overlayInteractionStyle,
+            createPreviewCard = ::createOverlayTextInputPreviewCard,
+            updatePreviewCard = ::updateOverlayTextInputPreviewCard,
+            onDraftChanged = { quickSubtitleInputText = it },
+            onPlayOnSendChanged = { enabled ->
+                quickSubtitlePlayOnSend = enabled
+                saveQuickSubtitleConfig()
+            },
+            onSend = { text ->
+                quickSubtitleInputText = ""
+                submitQuickSubtitleText(text)
+                if (!miniVisible || miniMode != MiniOverlayMode.Subtitle) {
+                    showMiniPanel(MiniOverlayMode.Subtitle)
+                }
+            }
+        ).also { overlayTextInputWindow = it }
+
+    private fun openOverlayTextInput() {
+        scope.launch {
+            if (!quickSubtitleConfigLoaded) loadQuickSubtitleConfig()
+            textInputWindow().show(
+                initialText = quickSubtitleInputText,
+                initialPlayOnSend = quickSubtitlePlayOnSend
+            )
+        }
+    }
+
+    private fun fabModeGuideWindow(): OverlayFabModeGuideWindow =
+        overlayFabModeGuideWindow ?: OverlayFabModeGuideWindow(
+            context = this,
+            windowManager = windowManager,
+            styleProvider = ::overlayInteractionStyle,
+            onModeSelected = { keyboardFirst ->
+                settings = settings.copy(
+                    floatingOverlayFabPrefersKeyboard = keyboardFirst,
+                    floatingOverlayFabInputGuideShown = true
+                )
+                updateFabUi()
+                scope.launch(Dispatchers.IO) {
+                    UserPrefs.setFloatingOverlayFabModeChoice(
+                        this@FloatingOverlayService,
+                        keyboardFirst
+                    )
+                }
+            }
+        ).also { overlayFabModeGuideWindow = it }
+
+    private fun maybeShowOverlayFabModeGuide() {
+        if (
+            !recognitionResourceInstalled ||
+            settings.floatingOverlayFabInputGuideShown ||
+            overlayFabModeGuideWindow?.isShowing == true
+        ) {
+            return
+        }
+        fabModeGuideWindow().show(settings.pushToTalkMode)
     }
 
     private fun syncFabVisibility(show: Boolean) {
@@ -4337,8 +4530,14 @@ class FloatingOverlayService : Service() {
 
     private fun updateConfirmVisuals(action: OverlayReleaseAction) {
         val prompt = when (action) {
-            OverlayReleaseAction.SendToSubtitle -> "松手悬浮窗上屏"
-            OverlayReleaseAction.SendToInput -> "松手打开快捷字幕并输入"
+            OverlayReleaseAction.SendToSubtitle -> {
+                if (settings.floatingOverlayFabPrefersKeyboard) {
+                    "松手悬浮窗上屏"
+                } else {
+                    "松手悬浮窗上屏，下滑输入文本"
+                }
+            }
+            OverlayReleaseAction.SendToInput -> "松手打开悬浮窗文本输入"
             OverlayReleaseAction.Cancel -> "松手取消发送"
         }
         confirmTextView?.text = effectivePttStreamingText().ifBlank { prompt }
@@ -4412,8 +4611,12 @@ class FloatingOverlayService : Service() {
             host.setPushToTalkPressed(false)
             if (shouldStop) host.stopRealtime()
         }
-        if (action == OverlayReleaseAction.SendToInput && text.isNotEmpty()) {
-            launchQuickSubtitle(OverlayBridge.TARGET_OPEN, "")
+        if (action == OverlayReleaseAction.SendToInput) {
+            if (text.isNotEmpty()) {
+                quickSubtitleInputText = text
+                saveQuickSubtitleConfig()
+            }
+            openOverlayTextInput()
         }
         updateFabUi()
     }
@@ -4458,10 +4661,11 @@ class FloatingOverlayService : Service() {
         updateFabUi()
     }
 
-    private fun toggleContinuousMode() {
+    private fun toggleContinuousMode(showStateToast: Boolean = false) {
         scope.launch {
-            if (effectiveRunningState()) {
+            val runningAfter = if (effectiveRunningState()) {
                 stopListeningInternal()
+                false
             } else {
                 if (settings.ttsDisabled) {
                     overlayHintText = "TTS已禁用，如需打开，请打开顶部音频状态菜单将“禁用TTS”选项关闭"
@@ -4469,6 +4673,11 @@ class FloatingOverlayService : Service() {
                     updateFabUi()
                 }
                 startListeningInternal(true)
+            }
+            if (showStateToast) {
+                overlayHintText = if (runningAfter) "语音识别已开启" else "语音识别已关闭"
+                Toast.makeText(this@FloatingOverlayService, overlayHintText, Toast.LENGTH_SHORT).show()
+                updateFabUi()
             }
         }
     }
@@ -4601,44 +4810,140 @@ class FloatingOverlayService : Service() {
         return handleSharedActionTouch(event)
     }
 
+    private fun isOverlayKeyboardInputSwipe(event: MotionEvent): Boolean {
+        val dx = event.rawX - actionDownRawX
+        val dy = event.rawY - actionDownRawY
+        val threshold = dp(56).toFloat()
+        return if (displayOrientation() == Configuration.ORIENTATION_LANDSCAPE) {
+            dx >= threshold && abs(dx) >= abs(dy)
+        } else {
+            dy >= threshold && abs(dy) >= abs(dx)
+        }
+    }
+
+    private fun scheduleActionLongPress(action: () -> Unit) {
+        actionLongPressJob?.cancel()
+        actionLongPressJob = scope.launch {
+            delay(ViewConfiguration.getLongPressTimeout().toLong())
+            if (!actionPointerMoved) {
+                actionLongPressTriggered = true
+                performOverlayKeyHaptic(activeConfirmFab())
+                action()
+            }
+        }
+    }
+
+    private fun resetActionGestureState() {
+        actionLongPressJob?.cancel()
+        actionLongPressJob = null
+        actionLongPressTriggered = false
+        actionKeyboardGesture = false
+        actionPttSessionStarted = false
+        actionPointerMoved = false
+    }
+
     @SuppressLint("ClickableViewAccessibility")
     private fun handleSharedActionTouch(event: MotionEvent): Boolean {
-        if (event.actionMasked == MotionEvent.ACTION_DOWN) {
-            performOverlayKeyHaptic(activeConfirmFab())
-        }
-        if (settings.pushToTalkMode) {
-            when (event.actionMasked) {
-                MotionEvent.ACTION_DOWN -> {
-                    beginPttSession()
-                    return true
-                }
-                MotionEvent.ACTION_MOVE -> {
-                    if (settings.pushToTalkConfirmInput) {
-                        currentDragAction = resolveConfirmAction(event.rawX, event.rawY)
-                        updateConfirmVisuals(currentDragAction)
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                resetActionGestureState()
+                actionDownRawX = event.rawX
+                actionDownRawY = event.rawY
+                performOverlayKeyHaptic(activeConfirmFab())
+                when {
+                    !recognitionResourceInstalled -> Unit
+                    settings.floatingOverlayFabPrefersKeyboard && settings.pushToTalkMode -> {
+                        scheduleActionLongPress {
+                            beginPttSession()
+                            actionPttSessionStarted = pttPressed
+                        }
                     }
-                    return true
-                }
-                MotionEvent.ACTION_UP -> {
-                    val action = if (settings.pushToTalkConfirmInput) {
-                        resolveConfirmAction(event.rawX, event.rawY)
-                    } else {
-                        OverlayReleaseAction.SendToSubtitle
+                    settings.floatingOverlayFabPrefersKeyboard -> {
+                        scheduleActionLongPress { toggleContinuousMode(showStateToast = true) }
                     }
-                    finishPttSession(action)
-                    return true
+                    settings.pushToTalkMode -> {
+                        beginPttSession()
+                        actionPttSessionStarted = pttPressed
+                    }
+                    else -> scheduleActionLongPress(::openOverlayTextInput)
                 }
-                MotionEvent.ACTION_CANCEL,
-                MotionEvent.ACTION_OUTSIDE -> {
-                    finishPttSession(OverlayReleaseAction.Cancel)
-                    return true
-                }
+                return true
             }
-            return true
-        }
-        if (event.actionMasked == MotionEvent.ACTION_UP) {
-            toggleContinuousMode()
-            return true
+
+            MotionEvent.ACTION_MOVE -> {
+                val movedDistance = kotlin.math.hypot(
+                    event.rawX - actionDownRawX,
+                    event.rawY - actionDownRawY
+                )
+                if (!actionPttSessionStarted && movedDistance > dp(18)) {
+                    actionPointerMoved = true
+                    actionLongPressJob?.cancel()
+                }
+                if (
+                    actionPttSessionStarted &&
+                    !settings.floatingOverlayFabPrefersKeyboard &&
+                    settings.pushToTalkMode &&
+                    isOverlayKeyboardInputSwipe(event)
+                ) {
+                    actionKeyboardGesture = true
+                    currentDragAction = OverlayReleaseAction.SendToInput
+                    if (settings.pushToTalkConfirmInput) updateConfirmVisuals(currentDragAction)
+                } else if (
+                    actionPttSessionStarted &&
+                    settings.pushToTalkConfirmInput &&
+                    !actionKeyboardGesture
+                ) {
+                    currentDragAction = resolveConfirmAction(event.rawX, event.rawY)
+                    updateConfirmVisuals(currentDragAction)
+                }
+                return true
+            }
+
+            MotionEvent.ACTION_UP -> {
+                actionLongPressJob?.cancel()
+                when {
+                    !recognitionResourceInstalled -> openOverlayTextInput()
+                    settings.floatingOverlayFabPrefersKeyboard && settings.pushToTalkMode -> {
+                        if (actionPttSessionStarted) {
+                            val action = if (settings.pushToTalkConfirmInput) {
+                                resolveConfirmAction(event.rawX, event.rawY)
+                            } else {
+                                OverlayReleaseAction.SendToSubtitle
+                            }
+                            finishPttSession(action)
+                        } else if (!actionLongPressTriggered && !actionPointerMoved) {
+                            openOverlayTextInput()
+                        }
+                    }
+                    settings.floatingOverlayFabPrefersKeyboard -> {
+                        if (!actionLongPressTriggered && !actionPointerMoved) openOverlayTextInput()
+                    }
+                    settings.pushToTalkMode -> {
+                        if (actionPttSessionStarted) {
+                            actionKeyboardGesture =
+                                actionKeyboardGesture || isOverlayKeyboardInputSwipe(event)
+                            val action = when {
+                                actionKeyboardGesture -> OverlayReleaseAction.SendToInput
+                                settings.pushToTalkConfirmInput ->
+                                    resolveConfirmAction(event.rawX, event.rawY)
+                                else -> OverlayReleaseAction.SendToSubtitle
+                            }
+                            finishPttSession(action)
+                        }
+                    }
+                    !actionLongPressTriggered && !actionPointerMoved -> toggleContinuousMode()
+                }
+                resetActionGestureState()
+                return true
+            }
+
+            MotionEvent.ACTION_CANCEL,
+            MotionEvent.ACTION_OUTSIDE -> {
+                actionLongPressJob?.cancel()
+                if (actionPttSessionStarted) finishPttSession(OverlayReleaseAction.Cancel)
+                resetActionGestureState()
+                return true
+            }
         }
         return true
     }
@@ -4695,6 +5000,7 @@ class FloatingOverlayService : Service() {
                 return@launch
             }
             ensureWindows()
+            refreshRecognitionResourceAvailability()
             ensureRealtimeHostBound()
             collapseOverlayStatusExpanded(animate = false)
             val switchingFromMini = miniVisible
@@ -4725,6 +5031,7 @@ class FloatingOverlayService : Service() {
                 animateOverlayIn(panelContent, fromBottom = true)
             }
             updateFabUi()
+            maybeShowOverlayFabModeGuide()
         }
     }
 
@@ -4755,6 +5062,7 @@ class FloatingOverlayService : Service() {
                 return@launch
             }
             ensureWindows()
+            refreshRecognitionResourceAvailability()
             ensureRealtimeHostBound()
             collapseOverlayStatusExpanded(animate = false)
             val switchingFromPanel = panelVisible
@@ -4800,6 +5108,7 @@ class FloatingOverlayService : Service() {
                 updateFabUi()
                 animateOverlayIn(miniContent, fromBottom = false)
             }
+            maybeShowOverlayFabModeGuide()
         }
     }
 
@@ -5867,10 +6176,12 @@ class FloatingOverlayService : Service() {
         minFontSizeSp: Float,
         maxLines: Int? = null,
         viewportView: View = textView,
-        centerVerticallyWhenCentered: Boolean = false
+        centerVerticallyWhenCentered: Boolean = false,
+        lineHeightMultiplier: Float = 1.15f
     ) {
         textView.text = text
-        textView.typeface = if (quickSubtitleBold) Typeface.DEFAULT_BOLD else Typeface.DEFAULT
+        overlayFontApplier.apply(textView, quickSubtitleBold)
+        overlayFontApplier.applyStableLineHeight(textView, lineHeightMultiplier)
         textView.gravity = if (quickSubtitleCentered) {
             if (centerVerticallyWhenCentered) Gravity.CENTER else Gravity.CENTER_HORIZONTAL or Gravity.TOP
         } else {
@@ -5888,8 +6199,14 @@ class FloatingOverlayService : Service() {
             textView.maxLines = Int.MAX_VALUE
             textView.ellipsize = null
         }
+
+        fun applyTextSize(sizeSp: Float) {
+            textView.setTextSize(TypedValue.COMPLEX_UNIT_SP, sizeSp)
+            overlayFontApplier.applyStableLineHeight(textView, lineHeightMultiplier)
+        }
+
         if (!settings.quickSubtitleAutoFit) {
-            textView.setTextSize(TypedValue.COMPLEX_UNIT_SP, maxFontSizeSp)
+            applyTextSize(maxFontSizeSp)
             return
         }
 
@@ -5905,7 +6222,7 @@ class FloatingOverlayService : Service() {
                     viewportView.postDelayed({ applyFitWhenReady(remainingRetries - 1) }, 16L)
                     return
                 }
-                textView.setTextSize(TypedValue.COMPLEX_UNIT_SP, maxFontSizeSp)
+                applyTextSize(maxFontSizeSp)
                 return
             }
             val fit = measureOverlayQuickSubtitleText(
@@ -5914,9 +6231,10 @@ class FloatingOverlayService : Service() {
                 heightPx = availableHeight,
                 maxFontSizeSp = maxFontSizeSp,
                 minFontSizeSp = minFontSizeSp,
-                maxLines = maxLines
+                maxLines = maxLines,
+                lineHeightMultiplier = lineHeightMultiplier
             )
-            textView.setTextSize(TypedValue.COMPLEX_UNIT_SP, fit.fontSizeSp)
+            applyTextSize(fit.fontSizeSp)
             if (maxLines != null) {
                 textView.maxLines = maxLines
                 textView.ellipsize = TextUtils.TruncateAt.END
@@ -5933,7 +6251,8 @@ class FloatingOverlayService : Service() {
         heightPx: Int,
         maxFontSizeSp: Float,
         minFontSizeSp: Float,
-        maxLines: Int?
+        maxLines: Int?,
+        lineHeightMultiplier: Float
     ): OverlayQuickSubtitleFitResult {
         val boundedMaxSp = maxFontSizeSp.coerceAtLeast(minFontSizeSp)
         val minSp = minFontSizeSp.roundToInt().coerceAtLeast(1)
@@ -5945,18 +6264,33 @@ class FloatingOverlayService : Service() {
         fun fits(sp: Int): Boolean {
             val textPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
                 color = overlayOnSurfaceColor()
-                typeface = if (quickSubtitleBold) Typeface.DEFAULT_BOLD else Typeface.DEFAULT
+                typeface = overlayFontApplier.typeface(quickSubtitleBold)
                 textSize = TypedValue.applyDimension(
                     TypedValue.COMPLEX_UNIT_SP,
                     sp.toFloat(),
                     resources.displayMetrics
                 )
             }
-            val layout = StaticLayout.Builder
+            val layoutBuilder = StaticLayout.Builder
                 .obtain(textValue, 0, textValue.length, textPaint, widthPx)
                 .setAlignment(layoutAlignment)
                 .setIncludePad(false)
-                .build()
+            overlayFontApplier.lineHeightPxFor(
+                textSizePx = textPaint.textSize,
+                scaledDensity = TypedValue.applyDimension(
+                    TypedValue.COMPLEX_UNIT_SP,
+                    1f,
+                    resources.displayMetrics
+                ),
+                multiplier = lineHeightMultiplier
+            )?.let { targetLineHeight ->
+                val metrics = textPaint.fontMetricsInt
+                layoutBuilder.setLineSpacing(
+                    (targetLineHeight - (metrics.descent - metrics.ascent)).toFloat(),
+                    1f
+                )
+            }
+            val layout = layoutBuilder.build()
             if (maxLines != null && layout.lineCount > maxLines) {
                 return false
             }
@@ -7578,11 +7912,61 @@ class FloatingOverlayService : Service() {
         onCardClick: () -> Unit,
         onCardLongClick: () -> Unit
     ): View {
+        val preview = createMiniSubtitlePreviewCard(
+            textView = TextView(this).apply {
+                setTextColor(overlayOnSurfaceColor())
+            },
+            onCardClick = onCardClick,
+            onCardLongClick = onCardLongClick
+        )
+        updateOverlaySubtitlePreviewCard(
+            preview,
+            quickSubtitleCurrentText.ifBlank { defaultQuickSubtitleText }
+        )
+        return preview.root
+    }
+
+    private fun createOverlayTextInputPreviewCard(): OverlaySubtitlePreviewCard =
+        createMiniSubtitlePreviewCard(
+            textView = OverlayInputPreviewTextView(this, overlayAccentTextColor()).apply {
+                setTextColor(overlayOnSurfaceColor())
+            },
+            onCardClick = {},
+            onCardLongClick = null
+        )
+
+    private fun updateOverlayTextInputPreviewCard(
+        preview: OverlaySubtitlePreviewCard,
+        text: String
+    ) {
+        updateOverlaySubtitlePreviewCard(preview, text)
+    }
+
+    private fun updateOverlaySubtitlePreviewCard(
+        preview: OverlaySubtitlePreviewCard,
+        text: CharSequence
+    ) {
+        applyOverlayQuickSubtitleTextAppearance(
+            textView = preview.textView,
+            text = text,
+            maxFontSizeSp = (quickSubtitleFontSizeSp * 1.25f).coerceIn(36f, 140f),
+            minFontSizeSp = 18f,
+            maxLines = null,
+            viewportView = preview.viewportView,
+            lineHeightMultiplier = 1.36f
+        )
+    }
+
+    private fun createMiniSubtitlePreviewCard(
+        textView: TextView,
+        onCardClick: (() -> Unit)?,
+        onCardLongClick: (() -> Unit)?
+    ): OverlaySubtitlePreviewCard {
         val previewCardSize = miniSubtitlePreviewCardSize()
-        val previewClickListener = View.OnClickListener { onCardClick() }
+        val previewClickListener = View.OnClickListener { onCardClick?.invoke() }
         val previewLongClickListener = View.OnLongClickListener {
-            onCardLongClick()
-            true
+            onCardLongClick?.invoke()
+            onCardLongClick != null
         }
         val previewScrollView = ScrollView(this).apply {
             isFillViewport = true
@@ -7594,54 +7978,47 @@ class FloatingOverlayService : Service() {
             setOnClickListener(previewClickListener)
             setOnLongClickListener(previewLongClickListener)
         }
-        val previewTextView = TextView(this).apply {
-            setTextColor(overlayOnSurfaceColor())
+        textView.apply {
             isClickable = true
-            isLongClickable = true
+            isLongClickable = onCardLongClick != null
             setOnClickListener(previewClickListener)
             setOnLongClickListener(previewLongClickListener)
         }
-        applyOverlayQuickSubtitleTextAppearance(
-            textView = previewTextView,
-            text = quickSubtitleCurrentText.ifBlank { defaultQuickSubtitleText },
-            maxFontSizeSp = (quickSubtitleFontSizeSp * 1.25f).coerceIn(36f, 140f),
-            minFontSizeSp = 18f,
-            maxLines = null,
-            viewportView = previewScrollView
-        )
         previewScrollView.addView(
-            previewTextView,
+            textView,
             FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
             )
         )
-        return FrameLayout(this).apply {
+        val cardView = FrameLayout(this).apply {
+            background = roundedRectDrawable(overlayRadiusDp, overlayCardColor())
+            elevation = dp(10).toFloat()
+            clipChildren = false
+            clipToPadding = false
+            isClickable = true
+            isLongClickable = onCardLongClick != null
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                foreground = selectableDrawable()
+            }
+            setOnClickListener(previewClickListener)
+            setOnLongClickListener(previewLongClickListener)
+            addView(
+                previewScrollView,
+                FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT
+                )
+            )
+        }
+        val rootView = FrameLayout(this).apply {
             clipChildren = false
             clipToPadding = false
             addView(
                 FrameLayout(this@FloatingOverlayService).apply {
                     setPadding(dp(14), dp(14), dp(14), dp(14))
                     addView(
-                        FrameLayout(this@FloatingOverlayService).apply {
-                            background = roundedRectDrawable(overlayRadiusDp, overlayCardColor())
-                            elevation = dp(10).toFloat()
-                            clipChildren = false
-                            clipToPadding = false
-                            isClickable = true
-                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                                foreground = selectableDrawable()
-                            }
-                            setOnClickListener(previewClickListener)
-                            setOnLongClickListener(previewLongClickListener)
-                            addView(
-                                previewScrollView,
-                                FrameLayout.LayoutParams(
-                                    ViewGroup.LayoutParams.MATCH_PARENT,
-                                    ViewGroup.LayoutParams.MATCH_PARENT
-                                )
-                            )
-                        },
+                        cardView,
                         FrameLayout.LayoutParams(
                             previewCardSize.width,
                             previewCardSize.height
@@ -7654,6 +8031,14 @@ class FloatingOverlayService : Service() {
                 )
             )
         }
+        return OverlaySubtitlePreviewCard(
+            root = rootView,
+            textView = textView,
+            viewportView = previewScrollView,
+            cardView = cardView,
+            preferredWidth = previewCardSize.width,
+            preferredHeight = previewCardSize.height
+        )
     }
 
     private fun createOverlayQuickCardLogoView(light: Boolean = overlayDarkTheme): ImageView =
@@ -9727,11 +10112,21 @@ class FloatingOverlayService : Service() {
         var nextId = 1
         if (menuTargets.isNotEmpty()) {
             menuTargets.forEach { target ->
-                menu.menu.add(0, nextId++, 0, target.title)
+                menu.menu.add(0, nextId++, 0, overlayFontApplier.styleText(target.title))
             }
-            menu.menu.add(0, Int.MAX_VALUE - 1, 1, "打开应用")
+            menu.menu.add(
+                0,
+                Int.MAX_VALUE - 1,
+                1,
+                overlayFontApplier.styleText("打开应用")
+            )
         } else {
-            menu.menu.add(0, Int.MAX_VALUE - 1, 0, "打开应用")
+            menu.menu.add(
+                0,
+                Int.MAX_VALUE - 1,
+                0,
+                overlayFontApplier.styleText("打开应用")
+            )
         }
         menu.setOnMenuItemClickListener { item ->
             if (item.itemId == Int.MAX_VALUE - 1) {
@@ -10569,6 +10964,7 @@ class FloatingOverlayService : Service() {
         listOfNotNull(panelStatusDetailRefs, miniStatusDetailRefs).forEach { refs ->
             refs.inputProgress.progress = (inputLevel * 1000f).roundToInt().coerceIn(0, 1000)
             refs.playbackProgress.progress = (playbackProgress * 1000f).roundToInt().coerceIn(0, 1000)
+            refs.playbackIcon.text = if (settings.ttsDisabled) "graphic_eq_off" else "graphic_eq"
             refs.inputLabel.text = inputLabel
             refs.outputLabel.text = outputLabel
             refs.pttIcon.text = if (settings.pushToTalkMode) "toggle_on" else "toggle_off"
@@ -10581,13 +10977,17 @@ class FloatingOverlayService : Service() {
             )
             refs.volumeLabel.text = "音量倍率：${settings.playbackGainPercent}%"
             refs.volumeSeekBar.progress = settings.playbackGainPercent.coerceIn(0, 1000)
+            refs.recognitionOnlyViews.forEach { view ->
+                view.visibility = if (recognitionResourceInstalled) View.VISIBLE else View.GONE
+            }
         }
         panelStatusTriggerContainer?.alpha = if (overlayStatusExpanded) 1f else 0.94f
         miniStatusTriggerContainer?.alpha = if (overlayStatusExpanded) 1f else 0.94f
     }
 
     private fun createOverlayStatusDetailCard(): OverlayStatusDetailRefs {
-        fun createProgressRow(icon: String): Pair<LinearLayout, ProgressBar> {
+        fun createProgressRow(icon: String): Triple<LinearLayout, TextView, ProgressBar> {
+            val iconView = symbolTextView(icon, 18f, overlayOnSurfaceColor())
             val progress = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
                 max = 1000
                 progress = 0
@@ -10597,13 +10997,13 @@ class FloatingOverlayService : Service() {
             return LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
-                addView(symbolTextView(icon, 18f, overlayOnSurfaceColor()))
+                addView(iconView)
                 addView(spaceView(dp(10), 1))
                 addView(
                     progress,
                     LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
                 )
-            } to progress
+            }.let { Triple(it, iconView, progress) }
         }
 
         fun createDeviceRow(
@@ -10638,7 +11038,9 @@ class FloatingOverlayService : Service() {
                         0,
                         popupStyle
                     ).apply {
-                        labels.forEachIndexed { index, (_, text) -> menu.add(0, index, index, text) }
+                        labels.forEachIndexed { index, (_, text) ->
+                            menu.add(0, index, index, overlayFontApplier.styleText(text))
+                        }
                         setOnMenuItemClickListener { item ->
                             labels.getOrNull(item.itemId)?.first?.let(onSelect)
                             true
@@ -10649,8 +11051,8 @@ class FloatingOverlayService : Service() {
             return row to labelView
         }
 
-        val (inputRow, inputProgress) = createProgressRow("mic")
-        val (playbackRow, playbackProgress) = createProgressRow("graphic_eq")
+        val (inputRow, _, inputProgress) = createProgressRow("mic")
+        val (playbackRow, playbackIcon, playbackProgress) = createProgressRow("graphic_eq")
         val (inputDeviceRow, inputDeviceLabel) = createDeviceRow(
             icon = "mic",
             onSelect = { value ->
@@ -10706,7 +11108,7 @@ class FloatingOverlayService : Service() {
                 foreground = selectableDrawable()
             }
             setPadding(dp(2), dp(2), dp(2), dp(2))
-            addView(symbolTextView("mic_off", 18f, overlayOnSurfaceColor()))
+            addView(symbolTextView("graphic_eq_off", 18f, overlayOnSurfaceColor()))
             addView(spaceView(dp(8), 1))
             addView(
                 TextView(this@FloatingOverlayService).apply {
@@ -10746,6 +11148,9 @@ class FloatingOverlayService : Service() {
                 override fun onStopTrackingTouch(seekBar: SeekBar?) = Unit
             })
         }
+        val inputProgressSpacer = spaceView(1, dp(10))
+        val inputDeviceSpacer = spaceView(1, dp(8))
+        val pttSpacer = spaceView(1, dp(8))
         val card = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             background = roundedRectDrawable(overlayRadiusDp, overlayCardColor())
@@ -10757,15 +11162,15 @@ class FloatingOverlayService : Service() {
             setPadding(dp(14), dp(14), dp(14), dp(14))
             setOnClickListener { }
             addView(inputRow)
-            addView(spaceView(1, dp(10)))
+            addView(inputProgressSpacer)
             addView(playbackRow)
             addView(spaceView(1, dp(12)))
             addView(inputDeviceRow)
-            addView(spaceView(1, dp(8)))
+            addView(inputDeviceSpacer)
             addView(outputDeviceRow)
             addView(spaceView(1, dp(8)))
             addView(pttRow)
-            addView(spaceView(1, dp(8)))
+            addView(pttSpacer)
             addView(ttsRow)
             addView(spaceView(1, dp(8)))
             addView(volumeLabel)
@@ -10781,12 +11186,21 @@ class FloatingOverlayService : Service() {
             card = card,
             inputProgress = inputProgress,
             playbackProgress = playbackProgress,
+            playbackIcon = playbackIcon,
             inputLabel = inputDeviceLabel,
             outputLabel = outputDeviceLabel,
             pttIcon = pttIcon,
             ttsIcon = ttsIcon,
             volumeLabel = volumeLabel,
-            volumeSeekBar = volumeSeekBar
+            volumeSeekBar = volumeSeekBar,
+            recognitionOnlyViews = listOf(
+                inputRow,
+                inputProgressSpacer,
+                inputDeviceRow,
+                inputDeviceSpacer,
+                pttRow,
+                pttSpacer
+            )
         )
     }
 
@@ -11520,6 +11934,7 @@ class FloatingOverlayService : Service() {
             textAlignment = View.TEXT_ALIGNMENT_CENTER
             setTextColor(color)
             setSymbolTextSize(sp)
+            overlayFontApplier.exclude(this)
             typeface = iconTypeface
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
                 fontFeatureSettings = "liga"

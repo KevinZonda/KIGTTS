@@ -871,6 +871,7 @@ class MainViewModel(
             appFontFamilySource =
                 AppFontRepository.resolveFontFamilySource(appContext, settings.appFontId),
             appFontWeight = settings.appFontWeight,
+            floatingOverlayUseSystemFont = settings.floatingOverlayUseSystemFont,
             fontScaleBlockMode = settings.fontScaleBlockMode,
             hapticFeedbackEnabled = settings.hapticFeedbackEnabled,
             onboardingCompleted = settings.onboardingCompleted,
@@ -887,6 +888,7 @@ class MainViewModel(
             floatingOverlayEnabled = settings.floatingOverlayEnabled,
             floatingOverlayAutoDock = settings.floatingOverlayAutoDock,
             floatingOverlayShowOnLockScreen = settings.floatingOverlayShowOnLockScreen,
+            floatingOverlayFabPrefersKeyboard = settings.floatingOverlayFabPrefersKeyboard,
             floatingOverlayHardcodedShortcutSupplement =
                 settings.floatingOverlayHardcodedShortcutSupplement,
             volumeHotkeyUpDownEnabled = settings.volumeHotkeyUpDownEnabled,
@@ -2886,6 +2888,9 @@ class MainViewModel(
             recognitionResourceProgress = -1f,
             status = message
         )
+        if (uiState.floatingOverlayEnabled) {
+            FloatingOverlayService.refresh(appContext)
+        }
     }
 
     fun loadLastVoice() {
@@ -3466,6 +3471,13 @@ class MainViewModel(
         }
     }
 
+    fun setFloatingOverlayFabPrefersKeyboard(enabled: Boolean) {
+        uiState = uiState.copy(floatingOverlayFabPrefersKeyboard = enabled)
+        viewModelScope.launch {
+            UserPrefs.setFloatingOverlayFabPrefersKeyboard(appContext, enabled)
+        }
+    }
+
     fun setFloatingOverlayHardcodedShortcutSupplement(enabled: Boolean) {
         uiState = uiState.copy(floatingOverlayHardcodedShortcutSupplement = enabled)
         viewModelScope.launch {
@@ -3923,6 +3935,13 @@ class MainViewModel(
         uiState = uiState.copy(themeToneCorrectionEnabled = enabled)
         viewModelScope.launch {
             UserPrefs.setThemeToneCorrectionEnabled(appContext, enabled)
+        }
+    }
+
+    fun setFloatingOverlayUseSystemFont(enabled: Boolean) {
+        uiState = uiState.copy(floatingOverlayUseSystemFont = enabled)
+        viewModelScope.launch {
+            UserPrefs.setFloatingOverlayUseSystemFont(appContext, enabled)
         }
     }
 
