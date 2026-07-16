@@ -65,6 +65,7 @@ internal fun FontSettingsScreen(
     val context = androidx.compose.ui.platform.LocalContext.current
     val state by fontViewModel.state.collectAsState()
     var showDownloadDialog by remember { mutableStateOf(false) }
+    var showDownloadSourceDialog by remember { mutableStateOf(false) }
     var weightFont by remember { mutableStateOf<InstalledAppFont?>(null) }
     var deleteFont by remember { mutableStateOf<InstalledAppFont?>(null) }
     val importLauncher = rememberLauncherForActivityResult(
@@ -156,15 +157,34 @@ internal fun FontSettingsScreen(
         )
     }
     if (showDownloadDialog) {
-        LaunchedEffect(state.catalogSource) {
+        LaunchedEffect(showDownloadDialog) {
             if (state.catalog.isEmpty()) fontViewModel.loadCatalog(state.catalogSource)
         }
         FontDownloadDialog(
             state = state,
             installedFonts = state.fonts.associateBy { it.id },
-            onSelectSource = { fontViewModel.loadCatalog(it) },
+            onOpenSources = { showDownloadSourceDialog = true },
             onInstall = { fontViewModel.installRemoteFont(it) },
-            onDismiss = { showDownloadDialog = false }
+            onDismiss = {
+                showDownloadSourceDialog = false
+                showDownloadDialog = false
+            }
+        )
+    }
+    if (showDownloadSourceDialog) {
+        FontDownloadSourceDialog(
+            modelScopeUrl = state.modelScopeRepositoryBaseUrl,
+            huggingFaceUrl = state.huggingFaceRepositoryBaseUrl,
+            preferredSource = state.catalogSource,
+            onDismiss = { showDownloadSourceDialog = false },
+            onConfirm = { modelScopeUrl, huggingFaceUrl, preferredSource ->
+                fontViewModel.saveDownloadSources(
+                    modelScopeUrl,
+                    huggingFaceUrl,
+                    preferredSource
+                )
+                showDownloadSourceDialog = false
+            }
         )
     }
     val licenseTitle = state.licenseTitle

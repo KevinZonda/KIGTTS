@@ -235,3 +235,25 @@
 - 最终包安装后设备进入安全锁屏，未绕过锁屏继续触发原生长按菜单；最终代码已恢复原生文本交互并通过编译、测试和打包，光标/手柄/选区着色仍需解锁后做一次视觉确认。
 - APK：`D:\KGTTS_GradleOut\codex-build\app\outputs\apk\debug\app-debug.apk`，100418644 字节。
 - SHA-256：`d301699e00a6d6f51fc03b536512ff1d668276c3d6485a5c4f71c614573a0f2b`。
+
+## 2026-07-16 Android 实时通知与悬浮窗文本菜单修正
+
+- 实时通知：声明 Android 16 的 `POST_PROMOTED_NOTIFICATIONS` 非运行时权限并继续请求 promoted ongoing；胶囊短文本按 Unicode 码点限制为 7 个字符，不会截断 emoji 或代理对。
+- 真机通知：设备已授予 promoted ongoing 权限，通知记录包含 `PROMOTED_ONGOING` 标志；顶部实时胶囊恢复显示，用户确认当前正常。
+- 悬浮窗文本菜单：新增独立的 `OverlayTextContextMenuController`，不再依赖 `TYPE_APPLICATION_OVERLAY` 下不稳定的系统 ActionMode；提供全选、剪切、复制、粘贴以及按词选择，外观和淡入/缩放动效与主界面菜单保持一致。
+- 图标保护：悬浮菜单显式启用 Material Symbols 连字并标记为字体替换排除项，自定义正文字体不会再把菜单图标替换成连字文本或错误字形。
+- 输入控件：悬浮字幕输入和“添加软件快捷方式”搜索框共用主题色光标、手柄、选区、焦点描边与文本菜单；两处均已在真机确认 Material Symbols 图标正确。
+- 单元测试新增实时胶囊短文本的码点限制、emoji 完整性和空文本回退覆盖。
+
+## 2026-07-16 Android 主界面文本输入与字体下载源管理
+
+- 输入框审计：主应用全部 Compose 输入框和弹窗均位于 `MainActivity` 顶层 `LocalTextToolbar` 作用域，统一使用自定义全选/剪切/复制/粘贴菜单；独立 `ComposeView` 仅用于无编辑控件的列表条目，未发现遗漏的原生 `EditText`。
+- 选区配色：在应用根层提供 `LocalTextSelectionColors`，所有主界面及弹窗输入框统一使用经过明暗色和色调修正后的主题色手柄与半透明选区。
+- 控件补齐：内置文件选择器搜索框和第三方快捷方式弹窗搜索框改用统一 `Md2OutlinedField`，补齐主题色焦点边框、标签和光标；LED 输入、快捷字幕、名片编辑和取色输入继续保留各自已定义的场景配色。
+- 字体下载弹窗：移除列表内直接切换源的单选项，改为显示当前源并提供“管理下载源”入口；安装进行中会禁用入口，避免下载任务中途变更资源地址。
+- 下载源管理：新增二级滚动弹窗，可手动编辑魔搭与 Hugging Face 仓库根地址、分别恢复默认地址，并在同一弹窗选择首选下载源；URL 必须是无查询参数的 HTTP/HTTPS 地址，也兼容粘贴到 `font_manifest.json` 的完整路径。
+- 持久化与下载：两个仓库地址和首选源写入 UserPrefs；字体清单、字体文件、各字重文件和许可证均从保存后的当前源解析。切换源时通过请求序号丢弃旧清单响应，避免慢请求覆盖新列表。
+- 兼容性：新旧用户未保存字体源设置时继续默认优先魔搭，魔搭和 Hugging Face 默认仓库地址保持现有线上资源路径不变。
+- 验证：`:app:testDebugUnitTest` 与 `:app:assembleDebug` 通过；11 个测试套件共 33 项，0 失败、0 错误、0 跳过。Debug APK 已保留数据覆盖安装到设备 `cfc8ef16`，应用进程正常且 Logcat 无 `AndroidRuntime` 错误；设备当前不接受 ADB 注入点击，字体下载二级弹窗仍需手动完成一次视觉交互确认。
+- APK：`D:\KGTTS_GradleOut\codex-build\app\outputs\apk\debug\app-debug.apk`，100430209 字节。
+- SHA-256：`6816249f4227192c348f5bc9c1a0b38795af1544c63f7dda4d9a5ca400352723`。

@@ -1,6 +1,7 @@
 package com.lhtstudio.kigtts.app.data
 
 import java.io.File
+import java.net.URI
 
 internal object AppFontDefaults {
     const val SystemFontId = "system"
@@ -117,21 +118,48 @@ internal fun List<Int>.nearestTo(weight: Int): Int? =
     minWithOrNull(compareBy<Int> { kotlin.math.abs(it - weight) }.thenBy { it })
 
 internal enum class AppFontRemoteSource(
+    val preferenceValue: Int,
     val displayName: String,
-    val repositoryBaseUrl: String
+    val defaultRepositoryBaseUrl: String
 ) {
     ModelScope(
+        preferenceValue = 0,
         displayName = "魔搭",
-        repositoryBaseUrl =
+        defaultRepositoryBaseUrl =
             "https://modelscope.cn/models/LHTSTUDIO/KIGTTS_FONTS_Resource/resolve/master"
     ),
     HuggingFace(
+        preferenceValue = 1,
         displayName = "Hugging Face",
-        repositoryBaseUrl =
+        defaultRepositoryBaseUrl =
             "https://huggingface.co/LHT02/KIGTTS_FONTS_Resource/resolve/main"
     );
 
-    val manifestUrl: String get() = "$repositoryBaseUrl/${AppFontDefaults.ManifestFileName}"
+    fun normalizeRepositoryBaseUrl(value: String): String = value
+        .trim()
+        .trimEnd('/')
+        .removeSuffix("/${AppFontDefaults.ManifestFileName}")
+        .trimEnd('/')
+
+    fun isValidRepositoryBaseUrl(value: String): Boolean {
+        val normalized = normalizeRepositoryBaseUrl(value)
+        return runCatching {
+            val uri = URI(normalized)
+            uri.scheme?.lowercase() in setOf("http", "https") &&
+                !uri.host.isNullOrBlank() &&
+                uri.rawQuery == null &&
+                uri.rawFragment == null
+        }.getOrDefault(false)
+    }
+
+    fun resolvedRepositoryBaseUrl(value: String): String =
+        normalizeRepositoryBaseUrl(value).takeIf(::isValidRepositoryBaseUrl)
+            ?: defaultRepositoryBaseUrl
+
+    companion object {
+        fun fromPreferenceValue(value: Int): AppFontRemoteSource =
+            entries.firstOrNull { it.preferenceValue == value } ?: ModelScope
+    }
 }
 
 internal data class AppFontInstallProgress(

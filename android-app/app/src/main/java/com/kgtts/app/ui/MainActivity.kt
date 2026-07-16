@@ -106,6 +106,8 @@ import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.ClickableText
 import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.foundation.text.selection.LocalTextSelectionColors
+import androidx.compose.foundation.text.selection.TextSelectionColors
 import androidx.compose.foundation.verticalScroll
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.Camera
@@ -425,6 +427,12 @@ class MainActivity : ComponentActivity() {
                     themeColorArgb = state.themeColorArgb,
                     toneCorrectionEnabled = state.themeToneCorrectionEnabled
                 )
+                val textSelectionColors = remember(extraColors.accentText) {
+                    TextSelectionColors(
+                        handleColor = extraColors.accentText,
+                        backgroundColor = extraColors.accentText.copy(alpha = 0.32f)
+                    )
+                }
                 val appFontFamily = rememberAppFontFamily(
                     source = state.appFontFamilySource,
                     preferredWeight = state.appFontWeight
@@ -436,7 +444,8 @@ class MainActivity : ComponentActivity() {
                 val textToolbar = remember(textToolbarState) { KigttsTextToolbar(textToolbarState) }
                 CompositionLocalProvider(
                     LocalMd2ExtraColors provides extraColors,
-                    LocalKigttsHapticFeedbackEnabled provides state.hapticFeedbackEnabled
+                    LocalKigttsHapticFeedbackEnabled provides state.hapticFeedbackEnabled,
+                    LocalTextSelectionColors provides textSelectionColors
                 ) {
                     CompositionLocalProvider(LocalTextToolbar provides textToolbar) {
                         MaterialTheme(colors = colors, typography = appTypography, shapes = Md2Shapes) {

@@ -2,6 +2,7 @@ package com.lhtstudio.kigtts.app.data
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class UserPrefsFontTest {
@@ -33,5 +34,34 @@ class UserPrefsFontTest {
     fun floatingOverlayFabUsesVoicePriorityByDefault() {
         assertFalse(UserPrefs.AppSettings().floatingOverlayFabPrefersKeyboard)
         assertFalse(UserPrefs.AppSettings().floatingOverlayFabInputGuideShown)
+    }
+
+    @Test
+    fun fontDownloadSourcesDefaultToModelScope() {
+        val settings = UserPrefs.AppSettings()
+
+        assertEquals(UserPrefs.APP_FONT_SOURCE_MODELSCOPE, settings.appFontPreferredSource)
+        assertEquals(
+            AppFontRemoteSource.ModelScope.defaultRepositoryBaseUrl,
+            settings.appFontModelScopeUrl
+        )
+        assertEquals(
+            AppFontRemoteSource.HuggingFace.defaultRepositoryBaseUrl,
+            settings.appFontHuggingFaceUrl
+        )
+    }
+
+    @Test
+    fun normalizesAndValidatesFontRepositoryBaseUrls() {
+        val source = AppFontRemoteSource.HuggingFace
+        val custom = " https://example.com/fonts/font_manifest.json/ "
+
+        assertEquals("https://example.com/fonts", source.normalizeRepositoryBaseUrl(custom))
+        assertTrue(source.isValidRepositoryBaseUrl(custom))
+        assertFalse(source.isValidRepositoryBaseUrl("https://example.com/fonts?token=test"))
+        assertEquals(
+            source.defaultRepositoryBaseUrl,
+            source.resolvedRepositoryBaseUrl("not a repository URL")
+        )
     }
 }

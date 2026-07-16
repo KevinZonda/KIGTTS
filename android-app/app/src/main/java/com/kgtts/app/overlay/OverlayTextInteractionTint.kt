@@ -3,6 +3,7 @@ package com.lhtstudio.kigtts.app.overlay
 import android.graphics.PorterDuff
 import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
+import android.graphics.drawable.StateListDrawable
 import android.os.Build
 import android.widget.EditText
 import android.widget.TextView
@@ -19,6 +20,24 @@ internal fun EditText.applyOverlayTextInteractionColor(color: Int) {
     } else {
         applyLegacyTextInteractionColor(color)
         post { applyLegacyTextInteractionColor(color) }
+    }
+}
+
+internal fun EditText.applyOverlayTextFieldBackground(
+    surfaceColor: Int,
+    outlineColor: Int,
+    accentColor: Int,
+    radiusDp: Float = 4f
+) {
+    val density = resources.displayMetrics.density
+    fun fieldDrawable(strokeColor: Int, strokeWidthDp: Float) = GradientDrawable().apply {
+        setColor(surfaceColor)
+        cornerRadius = radiusDp * density
+        setStroke((strokeWidthDp * density + 0.5f).toInt().coerceAtLeast(1), strokeColor)
+    }
+    background = StateListDrawable().apply {
+        addState(intArrayOf(android.R.attr.state_focused), fieldDrawable(accentColor, 2f))
+        addState(intArrayOf(), fieldDrawable(outlineColor, 1f))
     }
 }
 

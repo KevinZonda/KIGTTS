@@ -957,12 +957,11 @@ fun FloatingOverlayScreen(
                         "这里读取当前已加入悬浮窗启动器的应用快捷方式；内嵌列表补全关闭时仅保留运行时可查询项和必要的固定入口。",
                         style = MaterialTheme.typography.bodySmall
                     )
-                    OutlinedTextField(
+                    Md2OutlinedField(
                         value = externalShortcutSearchQuery,
                         onValueChange = { externalShortcutSearchQuery = it },
                         modifier = Modifier.fillMaxWidth(),
-                        singleLine = true,
-                        label = { Text("搜索应用或快捷方式") }
+                        label = "搜索应用或快捷方式"
                     )
                     Box(
                         modifier = Modifier

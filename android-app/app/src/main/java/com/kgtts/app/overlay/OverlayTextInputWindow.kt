@@ -38,6 +38,7 @@ internal class OverlayTextInputWindow(
     private var inputBarView: View? = null
     private var playButton: TextView? = null
     private var clearButton: TextView? = null
+    private var textContextMenu: OverlayTextContextMenuController? = null
     private var playOnSend = true
     private var suppressTextCallback = false
     private var dismissing = false
@@ -74,6 +75,7 @@ internal class OverlayTextInputWindow(
 
     fun dismiss(immediate: Boolean = false) {
         val current = root ?: return
+        textContextMenu?.hide(immediate = immediate)
         if (immediate || !current.isAttachedToWindow) {
             removeCurrentWindow(current)
             return
@@ -122,6 +124,8 @@ internal class OverlayTextInputWindow(
             )
         }
         runCatching { windowManager.removeViewImmediate(current) }
+        textContextMenu?.dispose()
+        textContextMenu = null
         root = null
         input = null
         previewCard = null
@@ -269,6 +273,12 @@ internal class OverlayTextInputWindow(
                 Gravity.BOTTOM
             )
         )
+        textContextMenu = OverlayTextContextMenuController(
+            context = context,
+            host = rootView,
+            field = requireNotNull(input),
+            styleProvider = styleProvider
+        )
         var systemTop = 0
         var systemBottom = 0
         var imeBottom = 0
@@ -300,8 +310,7 @@ internal class OverlayTextInputWindow(
                 }
             }
             if (rootView.width <= 0 || rootView.height <= 0) return
-            resizePreviewCard(
-                card = nextPreviewCard,
+            nextPreviewCard.resizeWithin(
                 maxWidth = (rootView.width - dp(28)).coerceAtLeast(dp(160)),
                 maxHeight = (
                     rootView.height - systemTop - bottomObstruction - inputBarHeight - dp(28)
@@ -394,6 +403,7 @@ internal class OverlayTextInputWindow(
 
     private fun moveCursor(delta: Int) {
         val field = input ?: return
+        textContextMenu?.hide()
         val current = field.selectionStart.coerceAtLeast(0)
         field.setSelection((current + delta).coerceIn(0, field.text.length))
     }
@@ -461,17 +471,6 @@ internal class OverlayTextInputWindow(
             WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING or
                 WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE
         title = "KIGTTS overlay text input"
-    }
-
-    private fun resizePreviewCard(card: OverlaySubtitlePreviewCard, maxWidth: Int, maxHeight: Int) {
-        val params = card.cardView.layoutParams ?: return
-        val width = minOf(card.preferredWidth, maxWidth)
-        val height = minOf(card.preferredHeight, maxHeight)
-        if (params.width == width && params.height == height) return
-        params.width = width
-        params.height = height
-        card.cardView.layoutParams = params
-        card.root.requestLayout()
     }
 
     private fun roundedDrawable(color: Int, radiusDp: Float): GradientDrawable =

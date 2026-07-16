@@ -62,7 +62,6 @@ import android.view.WindowManager
 import android.view.animation.DecelerateInterpolator
 import android.widget.FrameLayout
 import android.widget.HorizontalScrollView
-import android.widget.EditText
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.PopupMenu
@@ -231,7 +230,8 @@ class FloatingOverlayService : Service() {
     private var panelPickerOverlay: FrameLayout? = null
     private var panelPickerParams: WindowManager.LayoutParams? = null
     private var panelPickerListContainer: LinearLayout? = null
-    private var panelPickerSearchInput: EditText? = null
+    private var panelPickerSearchInput: OverlaySelectionEditText? = null
+    private var panelPickerTextContextMenu: OverlayTextContextMenuController? = null
     private var miniRoot: FrameLayout? = null
     private var miniContent: LinearLayout? = null
     private var miniParams: WindowManager.LayoutParams? = null
@@ -2796,13 +2796,18 @@ class FloatingOverlayService : Service() {
             orientation = LinearLayout.VERTICAL
         }
         panelPickerListContainer = pickerListContainer
-        val pickerSearchInput = EditText(this).apply {
+        val pickerSearchInput = OverlaySelectionEditText(this, overlayPrimaryColor()).apply {
             setTextColor(overlayOnSurfaceColor())
             setHintTextColor(overlayOnSurfaceVariantColor())
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
             hint = "搜索应用"
             isSingleLine = true
-            background = roundedRectDrawable(overlayRadiusDp, overlayCardColor())
+            applyOverlayTextFieldBackground(
+                surfaceColor = overlayCardColor(),
+                outlineColor = ColorUtils.setAlphaComponent(overlayOutlineColor(), 112),
+                accentColor = overlayPrimaryColor(),
+                radiusDp = overlayRadiusDp
+            )
             setPadding(dp(14), dp(12), dp(14), dp(12))
             addTextChangedListener(
                 object : TextWatcher {
@@ -2817,7 +2822,7 @@ class FloatingOverlayService : Service() {
             )
         }
         panelPickerSearchInput = pickerSearchInput
-        panelPickerOverlay = FrameLayout(this).apply {
+        val pickerOverlay = FrameLayout(this).apply {
             visibility = View.GONE
             alpha = 0f
             setBackgroundColor(overlayScrimColor())
@@ -2877,6 +2882,13 @@ class FloatingOverlayService : Service() {
                 )
             )
         }
+        panelPickerOverlay = pickerOverlay
+        panelPickerTextContextMenu = OverlayTextContextMenuController(
+            context = this,
+            host = pickerOverlay,
+            field = pickerSearchInput,
+            styleProvider = ::overlayInteractionStyle
+        )
         panelPickerParams = WindowManager.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT,
             WindowManager.LayoutParams.MATCH_PARENT,
@@ -2889,7 +2901,7 @@ class FloatingOverlayService : Service() {
                 WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE or
                     WindowManager.LayoutParams.SOFT_INPUT_STATE_VISIBLE
         }
-        windowManager.addView(panelPickerOverlay, panelPickerParams)
+        windowManager.addView(pickerOverlay, panelPickerParams)
 
         val topStatusMicIcon = symbolTextView("mic", 24f, overlayOnSurfaceColor()).also {
             miniStatusMicIconView = it
@@ -4057,6 +4069,8 @@ class FloatingOverlayService : Service() {
         confirmTextView = null
         leftActionButton = null
         rightActionButton = null
+        panelPickerTextContextMenu?.dispose()
+        panelPickerTextContextMenu = null
         panelPickerOverlay?.let { runCatching { windowManager.removeView(it) } }
         panelPickerOverlay = null
         panelPickerListContainer = null
@@ -10829,6 +10843,7 @@ class FloatingOverlayService : Service() {
 
     private fun hideShortcutPicker() {
         val overlay = panelPickerOverlay ?: return
+        panelPickerTextContextMenu?.hide()
         val card = panelPickerCard
         panelPickerPreparing = false
         panelPickerListRefreshToken++

@@ -89,15 +89,18 @@ internal class AppFontRepository(context: Context) {
         }
     }
 
-    suspend fun fetchCatalog(source: AppFontRemoteSource): List<RemoteAppFont> =
+    suspend fun fetchCatalog(repositoryBaseUrl: String): List<RemoteAppFont> =
         withContext(Dispatchers.IO) {
-            val raw = readUrlText(source.manifestUrl, MaxManifestBytes)
+            val raw = readUrlText(
+                assetUrl(repositoryBaseUrl, AppFontDefaults.ManifestFileName),
+                MaxManifestBytes
+            )
             AppFontCatalogParser.parse(raw)
         }
 
     suspend fun installRemoteFont(
         font: RemoteAppFont,
-        source: AppFontRemoteSource,
+        repositoryBaseUrl: String,
         onProgress: (AppFontInstallProgress) -> Unit
     ): InstalledAppFont = withContext(Dispatchers.IO) {
         root.mkdirs()
@@ -135,7 +138,7 @@ internal class AppFontRepository(context: Context) {
                     "正在下载 ${font.displayName}（${index + 1}/${specs.size}）"
                 }
                 onProgress(AppFontInstallProgress(0f, stage))
-                downloadFile(source.assetUrl(spec.path), target) { current, total ->
+                downloadFile(assetUrl(repositoryBaseUrl, spec.path), target) { current, total ->
                     val fraction = if (total > 0L) current.toFloat() / total.toFloat() else null
                     onProgress(AppFontInstallProgress(fraction, stage))
                 }
@@ -155,7 +158,7 @@ internal class AppFontRepository(context: Context) {
             val licenseFile = font.licensePath.takeIf { it.isNotBlank() }?.let { path ->
                 onProgress(AppFontInstallProgress(null, "正在下载许可证"))
                 File(staging, "LICENSE.txt").also { target ->
-                    downloadFile(source.assetUrl(path), target)
+                    downloadFile(assetUrl(repositoryBaseUrl, path), target)
                     if (font.licenseSha256.isNotBlank() &&
                         !sha256(target).equals(font.licenseSha256, ignoreCase = true)
                     ) {
@@ -369,11 +372,12 @@ internal class AppFontRepository(context: Context) {
         return normalized
     }
 
-    private fun AppFontRemoteSource.assetUrl(path: String): String {
+    private fun assetUrl(repositoryBaseUrl: String, path: String): String {
+        val normalizedBaseUrl = repositoryBaseUrl.trim().trimEnd('/')
         val encoded = path.split('/').joinToString("/") { segment ->
             URI(null, null, segment, null).rawPath
         }
-        return "$repositoryBaseUrl/$encoded"
+        return "$normalizedBaseUrl/$encoded"
     }
 
     private fun ContentResolver.displayName(uri: Uri): String = runCatching {

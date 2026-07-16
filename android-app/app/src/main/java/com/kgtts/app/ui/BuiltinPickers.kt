@@ -42,7 +42,6 @@ import androidx.compose.material.Card
 import androidx.compose.material.Checkbox
 import androidx.compose.material.IconButton
 import androidx.compose.material.MaterialTheme
-import androidx.compose.material.OutlinedTextField
 import androidx.compose.material.Button
 import androidx.compose.material.OutlinedButton
 import androidx.compose.material.TextButton
@@ -478,13 +477,11 @@ fun BuiltinFilePickerDialog(
                 }
             }
 
-            OutlinedTextField(
+            Md2OutlinedField(
                 value = search,
                 onValueChange = { search = it },
                 modifier = Modifier.fillMaxWidth(),
-                label = { Text("搜索文件/文件夹") },
-                singleLine = true,
-                shape = RoundedCornerShape(4.dp)
+                label = "搜索文件/文件夹"
             )
 
             Text(

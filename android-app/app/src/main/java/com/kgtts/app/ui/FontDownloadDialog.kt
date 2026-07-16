@@ -8,14 +8,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.Divider
 import androidx.compose.material.LinearProgressIndicator
 import androidx.compose.material.MaterialTheme
-import androidx.compose.material.RadioButton
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.lhtstudio.kigtts.app.data.AppFontRemoteSource
 import com.lhtstudio.kigtts.app.data.InstalledAppFont
 import com.lhtstudio.kigtts.app.data.RemoteAppFont
 
@@ -23,7 +21,7 @@ import com.lhtstudio.kigtts.app.data.RemoteAppFont
 internal fun FontDownloadDialog(
     state: FontSettingsUiState,
     installedFonts: Map<String, InstalledAppFont>,
-    onSelectSource: (AppFontRemoteSource) -> Unit,
+    onOpenSources: () -> Unit,
     onInstall: (RemoteAppFont) -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -33,20 +31,25 @@ internal fun FontDownloadDialog(
         contentSpacing = 10.dp,
         content = {
             Text(
-                "默认使用魔搭源。字体文件会保存在软件私有目录，并同时保存许可证。",
+                "字体文件会保存在软件私有目录，并同时保存许可证。",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
-            AppFontRemoteSource.entries.forEach { source ->
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    "当前下载源：${state.catalogSource.displayName}",
+                    style = MaterialTheme.typography.bodySmall
+                )
+                Md2TextButton(
+                    onClick = onOpenSources,
+                    enabled = state.installingFontId == null
                 ) {
-                    RadioButton(
-                        selected = state.catalogSource == source,
-                        onClick = { onSelectSource(source) }
-                    )
-                    Text(source.displayName)
+                    MsIcon("settings", contentDescription = null, iconSize = 18.dp)
+                    Text("管理下载源")
                 }
             }
             if (state.catalogLoading) {

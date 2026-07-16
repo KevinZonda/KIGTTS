@@ -49,6 +49,8 @@ object UserPrefs {
     const val VOLUME_HOTKEY_DEFAULT_WINDOW_MS = 1500
     const val RECOGNITION_RESOURCE_SOURCE_MODELSCOPE = 0
     const val RECOGNITION_RESOURCE_SOURCE_HUGGINGFACE = 1
+    const val APP_FONT_SOURCE_MODELSCOPE = 0
+    const val APP_FONT_SOURCE_HUGGINGFACE = 1
     const val KOKORO_SOURCE_HF = 0
     const val KOKORO_SOURCE_HFMIRROR = 1
     const val KOKORO_SOURCE_MODELSCOPE = 2
@@ -116,6 +118,9 @@ object UserPrefs {
     private val KEY_THEME_TONE_CORRECTION_ENABLED = booleanPreferencesKey("theme_tone_correction_enabled")
     private val KEY_APP_FONT_ID = stringPreferencesKey("app_font_id")
     private val KEY_APP_FONT_WEIGHT = intPreferencesKey("app_font_weight")
+    private val KEY_APP_FONT_MODELSCOPE_URL = stringPreferencesKey("app_font_modelscope_url")
+    private val KEY_APP_FONT_HUGGINGFACE_URL = stringPreferencesKey("app_font_huggingface_url")
+    private val KEY_APP_FONT_PREFERRED_SOURCE = intPreferencesKey("app_font_preferred_source")
     private val KEY_FLOATING_OVERLAY_USE_SYSTEM_FONT =
         booleanPreferencesKey("floating_overlay_use_system_font")
     private val KEY_FONT_SCALE_BLOCK_MODE = intPreferencesKey("font_scale_block_mode")
@@ -236,6 +241,9 @@ object UserPrefs {
         val themeToneCorrectionEnabled: Boolean = false,
         val appFontId: String = AppFontDefaults.SystemFontId,
         val appFontWeight: Int = AppFontDefaults.DefaultWeight,
+        val appFontModelScopeUrl: String = AppFontRemoteSource.ModelScope.defaultRepositoryBaseUrl,
+        val appFontHuggingFaceUrl: String = AppFontRemoteSource.HuggingFace.defaultRepositoryBaseUrl,
+        val appFontPreferredSource: Int = APP_FONT_SOURCE_MODELSCOPE,
         val floatingOverlayUseSystemFont: Boolean = false,
         val fontScaleBlockMode: Int = FONT_SCALE_BLOCK_ICONS_ONLY,
         val hapticFeedbackEnabled: Boolean = true,
@@ -466,6 +474,15 @@ object UserPrefs {
             appFontWeight = normalizeAppFontWeight(
                 this[KEY_APP_FONT_WEIGHT] ?: AppFontDefaults.DefaultWeight
             ),
+            appFontModelScopeUrl = AppFontRemoteSource.ModelScope.resolvedRepositoryBaseUrl(
+                this[KEY_APP_FONT_MODELSCOPE_URL].orEmpty()
+            ),
+            appFontHuggingFaceUrl = AppFontRemoteSource.HuggingFace.resolvedRepositoryBaseUrl(
+                this[KEY_APP_FONT_HUGGINGFACE_URL].orEmpty()
+            ),
+            appFontPreferredSource = AppFontRemoteSource.fromPreferenceValue(
+                this[KEY_APP_FONT_PREFERRED_SOURCE] ?: APP_FONT_SOURCE_MODELSCOPE
+            ).preferenceValue,
             floatingOverlayUseSystemFont = this[KEY_FLOATING_OVERLAY_USE_SYSTEM_FONT] ?: false,
             fontScaleBlockMode = normalizeFontScaleBlockMode(
                 this[KEY_FONT_SCALE_BLOCK_MODE] ?: FONT_SCALE_BLOCK_ICONS_ONLY
@@ -785,6 +802,22 @@ object UserPrefs {
         context.dataStore.edit { prefs ->
             prefs[KEY_APP_FONT_ID] = normalizeAppFontId(id)
             prefs[KEY_APP_FONT_WEIGHT] = normalizeAppFontWeight(weight)
+        }
+    }
+
+    suspend fun setAppFontDownloadSources(
+        context: Context,
+        modelScopeUrl: String,
+        huggingFaceUrl: String,
+        preferredSource: Int
+    ) {
+        context.dataStore.edit { prefs ->
+            prefs[KEY_APP_FONT_MODELSCOPE_URL] =
+                AppFontRemoteSource.ModelScope.resolvedRepositoryBaseUrl(modelScopeUrl)
+            prefs[KEY_APP_FONT_HUGGINGFACE_URL] =
+                AppFontRemoteSource.HuggingFace.resolvedRepositoryBaseUrl(huggingFaceUrl)
+            prefs[KEY_APP_FONT_PREFERRED_SOURCE] =
+                AppFontRemoteSource.fromPreferenceValue(preferredSource).preferenceValue
         }
     }
 

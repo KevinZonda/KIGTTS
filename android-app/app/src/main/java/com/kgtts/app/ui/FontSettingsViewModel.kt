@@ -28,6 +28,10 @@ internal data class FontSettingsUiState(
     val refreshing: Boolean = true,
     val operationBusy: Boolean = false,
     val catalogSource: AppFontRemoteSource = AppFontRemoteSource.ModelScope,
+    val modelScopeRepositoryBaseUrl: String =
+        AppFontRemoteSource.ModelScope.defaultRepositoryBaseUrl,
+    val huggingFaceRepositoryBaseUrl: String =
+        AppFontRemoteSource.HuggingFace.defaultRepositoryBaseUrl,
     val catalog: List<RemoteAppFont> = emptyList(),
     val catalogLoading: Boolean = false,
     val installingFontId: String? = null,
@@ -40,6 +44,7 @@ internal class FontSettingsViewModel(application: Application) : AndroidViewMode
     private val repository = AppFontRepository(application)
     private val _state = MutableStateFlow(FontSettingsUiState())
     val state: StateFlow<FontSettingsUiState> = _state.asStateFlow()
+    private var catalogRequestId = 0L
 
     private val _events = MutableSharedFlow<String>(extraBufferCapacity = 8)
     val events: SharedFlow<String> = _events.asSharedFlow()
@@ -50,7 +55,12 @@ internal class FontSettingsViewModel(application: Application) : AndroidViewMode
                 _state.update {
                     it.copy(
                         selectedFontId = settings.appFontId,
-                        selectedWeight = settings.appFontWeight
+                        selectedWeight = settings.appFontWeight,
+                        catalogSource = AppFontRemoteSource.fromPreferenceValue(
+                            settings.appFontPreferredSource
+                        ),
+                        modelScopeRepositoryBaseUrl = settings.appFontModelScopeUrl,
+                        huggingFaceRepositoryBaseUrl = settings.appFontHuggingFaceUrl
                     )
                 }
             }
@@ -143,7 +153,8 @@ internal class FontSettingsViewModel(application: Application) : AndroidViewMode
     }
 
     fun loadCatalog(source: AppFontRemoteSource = _state.value.catalogSource) {
-        if (_state.value.catalogLoading) return
+        val repositoryBaseUrl = _state.value.repositoryBaseUrl(source)
+        val requestId = ++catalogRequestId
         viewModelScope.launch {
             _state.update {
                 it.copy(
@@ -152,10 +163,49 @@ internal class FontSettingsViewModel(application: Application) : AndroidViewMode
                     catalog = if (source == it.catalogSource) it.catalog else emptyList()
                 )
             }
-            runCatching { repository.fetchCatalog(source) }
-                .onSuccess { catalog -> _state.update { it.copy(catalog = catalog) } }
-                .onFailure { error -> notify(error.userMessage("字体清单加载失败")) }
-            _state.update { it.copy(catalogLoading = false) }
+            runCatching { repository.fetchCatalog(repositoryBaseUrl) }
+                .onSuccess { catalog ->
+                    if (requestId == catalogRequestId) {
+                        _state.update { it.copy(catalog = catalog) }
+                    }
+                }
+                .onFailure { error ->
+                    if (requestId == catalogRequestId) {
+                        notify(error.userMessage("字体清单加载失败"))
+                    }
+                }
+            if (requestId == catalogRequestId) {
+                _state.update { it.copy(catalogLoading = false) }
+            }
+        }
+    }
+
+    fun saveDownloadSources(
+        modelScopeUrl: String,
+        huggingFaceUrl: String,
+        preferredSource: AppFontRemoteSource
+    ) {
+        val normalizedModelScope =
+            AppFontRemoteSource.ModelScope.resolvedRepositoryBaseUrl(modelScopeUrl)
+        val normalizedHuggingFace =
+            AppFontRemoteSource.HuggingFace.resolvedRepositoryBaseUrl(huggingFaceUrl)
+        _state.update {
+            it.copy(
+                catalogSource = preferredSource,
+                modelScopeRepositoryBaseUrl = normalizedModelScope,
+                huggingFaceRepositoryBaseUrl = normalizedHuggingFace,
+                catalog = emptyList()
+            )
+        }
+        viewModelScope.launch {
+            UserPrefs.setAppFontDownloadSources(
+                getApplication(),
+                normalizedModelScope,
+                normalizedHuggingFace,
+                preferredSource.preferenceValue
+            )
+            notify("字体下载源已保存")
+            loadCatalog(preferredSource)
         }
     }
 
@@ -169,7 +219,11 @@ internal class FontSettingsViewModel(application: Application) : AndroidViewMode
                 )
             }
             runCatching {
-                repository.installRemoteFont(font, _state.value.catalogSource) { progress ->
+                val currentState = _state.value
+                repository.installRemoteFont(
+                    font,
+                    currentState.repositoryBaseUrl(currentState.catalogSource)
+                ) { progress ->
                     _state.update { it.copy(installProgress = progress) }
                 }
             }.onSuccess {
@@ -200,3 +254,9 @@ internal class FontSettingsViewModel(application: Application) : AndroidViewMode
     private fun Throwable.userMessage(fallback: String): String =
         message?.takeIf { it.isNotBlank() } ?: fallback
 }
+
+private fun FontSettingsUiState.repositoryBaseUrl(source: AppFontRemoteSource): String =
+    when (source) {
+        AppFontRemoteSource.ModelScope -> modelScopeRepositoryBaseUrl
+        AppFontRemoteSource.HuggingFace -> huggingFaceRepositoryBaseUrl
+    }
