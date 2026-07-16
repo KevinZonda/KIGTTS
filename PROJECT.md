@@ -170,3 +170,10 @@
 - 本地校验：17 个新增字体均可由 FontTools 解析；全部 53 个引用文件的大小与 SHA-256 匹配，许可证统一为 UTF-8 无 BOM + LF，资源目录不存在未被清单引用的遗留文件。
 - 镜像发布：魔搭与 Hugging Face 均已上传本批 29 个新增资源文件及更新后的清单/README；Hugging Face 提交为 `48719fa66d8593cd9afbe4944ffe895949dc4178`。
 - 反向验证：使用应用实际 User-Agent 从两个镜像分别下载 29 个新增资源，魔搭与 Hugging Face 均为 29/29 文件大小及 SHA-256 一致；此前版本的 24 个资源已在上一轮逐文件验证。
+
+## 2026-07-16 Android eSpeak-NG 原生库同步
+
+- 将 `jniLibs/arm64-v8a/libespeak-ng.so` 同步为当前 CMake/NDK r26b 构建产物；该库由 `espeak_jni` 调用，为 Piper 音色包提供文本到音素转换。
+- 源目录库为 ELF64 AArch64 动态库，大小 1471256 字节，SHA-256 为 `66e5de99842cf14104c093d100b6011a1d7fa4dc98205bca491361405ec3ab38`，与 CMake 输出和 Gradle 合并 JNI 产物逐字节一致。
+- ELF 的全部可加载段按 `0x4000` 对齐，符合 Android 16KB 内存页兼容要求；运行时依赖仅为系统 `libm.so`、`libdl.so` 和 `libc.so`。
+- `:app:assembleDebug` 通过；APK 内剥离调试符号后的 `libespeak-ng.so` 为 444392 字节，SHA-256 为 `4bf3d915060a4d4b1522daf3334d1bf71bbf52917ca50c0416767e039ade2a52`。
