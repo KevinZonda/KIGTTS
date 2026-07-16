@@ -78,7 +78,7 @@ internal enum class AppFontRemoteSource(
     HuggingFace(
         displayName = "Hugging Face",
         repositoryBaseUrl =
-            "https://huggingface.co/LHTSTUDIO/KIGTTS_FONTS_Resource/resolve/main"
+            "https://huggingface.co/LHT02/KIGTTS_FONTS_Resource/resolve/main"
     );
 
     val manifestUrl: String get() = "$repositoryBaseUrl/${AppFontDefaults.ManifestFileName}"

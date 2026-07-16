@@ -108,11 +108,11 @@
 - 可变字体：解析 OpenType `fvar/wght` 轴；可变字体显示字重设置按钮、当前字重和实时预览，字重选择随字体偏好持久化。
 - 全局应用：新增字体 ID/字重偏好；字体在后台异步加载，加载完成后替换整套 Compose Typography，失败或文件缺失时自动回退系统字体，不阻塞启动。
 - 下载安全：远端使用 `font_manifest.json` schema 1，限制清单大小和相对路径，字体与许可证均执行 SHA-256 校验，再通过临时目录原子替换安装。
-- 下载源：默认优先魔搭，Hugging Face 保留备用源选择。魔搭公开仓库为 `https://modelscope.cn/models/LHTSTUDIO/KIGTTS_FONTS_Resource`。
+- 下载源：默认优先魔搭，Hugging Face 保留备用源选择。魔搭公开仓库为 `https://modelscope.cn/models/LHTSTUDIO/KIGTTS_FONTS_Resource`，Hugging Face 备用仓库为 `https://huggingface.co/LHT02/KIGTTS_FONTS_Resource`。
 - 资源仓库：本地发布目录为 `D:\KIGTTS_FONTS_Resource`，包含字体、许可证、来源链接、版本、文件大小和哈希清单。
 - 首批资源：思源黑体 CN、思源宋体 CN、HarmonyOS Sans SC 可变字体、阿里巴巴普惠体 3.0、IBM Plex Sans SC、小赖字体和 GNU Unifont，共 7 项。
 - 授权处理：OFL 字体保留原许可证；HarmonyOS Sans 保留专用字体授权并在 README 显著声明；阿里巴巴普惠体链接其官方法律声明，未误标为开源许可证。
-- 发布状态：魔搭目录上传 16 个文件且失败数为 0，公开清单和字体文件均反向请求 HTTP 200；当前机器没有 Hugging Face 写入凭据，因此 HF 镜像尚未发布。
+- 发布状态：魔搭与 Hugging Face 均已上传完整的 16 个文件；Hugging Face 发布提交为 `4b3a4aaa9ac455f086e47ccadf70074697c91070`，软件默认备用源已切换到 `LHT02` 名下仓库。
 
 ## 字体功能验证
 
@@ -121,6 +121,7 @@
 - `:app:assembleDebug`：通过，包含 Kotlin、DEX、arm64 CMake、本地库合并与 APK 打包。
 - `:app:lintDebug`：完整扫描仍有 18 个现有错误；字体模块发现的 API 33 `readNBytes` 调用已改为兼容 API 26 的有界流读取，后续复扫字体文件无新增 Lint 错误。
 - 资源清单：7 个条目的字体/许可证文件、文件大小与 SHA-256 全部匹配。
+- Hugging Face 镜像：反向下载全部 16 个文件并与本地发布目录逐文件核对 SHA-256，结果全部一致。
 - APK：`android-app/app/build/outputs/apk/debug/app-debug.apk`，104016431 字节。
-- SHA-256：`f70d3657321cd9ddb14a283dcd466857433ac16f28d0b93b070dc7068ffb29ff`。
+- SHA-256：`8e060f9f6f907ca63ac9951aa7236770081ad62f4638abdda83497e3bfc07f51`。
 - ADB 可用但当前没有连接设备，尚未执行真机字体渲染、导入、切换、下载和字重交互检查。
