@@ -9,6 +9,7 @@ import com.lhtstudio.kigtts.app.data.SoundboardItem
 import com.lhtstudio.kigtts.app.data.UserPrefs
 import com.lhtstudio.kigtts.app.data.defaultSoundboardConfig
 import com.lhtstudio.kigtts.app.data.parseSoundboardConfig
+import com.lhtstudio.kigtts.app.lan.LanCastAudioBridge
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -50,6 +51,8 @@ object SoundboardManager {
         val player: MediaPlayer,
         val enhancer: LoudnessEnhancer?,
         val audioFocusLease: PlaybackAudioFocusController.Lease?,
+        val localPlayback: Boolean,
+        val webMediaId: Long?,
         val pollJob: Job,
         val stopJob: Job?
     )
@@ -75,11 +78,15 @@ object SoundboardManager {
         scope.launch {
             stateMutex.withLock {
                 players.values.forEach { active ->
-                    applyPlaybackGain(
-                        player = active.player,
-                        enhancer = active.enhancer,
-                        percent = playbackGainPercent
-                    )
+                    if (active.localPlayback) {
+                        applyPlaybackGain(
+                            player = active.player,
+                            enhancer = active.enhancer,
+                            percent = playbackGainPercent
+                        )
+                    } else {
+                        runCatching { active.player.setVolume(0f, 0f) }
+                    }
                 }
             }
         }
@@ -125,8 +132,13 @@ object SoundboardManager {
             mediaPlayer.setAudioAttributes(audioAttrs)
             mediaPlayer.setDataSource(targetFile.absolutePath)
             mediaPlayer.prepare()
-            val enhancer = createLoudnessEnhancer(mediaPlayer)
-            applyPlaybackGain(mediaPlayer, enhancer, playbackGainPercent)
+            val playbackPlan = LanCastAudioBridge.playbackPlan()
+            val enhancer = if (playbackPlan.local) createLoudnessEnhancer(mediaPlayer) else null
+            if (playbackPlan.local) {
+                applyPlaybackGain(mediaPlayer, enhancer, playbackGainPercent)
+            } else {
+                mediaPlayer.setVolume(0f, 0f)
+            }
             val duration = mediaPlayer.duration.coerceAtLeast(0)
             val trimStart = item.trimStartMs.coerceIn(0L, duration.toLong()).toInt()
             val trimEnd = when {
@@ -135,6 +147,16 @@ object SoundboardManager {
             }
             if (trimStart > 0) {
                 mediaPlayer.seekTo(trimStart)
+            }
+            val webMediaId = if (playbackPlan.web) {
+                LanCastAudioBridge.beginFile(
+                    targetFile,
+                    trimStart.toLong(),
+                    trimEnd.toLong(),
+                    playbackGainPercent
+                )
+            } else {
+                null
             }
             val pollJob = scope.launch {
                 while (true) {
@@ -168,11 +190,12 @@ object SoundboardManager {
                 scope.launch { stop(item.id) }
                 true
             }
-            val audioFocusLease = audioFocusController?.acquire()
+            val audioFocusLease = if (playbackPlan.local) audioFocusController?.acquire() else null
             try {
                 mediaPlayer.start()
             } catch (t: Throwable) {
                 audioFocusLease?.release()
+                LanCastAudioBridge.endFile(webMediaId)
                 throw t
             }
             players[item.id] = ActivePlayback(
@@ -180,6 +203,8 @@ object SoundboardManager {
                 player = mediaPlayer,
                 enhancer = enhancer,
                 audioFocusLease = audioFocusLease,
+                localPlayback = playbackPlan.local,
+                webMediaId = webMediaId,
                 pollJob = pollJob,
                 stopJob = stopJob
             )
@@ -271,6 +296,7 @@ object SoundboardManager {
             existing.enhancer?.enabled = false
         }
         existing.audioFocusLease?.release()
+        LanCastAudioBridge.endFile(existing.webMediaId)
         runCatching {
             existing.enhancer?.release()
         }

@@ -22,6 +22,8 @@ import com.lhtstudio.kigtts.app.ui.RecognizedItem
 import com.lhtstudio.kigtts.app.util.AppLogger
 import com.lhtstudio.kigtts.app.util.BluetoothMediaTitleBridge
 import com.lhtstudio.kigtts.app.util.LiveSubtitleNotificationBridge
+import com.lhtstudio.kigtts.app.lan.LanCastRuntime
+import com.lhtstudio.kigtts.app.ui.QUICK_SUBTITLE_CLEARED_HINT
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -59,7 +61,7 @@ data class RealtimeHostState(
     val quickSubtitleConfigJson: String = ""
 )
 
-class RealtimeHostService : Service(), RealtimeRuntimeBridge.AppDelegate {
+class RealtimeHostService : Service(), RealtimeRuntimeBridge.AppDelegate, LanCastRuntime.CommandHandler {
     private val binder = LocalBinder()
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private lateinit var repo: ModelRepository
@@ -99,6 +101,7 @@ class RealtimeHostService : Service(), RealtimeRuntimeBridge.AppDelegate {
         AppLogger.i("RealtimeHostService.onCreate")
         repo = ModelRepository(applicationContext)
         RealtimeRuntimeBridge.registerAppDelegate(this)
+        LanCastRuntime.registerCommandHandler(this)
         observeSettings()
         initializeSelections()
     }
@@ -140,6 +143,7 @@ class RealtimeHostService : Service(), RealtimeRuntimeBridge.AppDelegate {
         settingsJob?.cancel()
         settingsJob = null
         RealtimeRuntimeBridge.unregisterAppDelegate(this)
+        LanCastRuntime.unregisterCommandHandler(this)
         val activeController = controller
         controller = null
         if (activeController != null) {
@@ -481,6 +485,55 @@ class RealtimeHostService : Service(), RealtimeRuntimeBridge.AppDelegate {
         emitQuickSubtitleRequest(target, normalized, navigateToPage = false)
     }
 
+    override fun submitSubtitle(text: String, playVoice: Boolean) {
+        val normalized = text.trim()
+        if (normalized.isEmpty()) return
+        serviceScope.launch {
+            if (playVoice && !currentSettings.ttsDisabled) {
+                enqueueSpeakAndAppendHistory(
+                    normalized,
+                    fromQuickText = true,
+                    interruptCurrent = currentSettings.quickSubtitleInterruptQueue
+                )
+            } else {
+                appendRecognizedHistory(normalized, fromQuickText = true)
+            }
+            emitQuickSubtitleRequest(
+                OverlayBridge.TARGET_SUBTITLE,
+                normalized,
+                navigateToPage = false
+            )
+        }
+    }
+
+    override fun clearSubtitle() {
+        emitQuickSubtitleRequest(
+            OverlayBridge.TARGET_SUBTITLE,
+            QUICK_SUBTITLE_CLEARED_HINT,
+            navigateToPage = false
+        )
+    }
+
+    override fun replaySubtitle(text: String) {
+        serviceScope.launch {
+            val queued = speakText(text, interruptCurrent = currentSettings.quickSubtitleInterruptQueue)
+            updateStatus(if (queued != null) "已加入朗读队列" else "播放文本失败，请检查 TTS 设置")
+        }
+    }
+
+    override fun setRealtimeRunning(running: Boolean) {
+        if (running) startRealtime() else stopRealtime()
+    }
+
+    override fun openApp() {
+        startActivity(
+            OverlayBridge.buildOpenPageIntent(
+                applicationContext,
+                OverlayBridge.TARGET_OPEN_LAN_CAST
+            )
+        )
+    }
+
     private fun emitQuickSubtitleRequest(
         target: String,
         text: String,
@@ -495,6 +548,7 @@ class RealtimeHostService : Service(), RealtimeRuntimeBridge.AppDelegate {
         )
         _quickSubtitleRequests.value = request
         if (target == OverlayBridge.TARGET_SUBTITLE) {
+            LanCastRuntime.updateSubtitleText(normalized)
             updateState {
                 it.copy(
                     quickSubtitleRequestId = request.requestId,
@@ -1153,6 +1207,7 @@ class RealtimeHostService : Service(), RealtimeRuntimeBridge.AppDelegate {
                 pushToTalkStreamingText = snapshot.pushToTalkStreamingText
             )
         )
+        LanCastRuntime.updateRealtimeState(snapshot.running, snapshot.playbackProgress)
         if (snapshot.status != previous.status) {
             syncLiveSubtitleNotification()
         }
@@ -1161,7 +1216,9 @@ class RealtimeHostService : Service(), RealtimeRuntimeBridge.AppDelegate {
     private fun currentState(): RealtimeHostState = _state.value
 
     private fun isOverlayOpenTarget(target: String): Boolean {
-        return target == OverlayBridge.TARGET_OPEN || target == OverlayBridge.TARGET_INPUT
+        return target == OverlayBridge.TARGET_OPEN ||
+            target == OverlayBridge.TARGET_INPUT ||
+            target == OverlayBridge.TARGET_OPEN_LAN_CAST
     }
 
     inner class LocalBinder : Binder() {

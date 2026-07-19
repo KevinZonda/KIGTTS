@@ -351,6 +351,7 @@ import kotlin.math.roundToInt
 class MainActivity : ComponentActivity() {
     private var lastDecorFitsSystemWindows: Boolean = false
     private var pendingBackgroundReturnFix: Boolean = false
+    private var initialAppFontResolved: Boolean = false
     private var delayedResumeFixRunnable: Runnable? = null
     private var lastHandledExternalVoicePackIntentKey: String? = null
     private var lastHandledExternalPresetIntentKey: String? = null
@@ -390,7 +391,9 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         val splashScreen = installSplashScreen()
         super.onCreate(savedInstanceState)
-        splashScreen.setKeepOnScreenCondition { !viewModel.uiState.settingsLoaded }
+        splashScreen.setKeepOnScreenCondition {
+            !viewModel.uiState.settingsLoaded || !initialAppFontResolved
+        }
         enableEdgeToEdge(
             statusBarStyle = SystemBarStyle.dark(android.graphics.Color.parseColor("#038387")),
             navigationBarStyle = SystemBarStyle.auto(
@@ -433,10 +436,22 @@ class MainActivity : ComponentActivity() {
                         backgroundColor = extraColors.accentText.copy(alpha = 0.32f)
                     )
                 }
-                val appFontFamily = rememberAppFontFamily(
+                val appFontLoadState = rememberAppFontFamilyLoadState(
                     source = state.appFontFamilySource,
                     preferredWeight = state.appFontWeight
                 )
+                val appFontRequestResolved = appFontLoadState.isResolvedFor(
+                    source = state.appFontFamilySource,
+                    preferredWeight = state.appFontWeight
+                )
+                SideEffect {
+                    if (state.settingsLoaded && appFontRequestResolved) {
+                        initialAppFontResolved = true
+                    }
+                }
+                val appFontFamily = appFontLoadState.fontFamily.takeIf {
+                    appFontRequestResolved
+                }
                 val appTypography = remember(appFontFamily) {
                     KgtTypography.withAppFontFamily(appFontFamily)
                 }

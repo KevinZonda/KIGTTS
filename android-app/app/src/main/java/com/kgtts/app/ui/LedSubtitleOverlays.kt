@@ -130,6 +130,7 @@ internal fun LedOverlayIconButton(
 internal fun LedSubtitleGuideOverlay(
     visible: Boolean,
     quickSwipeEnabled: Boolean,
+    adaptiveMultiLine: Boolean,
     onDismiss: () -> Unit
 ) {
     AnimatedVisibility(
@@ -163,7 +164,11 @@ internal fun LedSubtitleGuideOverlay(
                 contentAlignment = Alignment.BottomCenter
             ) {
                 Text(
-                    if (quickSwipeEnabled) {
+                    if (adaptiveMultiLine && quickSwipeEnabled) {
+                        "快速左滑快捷文本 · 上滑输入文字"
+                    } else if (adaptiveMultiLine) {
+                        "上滑输入文字"
+                    } else if (quickSwipeEnabled) {
                         "左右拖动字幕 · 快速左滑快捷文本 · 上滑输入文字"
                     } else {
                         "左右拖动字幕 · 上滑输入文字"

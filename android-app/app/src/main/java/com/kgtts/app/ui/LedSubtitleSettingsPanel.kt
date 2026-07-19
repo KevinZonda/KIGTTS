@@ -159,15 +159,43 @@ internal fun LedSubtitleSettingsPanel(
                     onValueChange = { onSettingsChange(settings.copy(displayHeightFraction = it)) }
                 )
 
-                LedSettingsSectionTitle("滚动")
-                LedSettingsSlider(
-                    label = "滚动速度",
-                    value = settings.scrollSpeedDpPerSecond,
-                    valueRange = 24f..220f,
-                    valueLabel = "${settings.scrollSpeedDpPerSecond.roundToInt()} dp/s",
+                LedSettingsSectionTitle("排版")
+                LedSwitchSetting(
+                    label = "自适应多行",
+                    checked = settings.adaptiveMultiLine,
                     accent = accent,
-                    onValueChange = { onSettingsChange(settings.copy(scrollSpeedDpPerSecond = it)) }
+                    onCheckedChange = {
+                        onSettingsChange(settings.copy(adaptiveMultiLine = it))
+                    }
                 )
+                if (!settings.adaptiveMultiLine) {
+                    LedSettingsSlider(
+                        label = "滚动速度",
+                        value = settings.scrollSpeedDpPerSecond,
+                        valueRange = LedSubtitleSettings.MIN_SCROLL_SPEED_DP_PER_SECOND..
+                            LedSubtitleSettings.MAX_SCROLL_SPEED_DP_PER_SECOND,
+                        valueLabel = "${settings.scrollSpeedDpPerSecond.roundToInt()} dp/s",
+                        accent = accent,
+                        onValueChange = {
+                            onSettingsChange(settings.copy(scrollSpeedDpPerSecond = it))
+                        }
+                    )
+                    LedSegmentedSetting(
+                        label = "滚动方向",
+                        options = listOf("arrow_back" to "向左", "arrow_forward" to "向右"),
+                        selectedIndex = settings.scrollDirection,
+                        accent = accent,
+                        onSelected = { onSettingsChange(settings.copy(scrollDirection = it)) }
+                    )
+                    LedSettingsSlider(
+                        label = "循环间距",
+                        value = settings.loopGapDp,
+                        valueRange = 24f..240f,
+                        valueLabel = "${settings.loopGapDp.roundToInt()} dp",
+                        accent = accent,
+                        onValueChange = { onSettingsChange(settings.copy(loopGapDp = it)) }
+                    )
+                }
                 LedSwitchSetting(
                     label = "快速左滑打开快捷文本",
                     checked = settings.quickSwipeOpensQuickText,
@@ -177,22 +205,7 @@ internal fun LedSubtitleSettingsPanel(
                     }
                 )
                 LedSegmentedSetting(
-                    label = "滚动方向",
-                    options = listOf("arrow_back" to "向左", "arrow_forward" to "向右"),
-                    selectedIndex = settings.scrollDirection,
-                    accent = accent,
-                    onSelected = { onSettingsChange(settings.copy(scrollDirection = it)) }
-                )
-                LedSettingsSlider(
-                    label = "循环间距",
-                    value = settings.loopGapDp,
-                    valueRange = 24f..240f,
-                    valueLabel = "${settings.loopGapDp.roundToInt()} dp",
-                    accent = accent,
-                    onValueChange = { onSettingsChange(settings.copy(loopGapDp = it)) }
-                )
-                LedSegmentedSetting(
-                    label = "短文本对齐",
+                    label = "文本对齐",
                     options = listOf(
                         "format_align_left" to "居左",
                         "format_align_center" to "居中",

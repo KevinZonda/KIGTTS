@@ -282,6 +282,10 @@ import com.lhtstudio.kigtts.app.util.ExternalShortcutCatalog
 import com.lhtstudio.kigtts.app.util.ExternalShortcutChoice
 import com.lhtstudio.kigtts.app.util.LauncherMenuShortcuts
 import com.lhtstudio.kigtts.app.util.LiveSubtitleNotificationBridge
+import com.lhtstudio.kigtts.app.lan.LanCastAudioBridge
+import com.lhtstudio.kigtts.app.lan.LanCastAudioOutputMode
+import com.lhtstudio.kigtts.app.lan.LanCastRuntime
+import com.lhtstudio.kigtts.app.lan.LanCastService
 import com.lhtstudio.kigtts.app.util.QqScannerSupport
 import com.lhtstudio.kigtts.app.util.QuickCardRenderCache
 import com.lhtstudio.kigtts.app.util.VolumeHotkeyActionSpec
@@ -402,6 +406,7 @@ class MainViewModel(
     private var restartJob: Job? = null
     private var settingsObserveJob: Job? = null
     private var ledSubtitleSettingsSaveJob: Job? = null
+    private var lanCastDisplaySettingsSaveJob: Job? = null
     private var voicePackRefreshJob: Job? = null
     private val voicePackRefreshMutex = Mutex()
     private val lastProgressUpdateAtMs = mutableMapOf<Long, Long>()
@@ -790,6 +795,9 @@ class MainViewModel(
 
     private fun applySettingsSnapshot(settings: UserPrefs.AppSettings) {
         FontScaleBlockRuntime.mode = settings.fontScaleBlockMode
+        LanCastAudioBridge.setOutputMode(
+            LanCastAudioOutputMode.fromPreferenceValue(settings.lanCastAudioOutputMode)
+        )
         SoundboardManager.setPlaybackGainPercent(settings.playbackGainPercent)
         SoundboardManager.setAudioFocusAvoidanceMode(appContext, settings.audioFocusAvoidanceMode)
         BluetoothMediaTitleBridge.setEnabled(
@@ -906,10 +914,13 @@ class MainViewModel(
             quickSubtitleAutoFit = settings.quickSubtitleAutoFit,
             quickSubtitleAllowLargeFont = settings.quickSubtitleAllowLargeFont,
             quickSubtitleCompactControls = settings.quickSubtitleCompactControls,
+            quickSubtitleFirstRunGuideCompleted = settings.quickSubtitleFirstRunGuideCompleted,
             quickSubtitleKeepInputPreview = settings.quickSubtitleKeepInputPreview,
             ledSubtitleSettings = settings.ledSubtitleSettings,
+            lanCastDisplaySettings = settings.lanCastDisplaySettings,
             bluetoothMediaTitleSubtitle = settings.bluetoothMediaTitleSubtitle,
             liveSubtitleNotificationEnabled = settings.liveSubtitleNotificationEnabled,
+            lanCastAudioOutputMode = settings.lanCastAudioOutputMode,
             drawingKeepCanvasOrientationToDevice = settings.drawingKeepCanvasOrientationToDevice,
             speakerVerifyEnabled = speakerVerifyEnabled,
             speakerVerifyThreshold = settings.speakerVerifyThreshold,
@@ -3597,6 +3608,14 @@ class MainViewModel(
         }
     }
 
+    fun completeQuickSubtitleFirstRunGuide() {
+        if (uiState.quickSubtitleFirstRunGuideCompleted) return
+        uiState = uiState.copy(quickSubtitleFirstRunGuideCompleted = true)
+        viewModelScope.launch {
+            UserPrefs.setQuickSubtitleFirstRunGuideCompleted(appContext, true)
+        }
+    }
+
     fun setQuickSubtitleKeepInputPreview(enabled: Boolean) {
         uiState = uiState.copy(quickSubtitleKeepInputPreview = enabled)
         viewModelScope.launch {
@@ -3617,6 +3636,21 @@ class MainViewModel(
 
     fun resetLedSubtitleSettings() {
         updateLedSubtitleSettings(LedSubtitleSettings())
+    }
+
+    fun updateLanCastDisplaySettings(settings: LedSubtitleSettings) {
+        val normalized = settings.normalized()
+        if (uiState.lanCastDisplaySettings == normalized) return
+        uiState = uiState.copy(lanCastDisplaySettings = normalized)
+        lanCastDisplaySettingsSaveJob?.cancel()
+        lanCastDisplaySettingsSaveJob = viewModelScope.launch {
+            delay(160)
+            UserPrefs.setLanCastDisplaySettings(appContext, normalized)
+        }
+    }
+
+    fun resetLanCastDisplaySettings() {
+        updateLanCastDisplaySettings(LedSubtitleSettings())
     }
 
     fun setBluetoothMediaTitleSubtitle(enabled: Boolean) {
@@ -3641,6 +3675,37 @@ class MainViewModel(
         viewModelScope.launch {
             UserPrefs.setLiveSubtitleNotificationEnabled(appContext, enabled)
         }
+    }
+
+    fun setLanCastAudioOutputMode(mode: Int) {
+        val normalized = UserPrefs.normalizeLanCastAudioOutputMode(mode)
+        uiState = uiState.copy(lanCastAudioOutputMode = normalized)
+        LanCastAudioBridge.setOutputMode(
+            LanCastAudioOutputMode.fromPreferenceValue(normalized)
+        )
+        viewModelScope.launch {
+            UserPrefs.setLanCastAudioOutputMode(appContext, normalized)
+        }
+    }
+
+    fun startLanCast() {
+        LanCastService.start(appContext)
+    }
+
+    fun stopLanCast() {
+        LanCastService.stop(appContext)
+    }
+
+    fun refreshLanCastAddresses() {
+        if (LanCastRuntime.status().running) {
+            LanCastService.refresh(appContext)
+        } else {
+            LanCastRuntime.refreshAddresses()
+        }
+    }
+
+    fun selectLanCastAddress(addressId: String) {
+        LanCastRuntime.selectAddress(addressId)
     }
 
     fun setDrawingKeepCanvasOrientationToDevice(enabled: Boolean) {

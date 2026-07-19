@@ -23,6 +23,11 @@ import org.json.JSONObject
 
 private val Context.dataStore by preferencesDataStore(name = "user_prefs")
 
+internal fun resolveQuickSubtitleFirstRunGuideCompleted(
+    stored: Boolean?,
+    onboardingCompleted: Boolean
+): Boolean = stored ?: onboardingCompleted
+
 object UserPrefs {
     const val DRAWER_MODE_HIDDEN = 0
     const val DRAWER_MODE_PERMANENT = 1
@@ -37,6 +42,9 @@ object UserPrefs {
     const val AUDIO_FOCUS_AVOID_MUTE = 1
     const val AUDIO_FOCUS_AVOID_PAUSE = 2
     const val AUDIO_FOCUS_AVOID_NONE = 3
+    const val LAN_CAST_AUDIO_LOCAL = 0
+    const val LAN_CAST_AUDIO_WEB = 1
+    const val LAN_CAST_AUDIO_BOTH = 2
     const val DEFAULT_DRAWING_SAVE_RELATIVE_PATH = "Pictures/KGTTS/Drawings"
     const val SILERO_VAD_MIN_THRESHOLD = 0.05f
     const val SILERO_VAD_MAX_THRESHOLD = 0.95f
@@ -178,15 +186,20 @@ object UserPrefs {
     private val KEY_QUICK_SUBTITLE_ALLOW_LARGE_FONT =
         booleanPreferencesKey("quick_subtitle_allow_large_font")
     private val KEY_QUICK_SUBTITLE_COMPACT_CONTROLS = booleanPreferencesKey("quick_subtitle_compact_controls")
+    private val KEY_QUICK_SUBTITLE_FIRST_RUN_GUIDE_COMPLETED =
+        booleanPreferencesKey("quick_subtitle_first_run_guide_completed")
     private val KEY_QUICK_SUBTITLE_LIST_POPUP_GRID_MODE =
         booleanPreferencesKey("quick_subtitle_list_popup_grid_mode")
     private val KEY_QUICK_SUBTITLE_KEEP_INPUT_PREVIEW =
         booleanPreferencesKey("quick_subtitle_keep_input_preview")
     private val KEY_LED_SUBTITLE_SETTINGS = stringPreferencesKey("led_subtitle_settings")
+    private val KEY_LAN_CAST_DISPLAY_SETTINGS = stringPreferencesKey("lan_cast_display_settings")
     private val KEY_BLUETOOTH_MEDIA_TITLE_SUBTITLE =
         booleanPreferencesKey("bluetooth_media_title_subtitle")
     private val KEY_LIVE_SUBTITLE_NOTIFICATION_ENABLED =
         booleanPreferencesKey("live_subtitle_notification_enabled")
+    private val KEY_LAN_CAST_AUDIO_OUTPUT_MODE =
+        intPreferencesKey("lan_cast_audio_output_mode")
     private val KEY_DRAWING_KEEP_CANVAS_ORIENTATION_TO_DEVICE =
         booleanPreferencesKey("drawing_keep_canvas_orientation_to_device")
     private val KEY_SPEAKER_VERIFY_ENABLED = booleanPreferencesKey("speaker_verify_enabled")
@@ -281,11 +294,14 @@ object UserPrefs {
         val quickSubtitleAutoFit: Boolean = true,
         val quickSubtitleAllowLargeFont: Boolean = false,
         val quickSubtitleCompactControls: Boolean = false,
+        val quickSubtitleFirstRunGuideCompleted: Boolean = false,
         val quickSubtitleListPopupGridMode: Boolean = true,
         val quickSubtitleKeepInputPreview: Boolean = true,
         val ledSubtitleSettings: LedSubtitleSettings = LedSubtitleSettings(),
+        val lanCastDisplaySettings: LedSubtitleSettings = LedSubtitleSettings(),
         val bluetoothMediaTitleSubtitle: Boolean = false,
         val liveSubtitleNotificationEnabled: Boolean = false,
+        val lanCastAudioOutputMode: Int = LAN_CAST_AUDIO_LOCAL,
         val drawingKeepCanvasOrientationToDevice: Boolean = true,
         val speakerVerifyEnabled: Boolean = false,
         val speakerVerifyThreshold: Float = 0.5f,
@@ -296,6 +312,9 @@ object UserPrefs {
 
     fun normalizeThemeMode(mode: Int): Int =
         mode.coerceIn(THEME_MODE_FOLLOW_SYSTEM, THEME_MODE_DARK)
+
+    fun normalizeLanCastAudioOutputMode(mode: Int): Int =
+        mode.coerceIn(LAN_CAST_AUDIO_LOCAL, LAN_CAST_AUDIO_BOTH)
 
     fun normalizeThemeColorArgb(colorArgb: Int): Int = colorArgb or (0xFF shl 24)
 
@@ -533,11 +552,19 @@ object UserPrefs {
             quickSubtitleAutoFit = this[KEY_QUICK_SUBTITLE_AUTO_FIT] ?: true,
             quickSubtitleAllowLargeFont = this[KEY_QUICK_SUBTITLE_ALLOW_LARGE_FONT] ?: false,
             quickSubtitleCompactControls = this[KEY_QUICK_SUBTITLE_COMPACT_CONTROLS] ?: false,
+            quickSubtitleFirstRunGuideCompleted = resolveQuickSubtitleFirstRunGuideCompleted(
+                stored = this[KEY_QUICK_SUBTITLE_FIRST_RUN_GUIDE_COMPLETED],
+                onboardingCompleted = this[KEY_ONBOARDING_COMPLETED] ?: false
+            ),
             quickSubtitleListPopupGridMode = this[KEY_QUICK_SUBTITLE_LIST_POPUP_GRID_MODE] ?: true,
             quickSubtitleKeepInputPreview = this[KEY_QUICK_SUBTITLE_KEEP_INPUT_PREVIEW] ?: true,
             ledSubtitleSettings = decodeLedSubtitleSettings(this[KEY_LED_SUBTITLE_SETTINGS]),
+            lanCastDisplaySettings = decodeLedSubtitleSettings(this[KEY_LAN_CAST_DISPLAY_SETTINGS]),
             bluetoothMediaTitleSubtitle = this[KEY_BLUETOOTH_MEDIA_TITLE_SUBTITLE] ?: false,
             liveSubtitleNotificationEnabled = this[KEY_LIVE_SUBTITLE_NOTIFICATION_ENABLED] ?: false,
+            lanCastAudioOutputMode = normalizeLanCastAudioOutputMode(
+                this[KEY_LAN_CAST_AUDIO_OUTPUT_MODE] ?: LAN_CAST_AUDIO_LOCAL
+            ),
             drawingKeepCanvasOrientationToDevice = this[KEY_DRAWING_KEEP_CANVAS_ORIENTATION_TO_DEVICE] ?: true,
             speakerVerifyEnabled = this[KEY_SPEAKER_VERIFY_ENABLED] ?: false,
             speakerVerifyThreshold = (this[KEY_SPEAKER_VERIFY_THRESHOLD] ?: 0.5f).coerceIn(0.05f, 0.95f),
@@ -842,6 +869,9 @@ object UserPrefs {
     suspend fun setOnboardingCompleted(context: Context, completed: Boolean) {
         context.dataStore.edit { prefs ->
             prefs[KEY_ONBOARDING_COMPLETED] = completed
+            if (completed && prefs[KEY_QUICK_SUBTITLE_FIRST_RUN_GUIDE_COMPLETED] == null) {
+                prefs[KEY_QUICK_SUBTITLE_FIRST_RUN_GUIDE_COMPLETED] = false
+            }
         }
     }
 
@@ -1057,6 +1087,12 @@ object UserPrefs {
         }
     }
 
+    suspend fun setQuickSubtitleFirstRunGuideCompleted(context: Context, completed: Boolean) {
+        context.dataStore.edit { prefs ->
+            prefs[KEY_QUICK_SUBTITLE_FIRST_RUN_GUIDE_COMPLETED] = completed
+        }
+    }
+
     suspend fun setQuickSubtitleListPopupGridMode(context: Context, enabled: Boolean) {
         context.dataStore.edit { prefs ->
             prefs[KEY_QUICK_SUBTITLE_LIST_POPUP_GRID_MODE] = enabled
@@ -1075,6 +1111,12 @@ object UserPrefs {
         }
     }
 
+    suspend fun setLanCastDisplaySettings(context: Context, settings: LedSubtitleSettings) {
+        context.dataStore.edit { prefs ->
+            prefs[KEY_LAN_CAST_DISPLAY_SETTINGS] = encodeLedSubtitleSettings(settings)
+        }
+    }
+
     suspend fun setBluetoothMediaTitleSubtitle(context: Context, enabled: Boolean) {
         context.dataStore.edit { prefs ->
             prefs[KEY_BLUETOOTH_MEDIA_TITLE_SUBTITLE] = enabled
@@ -1084,6 +1126,12 @@ object UserPrefs {
     suspend fun setLiveSubtitleNotificationEnabled(context: Context, enabled: Boolean) {
         context.dataStore.edit { prefs ->
             prefs[KEY_LIVE_SUBTITLE_NOTIFICATION_ENABLED] = enabled
+        }
+    }
+
+    suspend fun setLanCastAudioOutputMode(context: Context, mode: Int) {
+        context.dataStore.edit { prefs ->
+            prefs[KEY_LAN_CAST_AUDIO_OUTPUT_MODE] = normalizeLanCastAudioOutputMode(mode)
         }
     }
 

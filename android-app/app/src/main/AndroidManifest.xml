@@ -32,6 +32,7 @@
     <uses-permission android:name="android.permission.POST_PROMOTED_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
 
     <application
@@ -111,6 +112,14 @@
         <service
             android:name=".service.RealtimeHostService"
             android:exported="false" />
+        <service
+            android:name=".lan.LanCastService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="local_network_subtitle_display_and_remote_control" />
+        </service>
         <service
             android:name=".service.VolumeHotkeyService"
             android:exported="false"

@@ -460,6 +460,7 @@ internal fun LedSubtitleScreenContent(
         LedSubtitleGuideOverlay(
             visible = showGuide && !locked && activePanel == LedSubtitlePanel.None,
             quickSwipeEnabled = settings.quickSwipeOpensQuickText,
+            adaptiveMultiLine = settings.adaptiveMultiLine,
             onDismiss = {
                 registerInteraction()
                 showGuide = false

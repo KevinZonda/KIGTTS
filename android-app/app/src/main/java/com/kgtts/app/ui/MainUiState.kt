@@ -443,10 +443,13 @@ data class UiState(
     val quickSubtitleAutoFit: Boolean = true,
     val quickSubtitleAllowLargeFont: Boolean = false,
     val quickSubtitleCompactControls: Boolean = false,
+    val quickSubtitleFirstRunGuideCompleted: Boolean = false,
     val quickSubtitleKeepInputPreview: Boolean = true,
     val ledSubtitleSettings: LedSubtitleSettings = LedSubtitleSettings(),
+    val lanCastDisplaySettings: LedSubtitleSettings = LedSubtitleSettings(),
     val bluetoothMediaTitleSubtitle: Boolean = false,
     val liveSubtitleNotificationEnabled: Boolean = false,
+    val lanCastAudioOutputMode: Int = UserPrefs.LAN_CAST_AUDIO_LOCAL,
     val drawingKeepCanvasOrientationToDevice: Boolean = true,
     val pushToTalkPressed: Boolean = false,
     val pushToTalkStreamingText: String = "",
@@ -517,6 +520,7 @@ internal fun isOverlayOpenTarget(target: String): Boolean {
             target == OverlayBridge.TARGET_OPEN_SOUNDBOARD ||
             target == OverlayBridge.TARGET_OPEN_VOICE_PACK ||
             target == OverlayBridge.TARGET_OPEN_SETTINGS ||
+            target == OverlayBridge.TARGET_OPEN_LAN_CAST ||
             target == OverlayBridge.TARGET_OPEN_QR_SCANNER
 }
 

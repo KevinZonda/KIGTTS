@@ -27,6 +27,7 @@ object OverlayBridge {
     const val TARGET_OPEN_SOUNDBOARD = "open_soundboard"
     const val TARGET_OPEN_VOICE_PACK = "open_voice_pack"
     const val TARGET_OPEN_SETTINGS = "open_settings"
+    const val TARGET_OPEN_LAN_CAST = "open_lan_cast"
     const val TARGET_OPEN_QR_SCANNER = "open_qr_scanner"
 
     fun buildQuickSubtitleIntent(

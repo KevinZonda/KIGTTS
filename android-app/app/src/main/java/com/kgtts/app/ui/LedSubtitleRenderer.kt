@@ -53,7 +53,8 @@ private data class LedRenderedStrip(
 
 private data class LedDisplayTarget(
     val text: String,
-    val dotMatrixEnabled: Boolean
+    val dotMatrixEnabled: Boolean,
+    val adaptiveMultiLine: Boolean
 )
 
 @Stable
@@ -160,8 +161,8 @@ internal fun LedSubtitleDisplay(
     typeface: Typeface,
     modifier: Modifier = Modifier
 ) {
-    val target = remember(text, settings.dotMatrixEnabled) {
-        LedDisplayTarget(normalizeLedText(text), settings.dotMatrixEnabled)
+    val target = remember(text, settings.dotMatrixEnabled, settings.adaptiveMultiLine) {
+        LedDisplayTarget(text, settings.dotMatrixEnabled, settings.adaptiveMultiLine)
     }
     LaunchedEffect(target) { motionState.resetToStart() }
     Crossfade(
@@ -170,7 +171,14 @@ internal fun LedSubtitleDisplay(
         modifier = modifier,
         label = "led_subtitle_content_change"
     ) { current ->
-        if (current.dotMatrixEnabled) {
+        if (current.adaptiveMultiLine) {
+            LedAdaptiveSubtitleDisplay(
+                text = current.text,
+                settings = settings,
+                typeface = typeface,
+                modifier = Modifier.fillMaxSize()
+            )
+        } else if (current.dotMatrixEnabled) {
             LedMarqueeDisplay(
                 text = current.text,
                 settings = settings,
@@ -401,7 +409,7 @@ private suspend fun renderLedStrip(
 
 private const val MAXIMUM_STRIP_WIDTH = 32_768f
 
-private fun drawLedCells(
+internal fun drawLedCells(
     canvas: AndroidCanvas,
     mask: Bitmap,
     pitchPx: Int,

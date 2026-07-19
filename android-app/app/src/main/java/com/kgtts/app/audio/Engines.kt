@@ -41,6 +41,7 @@ import com.k2fsa.sherpa.onnx.SpeakerEmbeddingManager
 import com.k2fsa.sherpa.onnx.Vad
 import com.k2fsa.sherpa.onnx.VadModelConfig
 import com.lhtstudio.kigtts.app.data.EspeakData
+import com.lhtstudio.kigtts.app.lan.LanCastAudioBridge
 import com.lhtstudio.kigtts.app.data.RecognitionResourceRepository
 import com.lhtstudio.kigtts.app.data.UserPrefs
 import com.lhtstudio.kigtts.app.data.isKokoroVoiceDir
@@ -1112,6 +1113,11 @@ class AudioPlayer(private val context: Context) {
                 (samples[idx] * gain).coerceIn(-1f, 1f)
             }
         }
+        val lanPlaybackPlan = LanCastAudioBridge.playbackPlan()
+        if (!lanPlaybackPlan.local) {
+            playWebOnly(scaledSamples, sampleRate, onProgress)
+            return
+        }
         val shorts = ShortArray(scaledSamples.size) { idx ->
             val v = max(-1f, min(1f, scaledSamples[idx])) * Short.MAX_VALUE
             v.toInt().toShort()
@@ -1173,6 +1179,11 @@ class AudioPlayer(private val context: Context) {
         }
 
         isPlaying = true
+        val webStreamId = if (lanPlaybackPlan.web) {
+            LanCastAudioBridge.beginPcm(sampleRate)
+        } else {
+            null
+        }
         val audioFocusLease = audioFocusController.acquire()
         var normalPlaybackEnded = false
         try {
@@ -1183,6 +1194,13 @@ class AudioPlayer(private val context: Context) {
             var lastReport = 0f
             while (written < total && !stopRequested) {
                 val count = min(2048, total - written)
+                LanCastAudioBridge.publishPcm(
+                    webStreamId,
+                    scaledSamples,
+                    written,
+                    count,
+                    sampleRate
+                )
                 onRender?.invoke(scaledSamples, written, count, sampleRate)
                 val w = track.write(shorts, written, count)
                 if (w <= 0) break
@@ -1214,9 +1232,40 @@ class AudioPlayer(private val context: Context) {
             }
             stopRequested = false
             isPlaying = false
+            LanCastAudioBridge.endPcm(webStreamId, interrupted = !normalPlaybackEnded)
             audioFocusLease?.releaseDelayed(
                 if (dwellAudioFocus) PLAYBACK_END_AUDIO_FOCUS_DWELL_MS else 0L
             )
+            onProgress?.invoke(1f)
+        }
+    }
+
+    private fun playWebOnly(
+        samples: FloatArray,
+        sampleRate: Int,
+        onProgress: ((Float) -> Unit)?
+    ) {
+        val streamId = LanCastAudioBridge.beginPcm(sampleRate)
+        if (streamId == null) return
+        isPlaying = true
+        onOutputDevice?.invoke("网页音频")
+        var sent = 0
+        var completed = false
+        try {
+            onProgress?.invoke(0f)
+            while (sent < samples.size && !stopRequested) {
+                val count = min(2048, samples.size - sent)
+                LanCastAudioBridge.publishPcm(streamId, samples, sent, count, sampleRate)
+                sent += count
+                onProgress?.invoke(sent.toFloat() / samples.size.toFloat())
+                val chunkMs = (count * 1000L / sampleRate.coerceAtLeast(1)).coerceAtLeast(1L)
+                SystemClock.sleep(chunkMs)
+            }
+            completed = sent >= samples.size && !stopRequested
+        } finally {
+            LanCastAudioBridge.endPcm(streamId, interrupted = !completed)
+            stopRequested = false
+            isPlaying = false
             onProgress?.invoke(1f)
         }
     }

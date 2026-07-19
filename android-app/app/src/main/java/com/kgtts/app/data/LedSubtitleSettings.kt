@@ -11,6 +11,7 @@ data class LedSubtitleSettings(
     val glowEnabled: Boolean = true,
     val glowStrength: Float = 0.42f,
     val displayHeightFraction: Float = 0.72f,
+    val adaptiveMultiLine: Boolean = false,
     val scrollSpeedDpPerSecond: Float = 72f,
     val scrollDirection: Int = SCROLL_RIGHT_TO_LEFT,
     val quickSwipeOpensQuickText: Boolean = true,
@@ -27,7 +28,10 @@ data class LedSubtitleSettings(
         dotDensity = dotDensity.coerceIn(0f, 1f),
         glowStrength = glowStrength.coerceIn(0f, 1f),
         displayHeightFraction = displayHeightFraction.coerceIn(0.35f, 0.92f),
-        scrollSpeedDpPerSecond = scrollSpeedDpPerSecond.coerceIn(24f, 220f),
+        scrollSpeedDpPerSecond = scrollSpeedDpPerSecond.coerceIn(
+            MIN_SCROLL_SPEED_DP_PER_SECOND,
+            MAX_SCROLL_SPEED_DP_PER_SECOND
+        ),
         scrollDirection = scrollDirection.coerceIn(SCROLL_RIGHT_TO_LEFT, SCROLL_LEFT_TO_RIGHT),
         loopGapDp = loopGapDp.coerceIn(24f, 240f),
         shortTextAlignment = shortTextAlignment.coerceIn(ALIGN_START, ALIGN_END),
@@ -44,6 +48,8 @@ data class LedSubtitleSettings(
         const val ALIGN_START = 0
         const val ALIGN_CENTER = 1
         const val ALIGN_END = 2
+        const val MIN_SCROLL_SPEED_DP_PER_SECOND = 24f
+        const val MAX_SCROLL_SPEED_DP_PER_SECOND = 1600f
 
         private fun opaque(color: Int): Int = color or (0xFF shl 24)
     }
@@ -52,7 +58,7 @@ data class LedSubtitleSettings(
 internal fun encodeLedSubtitleSettings(settings: LedSubtitleSettings): String {
     val value = settings.normalized()
     return JSONObject().apply {
-        put("version", 3)
+        put("version", 4)
         put("ledColorArgb", value.ledColorArgb)
         put("backgroundColorArgb", value.backgroundColorArgb)
         put("dotMatrixEnabled", value.dotMatrixEnabled)
@@ -61,6 +67,7 @@ internal fun encodeLedSubtitleSettings(settings: LedSubtitleSettings): String {
         put("glowEnabled", value.glowEnabled)
         put("glowStrength", value.glowStrength.toDouble())
         put("displayHeightFraction", value.displayHeightFraction.toDouble())
+        put("adaptiveMultiLine", value.adaptiveMultiLine)
         put("scrollSpeedDpPerSecond", value.scrollSpeedDpPerSecond.toDouble())
         put("scrollDirection", value.scrollDirection)
         put("quickSwipeOpensQuickText", value.quickSwipeOpensQuickText)
@@ -88,6 +95,7 @@ internal fun decodeLedSubtitleSettings(raw: String?): LedSubtitleSettings {
             glowEnabled = json.optBoolean("glowEnabled", true),
             glowStrength = json.optDouble("glowStrength", 0.42).toFloat(),
             displayHeightFraction = json.optDouble("displayHeightFraction", 0.72).toFloat(),
+            adaptiveMultiLine = json.optBoolean("adaptiveMultiLine", false),
             scrollSpeedDpPerSecond = json.optDouble("scrollSpeedDpPerSecond", 72.0).toFloat(),
             scrollDirection = json.optInt(
                 "scrollDirection",

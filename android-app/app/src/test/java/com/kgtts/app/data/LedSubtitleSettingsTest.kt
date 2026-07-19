@@ -47,7 +47,29 @@ class LedSubtitleSettingsTest {
         assertFalse(value.followSystemBrightness)
         assertEquals(1f, value.screenBrightness)
         assertTrue(value.glowEnabled)
+        assertFalse(value.adaptiveMultiLine)
         assertFalse(value.ledColorArgb == value.backgroundColorArgb)
+    }
+
+    @Test
+    fun normalizedCapsMaximumScrollSpeed() {
+        val value = LedSubtitleSettings(scrollSpeedDpPerSecond = 9_999f).normalized()
+
+        assertEquals(1600f, LedSubtitleSettings.MAX_SCROLL_SPEED_DP_PER_SECOND)
+        assertEquals(
+            LedSubtitleSettings.MAX_SCROLL_SPEED_DP_PER_SECOND,
+            value.scrollSpeedDpPerSecond
+        )
+    }
+
+    @Test
+    fun normalizedPreservesAdaptiveMultiLine() {
+        val original = LedSubtitleSettings(
+            adaptiveMultiLine = true,
+            scrollSpeedDpPerSecond = LedSubtitleSettings.MAX_SCROLL_SPEED_DP_PER_SECOND
+        )
+
+        assertEquals(original, original.normalized())
     }
 
     @Test

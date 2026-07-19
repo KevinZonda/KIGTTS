@@ -487,15 +487,6 @@ fun SettingsScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val scroll = rememberScrollState()
-    val liveSubtitleNotificationPermissionLauncher =
-        rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-            if (granted) {
-                viewModel.setLiveSubtitleNotificationEnabled(true)
-            } else {
-                toast(context, "未授予通知权限，实时通知无法显示")
-            }
-        }
-    var liveSubtitleNotificationPermissionPurposeOpen by remember { mutableStateOf(false) }
     var speakerEnrollPermissionPurposeOpen by remember { mutableStateOf(false) }
     var pendingSpeakerEnrollPermissionStep by remember { mutableIntStateOf(0) }
     val drawerModeOptions = listOf(
@@ -1978,34 +1969,6 @@ fun SettingsScreen(
                 }
             }
             Md2StaggeredFloatIn(index = 4) {
-                Md2SettingsCard(title = "通知与外部显示") {
-                    Md2SettingSwitchRow(
-                        title = "蓝牙媒体标题字幕",
-                        checked = state.bluetoothMediaTitleSubtitle,
-                        onCheckedChange = { viewModel.setBluetoothMediaTitleSubtitle(it) },
-                        supportingText = "实验性兼容模式。开启后会在前台、后台或息屏时把当前上屏大字幕写入系统媒体会话标题，用于蓝牙歌词屏、车机或小屏显示；可能覆盖其它媒体标题，关闭后停止同步。"
-                    )
-                    Md2SettingSwitchRow(
-                        title = "实时通知",
-                        checked = state.liveSubtitleNotificationEnabled,
-                        onCheckedChange = { enabled ->
-                            if (enabled &&
-                                Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
-                                ContextCompat.checkSelfPermission(
-                                    context,
-                                    Manifest.permission.POST_NOTIFICATIONS
-                                ) != PackageManager.PERMISSION_GRANTED
-                            ) {
-                                liveSubtitleNotificationPermissionPurposeOpen = true
-                            } else {
-                                viewModel.setLiveSubtitleNotificationEnabled(enabled)
-                            }
-                        },
-                        supportingText = "开启后会在前台、后台或锁屏时通过系统通知显示当前上屏大字幕和短状态，并提供播放文本、打开便捷字幕和关闭实时通知操作；关闭后停止更新。"
-                    )
-                }
-            }
-            Md2StaggeredFloatIn(index = 5) {
                 Md2SettingsCard(title = "文件与保存") {
                     Text("画板保存路径（相册）", fontWeight = FontWeight.Bold)
                     Text(state.drawingSaveRelativePath, style = MaterialTheme.typography.bodySmall)
@@ -2342,21 +2305,6 @@ fun SettingsScreen(
                 Md2TextButton(onClick = { speakerEnrollRetryDialog = false }) {
                     Text("重录")
                 }
-            }
-        )
-    }
-
-    if (liveSubtitleNotificationPermissionPurposeOpen) {
-        PermissionPurposeDialog(
-            info = notificationPermissionPurpose(),
-            onConfirm = {
-                liveSubtitleNotificationPermissionPurposeOpen = false
-                liveSubtitleNotificationPermissionLauncher.launch(
-                    Manifest.permission.POST_NOTIFICATIONS
-                )
-            },
-            onDismiss = {
-                liveSubtitleNotificationPermissionPurposeOpen = false
             }
         )
     }

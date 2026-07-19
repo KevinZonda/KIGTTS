@@ -2793,13 +2793,22 @@ internal fun QuickCardUnifiedContent(
     val titleText = card.title.trim()
     val noteText = card.note.trim()
 
-    Box(
+    BoxWithConstraints(
         modifier = Modifier
             .fillMaxWidth()
             .aspectRatio(quickCardDisplayAspect(landscape))
             .clip(RoundedCornerShape(UiTokens.Radius))
             .background(theme)
     ) {
+        val qrRegionHeight = if (hasLink) {
+            (maxWidth * if (landscape) 0.28f else 0.46f).coerceAtMost(maxHeight)
+        } else {
+            (maxHeight - 28.dp).coerceAtLeast(16.dp)
+        }
+        val noteMaxLines = quickCardNoteMaxLines(
+            regionHeightDp = qrRegionHeight.value,
+            hasTitle = titleText.isNotEmpty()
+        )
         if (hasImage) {
             Image(
                 bitmap = imageBitmap!!.asImageBitmap(),
@@ -2841,6 +2850,7 @@ internal fun QuickCardUnifiedContent(
         Column(
             modifier = Modifier
                 .align(Alignment.TopStart)
+                .heightIn(max = qrRegionHeight)
                 .padding(start = 16.dp, top = 14.dp, end = 72.dp)
         ) {
             if (titleText.isNotEmpty()) {
@@ -2858,7 +2868,7 @@ internal fun QuickCardUnifiedContent(
                     text = noteText,
                     color = foreground.copy(alpha = 0.9f),
                     style = MaterialTheme.typography.bodySmall,
-                    maxLines = 1,
+                    maxLines = noteMaxLines,
                     overflow = TextOverflow.Ellipsis
                 )
             }
@@ -3916,6 +3926,17 @@ internal fun quickCardPagerPageMarginDp(landscape: Boolean, ultraSmallAdaptiveWi
 
 internal fun quickCardDisplayAspect(landscape: Boolean): Float =
     if (landscape) QUICK_CARD_ASPECT_LANDSCAPE else QUICK_CARD_ASPECT_PORTRAIT
+
+internal fun quickCardNoteMaxLines(
+    regionHeightDp: Float,
+    hasTitle: Boolean
+): Int {
+    val titleHeightDp = if (hasTitle) 30f else 0f
+    val noteLineHeightDp = 16f
+    return kotlin.math.floor((regionHeightDp - titleHeightDp) / noteLineHeightDp)
+        .toInt()
+        .coerceAtLeast(1)
+}
 
 internal fun quickCardThemeColor(hex: String): Color {
     return parseHexColor(hex)

@@ -1411,7 +1411,8 @@ internal fun RunningStripTopBarToggle(
     pushToTalkPressed: Boolean,
     ttsDisabled: Boolean,
     contentColor: Color,
-    onToggle: () -> Unit
+    onToggle: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
     val hapticToggle = rememberKigttsHapticClick(onToggle)
     val micIcon = when {
@@ -1421,6 +1422,7 @@ internal fun RunningStripTopBarToggle(
     val audioIcon = if (ttsDisabled) "graphic_eq_off" else "graphic_eq"
     Surface(
         modifier = Modifier
+            .then(modifier)
             .clip(RoundedCornerShape(4.dp))
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },

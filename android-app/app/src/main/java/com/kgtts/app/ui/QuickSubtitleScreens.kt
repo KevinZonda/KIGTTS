@@ -1138,34 +1138,61 @@ private fun QuickSubtitleActionButtons(
     onOpenLed: () -> Unit,
     onClear: () -> Unit,
     onOpenHistory: () -> Unit,
+    onGuideAnchorBounds: (QuickSubtitleGuideAnchor, Rect) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val content: @Composable () -> Unit = {
         Md2IconButton(
             icon = "format_bold",
             contentDescription = if (subtitleBold) "关闭粗体" else "开启粗体",
-            onClick = onToggleBold
+            onClick = onToggleBold,
+            modifier = Modifier.quickSubtitleGuideAnchor(
+                QuickSubtitleGuideAnchor.ActionBold,
+                onGuideAnchorBounds
+            )
         )
         Md2IconButton(
             icon = if (subtitleCentered) "format_align_center" else "format_align_left",
             contentDescription = if (subtitleCentered) "左对齐文本" else "居中文本",
-            onClick = onToggleCentered
+            onClick = onToggleCentered,
+            modifier = Modifier.quickSubtitleGuideAnchor(
+                QuickSubtitleGuideAnchor.ActionAlignment,
+                onGuideAnchorBounds
+            )
         )
         Md2IconButton(
             icon = "swap_vert",
             contentDescription = if (subtitleRotated180) "恢复字幕方向" else "倒置字幕",
-            onClick = onToggleRotated
+            onClick = onToggleRotated,
+            modifier = Modifier.quickSubtitleGuideAnchor(
+                QuickSubtitleGuideAnchor.ActionRotate,
+                onGuideAnchorBounds
+            )
         )
-        LedSubtitleEntryButton(onClick = onOpenLed)
+        LedSubtitleEntryButton(
+            onClick = onOpenLed,
+            modifier = Modifier.quickSubtitleGuideAnchor(
+                QuickSubtitleGuideAnchor.ActionLed,
+                onGuideAnchorBounds
+            )
+        )
         Md2IconButton(
             icon = "cleaning_services",
             contentDescription = "清屏",
-            onClick = onClear
+            onClick = onClear,
+            modifier = Modifier.quickSubtitleGuideAnchor(
+                QuickSubtitleGuideAnchor.ActionClear,
+                onGuideAnchorBounds
+            )
         )
         Md2IconButton(
             icon = "history",
             contentDescription = "历史记录",
-            onClick = onOpenHistory
+            onClick = onOpenHistory,
+            modifier = Modifier.quickSubtitleGuideAnchor(
+                QuickSubtitleGuideAnchor.ActionHistory,
+                onGuideAnchorBounds
+            )
         )
     }
     if (vertical) {
@@ -1199,6 +1226,7 @@ private fun QuickSubtitleDisplayContent(
     keyboardVisible: Boolean,
     modifier: Modifier = Modifier
 ) {
+    val recordGuideAnchor = LocalQuickSubtitleGuideAnchorRecorder.current
     AnimatedContent(
         targetState = Triple(preview, displayText, cursorIndex),
         transitionSpec = {
@@ -1241,9 +1269,31 @@ private fun QuickSubtitleDisplayContent(
             autoFitEnabled = autoFitEnabled,
             cursorIndex = if (activePreview) activeCursorIndex else null,
             rotateEnabled = !activePreview || !keyboardVisible,
-            modifier = modifier
+            modifier = modifier.quickSubtitleGuideAnchor(
+                QuickSubtitleGuideAnchor.SubtitleDisplay,
+                recordGuideAnchor
+            )
         )
     }
+}
+
+@Composable
+private fun QuickSubtitleActionPanelToggle(
+    icon: String,
+    contentDescription: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val recordGuideAnchor = LocalQuickSubtitleGuideAnchorRecorder.current
+    Md2IconButton(
+        icon = icon,
+        contentDescription = contentDescription,
+        onClick = onClick,
+        modifier = modifier.quickSubtitleGuideAnchor(
+            QuickSubtitleGuideAnchor.ActionFontSize,
+            recordGuideAnchor
+        )
+    )
 }
 
 @Composable
@@ -1292,6 +1342,7 @@ fun QuickSubtitleScreen(
     val quickSubtitleContentRevision = viewModel.quickSubtitleContentRevision
     val useCompactQuickTextControls =
         state.quickSubtitleCompactControls || (isLandscape && ultraSmallAdaptiveWindow)
+    val recordQuickSubtitleGuideAnchor = LocalQuickSubtitleGuideAnchorRecorder.current
     val showQuickSubtitleActionButtons = viewModel.quickSubtitleShowActionButtons
     val density = LocalDensity.current
     val actionPanelToggleIcon =
@@ -1651,6 +1702,10 @@ fun QuickSubtitleScreen(
                                     ) {
                                         Column(
                                             modifier = Modifier
+                                                .quickSubtitleGuideAnchor(
+                                                    QuickSubtitleGuideAnchor.DisplayActions,
+                                                    recordQuickSubtitleGuideAnchor
+                                                )
                                                 .width(40.dp)
                                                 .fillMaxHeight(),
                                             horizontalAlignment = Alignment.CenterHorizontally
@@ -1688,6 +1743,7 @@ fun QuickSubtitleScreen(
                                                                 onOpenLed = onOpenLed,
                                                                 onClear = viewModel::clearQuickSubtitleText,
                                                                 onOpenHistory = onOpenHistory,
+                                                                onGuideAnchorBounds = recordQuickSubtitleGuideAnchor,
                                                                 modifier = Modifier
                                                                     .fillMaxWidth()
                                                                     .verticalScroll(rememberScrollState())
@@ -1722,7 +1778,7 @@ fun QuickSubtitleScreen(
                                                     }
                                                 }
                                             }
-                                            Md2IconButton(
+                                            QuickSubtitleActionPanelToggle(
                                                 icon = actionPanelToggleIcon,
                                                 contentDescription = actionPanelToggleDescription,
                                                 onClick = {
@@ -1751,6 +1807,10 @@ fun QuickSubtitleScreen(
                             Card(
                                 modifier = Modifier
                                     .fillMaxSize()
+                                    .quickSubtitleGuideAnchor(
+                                        QuickSubtitleGuideAnchor.QuickText,
+                                        recordQuickSubtitleGuideAnchor
+                                    )
                                     .mdCenteredShadow(
                                         shape = RoundedCornerShape(UiTokens.Radius),
                                         shadowStyle = MdCardShadowStyle
@@ -2195,6 +2255,10 @@ fun QuickSubtitleScreen(
                                         modifier = Modifier
                                             .fillMaxWidth()
                                             .height(portraitSubtitleControlAreaHeight)
+                                            .quickSubtitleGuideAnchor(
+                                                QuickSubtitleGuideAnchor.DisplayActions,
+                                                recordQuickSubtitleGuideAnchor
+                                            )
                                     ) {
                                         Crossfade(
                                             targetState = showQuickSubtitleActionButtons,
@@ -2231,6 +2295,7 @@ fun QuickSubtitleScreen(
                                                             onOpenLed = onOpenLed,
                                                             onClear = viewModel::clearQuickSubtitleText,
                                                             onOpenHistory = onOpenHistory,
+                                                            onGuideAnchorBounds = recordQuickSubtitleGuideAnchor,
                                                             modifier = Modifier.weight(1f)
                                                         )
                                                     }
@@ -2264,7 +2329,7 @@ fun QuickSubtitleScreen(
                                                 }
                                             }
                                         }
-                                        Md2IconButton(
+                                        QuickSubtitleActionPanelToggle(
                                             icon = actionPanelToggleIcon,
                                             contentDescription = actionPanelToggleDescription,
                                             onClick = {
@@ -2290,7 +2355,12 @@ fun QuickSubtitleScreen(
                     exit = fadeOut(animationSpec = tween(120)) +
                         shrinkVertically(animationSpec = tween(160, easing = FastOutSlowInEasing))
                 ) {
-                    Column {
+                    Column(
+                        modifier = Modifier.quickSubtitleGuideAnchor(
+                            QuickSubtitleGuideAnchor.QuickText,
+                            recordQuickSubtitleGuideAnchor
+                        )
+                    ) {
                         Spacer(Modifier.height(8.dp))
                         Md2StaggeredFloatIn(index = 1, enabled = false) {
                             if (useCompactQuickTextControls) {
@@ -2758,7 +2828,11 @@ fun QuickSubtitleScreen(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
-                .imePadding(),
+                .imePadding()
+                .quickSubtitleGuideAnchor(
+                    QuickSubtitleGuideAnchor.BottomBar,
+                    recordQuickSubtitleGuideAnchor
+                ),
             shape = RectangleShape,
             color = md2CardContainerColor(),
             elevation = UiTokens.CardElevation
@@ -2795,27 +2869,47 @@ fun QuickSubtitleScreen(
                 Md2IconButton(
                     icon = "arrow_back",
                     contentDescription = "光标左移",
-                    onClick = moveCursorLeft
+                    onClick = moveCursorLeft,
+                    modifier = Modifier.quickSubtitleGuideAnchor(
+                        QuickSubtitleGuideAnchor.BottomCursorLeft,
+                        recordQuickSubtitleGuideAnchor
+                    )
                 )
                 Md2IconButton(
                     icon = "arrow_forward",
                     contentDescription = "光标右移",
-                    onClick = moveCursorRight
+                    onClick = moveCursorRight,
+                    modifier = Modifier.quickSubtitleGuideAnchor(
+                        QuickSubtitleGuideAnchor.BottomCursorRight,
+                        recordQuickSubtitleGuideAnchor
+                    )
                 )
                 Md2IconButton(
                     icon = if (playOnSend) "volume_up" else "volume_off",
                     contentDescription = if (playOnSend) "发送时播放语音：开" else "发送时播放语音：关",
-                    onClick = togglePlayOnSend
+                    onClick = togglePlayOnSend,
+                    modifier = Modifier.quickSubtitleGuideAnchor(
+                        QuickSubtitleGuideAnchor.BottomPlayOnSend,
+                        recordQuickSubtitleGuideAnchor
+                    )
                 )
                 Md2IconButton(
                     icon = if (quickInputCollapsed) "subtitles_off" else "subtitles",
                     contentDescription = if (quickInputCollapsed) "展开快捷输入区域" else "收起快捷输入区域",
-                    onClick = toggleQuickInputCollapsed
+                    onClick = toggleQuickInputCollapsed,
+                    modifier = Modifier.quickSubtitleGuideAnchor(
+                        QuickSubtitleGuideAnchor.BottomToggleQuickText,
+                        recordQuickSubtitleGuideAnchor
+                    )
                 )
                 Md2IconButton(
                     icon = "play_arrow",
                     contentDescription = "朗读当前字幕",
-                    onClick = replayCurrentSubtitle
+                    onClick = replayCurrentSubtitle,
+                    modifier = Modifier.quickSubtitleGuideAnchor(
+                        QuickSubtitleGuideAnchor.BottomReplay,
+                        recordQuickSubtitleGuideAnchor
+                    )
                 )
             }
             val compactActionMenu: @Composable () -> Unit = {
@@ -2823,7 +2917,11 @@ fun QuickSubtitleScreen(
                     Md2IconButton(
                         icon = if (isLandscape) "more_vert" else "more_horiz",
                         contentDescription = "更多输入操作",
-                        onClick = { inputActionMenuExpanded = true }
+                        onClick = { inputActionMenuExpanded = true },
+                        modifier = Modifier.quickSubtitleGuideAnchor(
+                            QuickSubtitleGuideAnchor.BottomMore,
+                            recordQuickSubtitleGuideAnchor
+                        )
                     )
                     DropdownMenu(
                         expanded = inputActionMenuExpanded,
@@ -2946,14 +3044,23 @@ fun QuickSubtitleScreen(
                                 onPushToTalkPressStart = onPushToTalkPressStart,
                                 onPushToTalkPressEnd = onPushToTalkPressEnd,
                                 onPttDragTargetChanged = { pttDragTarget = it },
-                                modifier = Modifier.size(48.dp)
+                                modifier = Modifier
+                                    .size(48.dp)
+                                    .quickSubtitleGuideAnchor(
+                                        QuickSubtitleGuideAnchor.RecognitionFab,
+                                        recordQuickSubtitleGuideAnchor
+                                    )
                             )
                         } else {
                             Spacer(modifier = Modifier.size(48.dp))
                         }
                         KigttsIconButton(
                             onClick = sendInput,
-                            enabled = inputFieldValue.text.trim().isNotEmpty()
+                            enabled = inputFieldValue.text.trim().isNotEmpty(),
+                            modifier = Modifier.quickSubtitleGuideAnchor(
+                                QuickSubtitleGuideAnchor.BottomSend,
+                                recordQuickSubtitleGuideAnchor
+                            )
                         ) {
                             MsIcon(
                                 name = "send",
@@ -3018,7 +3125,11 @@ fun QuickSubtitleScreen(
                         )
                         KigttsIconButton(
                             onClick = sendInput,
-                            enabled = inputFieldValue.text.trim().isNotEmpty()
+                            enabled = inputFieldValue.text.trim().isNotEmpty(),
+                            modifier = Modifier.quickSubtitleGuideAnchor(
+                                QuickSubtitleGuideAnchor.BottomSend,
+                                recordQuickSubtitleGuideAnchor
+                            )
                         ) {
                             MsIcon(
                                 name = "send",
@@ -3105,7 +3216,10 @@ fun QuickSubtitleScreen(
                 onPushToTalkPressStart = onPushToTalkPressStart,
                 onPushToTalkPressEnd = onPushToTalkPressEnd,
                 onPttDragTargetChanged = { pttDragTarget = it },
-                modifier = fabModifier
+                modifier = fabModifier.quickSubtitleGuideAnchor(
+                    QuickSubtitleGuideAnchor.RecognitionFab,
+                    recordQuickSubtitleGuideAnchor
+                )
             )
         }
 

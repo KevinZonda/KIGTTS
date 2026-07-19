@@ -2,8 +2,9 @@ package com.lhtstudio.kigtts.app.ui
 
 import androidx.compose.material.Typography
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.produceState
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.ui.text.ExperimentalTextApi
 import androidx.compose.ui.text.PlatformTextStyle
 import androidx.compose.ui.text.TextStyle
@@ -24,22 +25,44 @@ import kotlinx.coroutines.withContext
 import java.io.File
 
 @Composable
-internal fun rememberAppFontFamily(
+internal fun rememberAppFontFamilyLoadState(
     source: AppFontFamilySource?,
     preferredWeight: Int
-): FontFamily? {
-    val family by produceState<FontFamily?>(
-        initialValue = null,
-        key1 = source,
-        key2 = preferredWeight
-    ) {
-        value = withContext(Dispatchers.IO) {
-            source?.let {
-                runCatching { loadAppFontFamily(it, preferredWeight) }.getOrNull()
+): AppFontFamilyLoadState {
+    val state = remember(source, preferredWeight) {
+        mutableStateOf(
+            AppFontFamilyLoadState(
+                source = source,
+                preferredWeight = preferredWeight,
+                fontFamily = null,
+                resolved = source == null
+            )
+        )
+    }
+    LaunchedEffect(source, preferredWeight) {
+        if (source != null) {
+            val family = withContext(Dispatchers.IO) {
+                runCatching { loadAppFontFamily(source, preferredWeight) }.getOrNull()
             }
+            state.value = AppFontFamilyLoadState(
+                source = source,
+                preferredWeight = preferredWeight,
+                fontFamily = family,
+                resolved = true
+            )
         }
     }
-    return family
+    return state.value
+}
+
+internal data class AppFontFamilyLoadState(
+    val source: AppFontFamilySource?,
+    val preferredWeight: Int,
+    val fontFamily: FontFamily?,
+    val resolved: Boolean
+) {
+    fun isResolvedFor(source: AppFontFamilySource?, preferredWeight: Int): Boolean =
+        resolved && this.source == source && this.preferredWeight == preferredWeight
 }
 
 @OptIn(ExperimentalTextApi::class)
