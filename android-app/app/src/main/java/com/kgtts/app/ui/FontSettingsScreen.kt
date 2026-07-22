@@ -21,7 +21,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.selection.SelectionContainer
-import androidx.compose.material.AlertDialog
 import androidx.compose.material.Card
 import androidx.compose.material.LinearProgressIndicator
 import androidx.compose.material.MaterialTheme
@@ -141,7 +140,7 @@ internal fun FontSettingsScreen(
         )
     }
     deleteFont?.let { font ->
-        AlertDialog(
+        KigttsAlertDialog(
             onDismissRequest = { deleteFont = null },
             title = { Text("删除字体") },
             text = { Text("确定删除“${font.displayName}”吗？") },

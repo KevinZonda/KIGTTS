@@ -128,7 +128,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -168,10 +167,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalLifecycleOwner
-import androidx.compose.ui.platform.LocalTextToolbar
 import androidx.compose.ui.platform.LocalView
-import androidx.compose.ui.platform.TextToolbar
-import androidx.compose.ui.platform.TextToolbarStatus
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.semantics.contentDescription
@@ -209,7 +205,6 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupPositionProvider
@@ -343,205 +338,6 @@ import kotlin.math.atan2
 import kotlin.math.sin
 import kotlin.math.roundToInt
 
-
-internal class KigttsTextToolbarState {
-    var rect by mutableStateOf(Rect.Zero)
-    var visible by mutableStateOf(false)
-    var onCopyRequested by mutableStateOf<(() -> Unit)?>(null)
-    var onPasteRequested by mutableStateOf<(() -> Unit)?>(null)
-    var onCutRequested by mutableStateOf<(() -> Unit)?>(null)
-    var onSelectAllRequested by mutableStateOf<(() -> Unit)?>(null)
-
-    fun show(
-        rect: Rect,
-        onCopyRequested: (() -> Unit)?,
-        onPasteRequested: (() -> Unit)?,
-        onCutRequested: (() -> Unit)?,
-        onSelectAllRequested: (() -> Unit)?
-    ) {
-        this.rect = rect
-        this.onCopyRequested = onCopyRequested
-        this.onPasteRequested = onPasteRequested
-        this.onCutRequested = onCutRequested
-        this.onSelectAllRequested = onSelectAllRequested
-        visible = true
-    }
-
-    fun hide() {
-        visible = false
-    }
-}
-
-internal class KigttsTextToolbar(
-    private val state: KigttsTextToolbarState
-) : TextToolbar {
-    override val status: TextToolbarStatus
-        get() = if (state.visible) TextToolbarStatus.Shown else TextToolbarStatus.Hidden
-
-    override fun showMenu(
-        rect: Rect,
-        onCopyRequested: (() -> Unit)?,
-        onPasteRequested: (() -> Unit)?,
-        onCutRequested: (() -> Unit)?,
-        onSelectAllRequested: (() -> Unit)?
-    ) {
-        state.show(
-            rect = rect,
-            onCopyRequested = onCopyRequested,
-            onPasteRequested = onPasteRequested,
-            onCutRequested = onCutRequested,
-            onSelectAllRequested = onSelectAllRequested
-        )
-    }
-
-    override fun hide() {
-        state.hide()
-    }
-}
-
-internal data class KigttsTextToolbarAction(
-    val icon: String,
-    val contentDescription: String,
-    val onClick: (() -> Unit)?
-)
-
-internal class KigttsTextToolbarPositionProvider(
-    private val anchorRect: IntRect,
-    private val marginPx: Int
-) : PopupPositionProvider {
-    override fun calculatePosition(
-        anchorBounds: IntRect,
-        windowSize: IntSize,
-        layoutDirection: LayoutDirection,
-        popupContentSize: IntSize
-    ): IntOffset {
-        val centeredX = anchorRect.left + ((anchorRect.width - popupContentSize.width) / 2)
-        val clampedX = centeredX.coerceIn(
-            marginPx,
-            (windowSize.width - popupContentSize.width - marginPx).coerceAtLeast(marginPx)
-        )
-        val aboveY = anchorRect.top - popupContentSize.height - marginPx
-        val belowY = anchorRect.bottom + marginPx
-        val targetY = if (aboveY >= marginPx) {
-            aboveY
-        } else {
-            belowY.coerceAtMost(
-                (windowSize.height - popupContentSize.height - marginPx).coerceAtLeast(marginPx)
-            )
-        }
-        return IntOffset(clampedX, targetY)
-    }
-}
-
-@Composable
-internal fun KigttsTextToolbarPopup(
-    state: KigttsTextToolbarState,
-    darkTheme: Boolean
-) {
-    var rendered by remember { mutableStateOf(state.visible) }
-    val menuAlpha by animateFloatAsState(
-        targetValue = if (state.visible) 1f else 0f,
-        animationSpec = tween(180, easing = FastOutSlowInEasing),
-        label = "kigtts_text_toolbar_alpha"
-    )
-    val menuScale by animateFloatAsState(
-        targetValue = if (state.visible) 1f else 0.94f,
-        animationSpec = tween(180, easing = FastOutSlowInEasing),
-        label = "kigtts_text_toolbar_scale"
-    )
-    LaunchedEffect(state.visible) {
-        if (state.visible) {
-            rendered = true
-        } else if (rendered) {
-            delay(180L)
-            rendered = false
-        }
-    }
-    if (!rendered) return
-    val density = LocalDensity.current
-    val marginPx = with(density) { 8.dp.roundToPx() }
-    val anchorRect = remember(state.rect) {
-        IntRect(
-            left = state.rect.left.toInt(),
-            top = state.rect.top.toInt(),
-            right = state.rect.right.toInt(),
-            bottom = state.rect.bottom.toInt()
-        )
-    }
-    val actions = remember(
-        state.onCopyRequested,
-        state.onPasteRequested,
-        state.onCutRequested,
-        state.onSelectAllRequested
-    ) {
-        listOf(
-            KigttsTextToolbarAction("select_all", "全选", state.onSelectAllRequested),
-            KigttsTextToolbarAction("content_cut", "剪切", state.onCutRequested),
-            KigttsTextToolbarAction("content_copy", "复制", state.onCopyRequested),
-            KigttsTextToolbarAction("content_paste", "粘贴", state.onPasteRequested)
-        ).filter { it.onClick != null }
-    }
-    if (actions.isEmpty()) return
-
-    val backgroundColor = if (darkTheme) Color(0xFF2C2F33) else Color.White
-    val contentColor = if (darkTheme) Color(0xFFE9EDF1) else Color(0xFF202428)
-    val positionProvider = remember(anchorRect, marginPx) {
-        KigttsTextToolbarPositionProvider(anchorRect, marginPx)
-    }
-
-    Popup(
-        popupPositionProvider = positionProvider,
-        properties = PopupProperties(focusable = false, dismissOnClickOutside = false)
-    ) {
-        KigttsFontScaleProvider {
-            Box(
-                modifier = Modifier
-                    .padding(8.dp)
-                    .graphicsLayer {
-                        alpha = menuAlpha
-                        scaleX = menuScale
-                        scaleY = menuScale
-                        transformOrigin = TransformOrigin(0.5f, 0f)
-                        clip = false
-                    }
-            ) {
-                Card(
-                    modifier = Modifier.wrapContentSize(),
-                    shape = RoundedCornerShape(UiTokens.Radius),
-                    backgroundColor = backgroundColor,
-                    elevation = UiTokens.MenuElevation
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        actions.forEach { action ->
-                            Box(
-                                modifier = Modifier
-                                    .size(40.dp)
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .clickable(
-                                        interactionSource = remember { MutableInteractionSource() },
-                                        indication = rememberRipple(bounded = true, radius = 20.dp)
-                                    ) {
-                                        action.onClick?.invoke()
-                                        state.hide()
-                                    },
-                                contentAlignment = Alignment.Center
-                            ) {
-                                MsIcon(
-                                    name = action.icon,
-                                    contentDescription = action.contentDescription,
-                                    tint = contentColor
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
 
 internal val Md2ControlShape = RoundedCornerShape(UiTokens.Radius)
 
@@ -880,7 +676,7 @@ internal fun KokoroVoiceSettingsDialog(
         UserPrefs.KOKORO_MIN_SPEAKER_ID,
         UserPrefs.KOKORO_MAX_SPEAKER_ID
     )
-    AlertDialog(
+    KigttsAlertDialog(
         onDismissRequest = onDismiss,
         shape = RoundedCornerShape(UiTokens.Radius),
         title = { Text("Kokoro 设置") },
@@ -952,7 +748,7 @@ internal fun RecognitionResourceRequiredDialog(
 ) {
     val busy = state.recognitionResourceBusy
     val installed = state.recognitionResourceInstalled
-    AlertDialog(
+    KigttsAlertDialog(
         onDismissRequest = {
             if (!busy) onDismiss()
         },
@@ -1067,14 +863,17 @@ internal fun Md2OutlinedField(
     onValueChange: (String) -> Unit,
     label: String,
     modifier: Modifier = Modifier,
+    singleLine: Boolean = true,
+    maxLines: Int = if (singleLine) 1 else Int.MAX_VALUE,
     trailingIcon: (@Composable () -> Unit)? = null
 ) {
     OutlinedTextField(
         value = value,
         onValueChange = onValueChange,
         label = { Text(label) },
-        modifier = modifier,
-        singleLine = true,
+        modifier = modifier.kigttsTextToolbarAnchor(),
+        singleLine = singleLine,
+        maxLines = maxLines,
         shape = Md2ControlShape,
         trailingIcon = trailingIcon,
         colors = TextFieldDefaults.outlinedTextFieldColors(
@@ -1106,7 +905,9 @@ internal fun Md2DialogOutlinedField(
         OutlinedTextField(
             value = value,
             onValueChange = onValueChange,
-            modifier = modifier.fillMaxWidth(),
+            modifier = modifier
+                .fillMaxWidth()
+                .kigttsTextToolbarAnchor(),
             label = { Text(label) },
             singleLine = singleLine,
             maxLines = maxLines,

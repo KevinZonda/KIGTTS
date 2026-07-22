@@ -22,7 +22,8 @@ internal data class OverlayInteractionStyle(
     val regularTypeface: Typeface,
     val boldTypeface: Typeface,
     val iconTypeface: Typeface?,
-    val usesCustomFontMetrics: Boolean
+    val usesCustomFontMetrics: Boolean,
+    val useSystemTextToolbar: Boolean
 )
 
 internal data class OverlaySubtitlePreviewCard(
@@ -47,7 +48,8 @@ internal fun OverlaySubtitlePreviewCard.resizeWithin(maxWidth: Int, maxHeight: I
 
 internal class OverlaySelectionEditText(
     context: Context,
-    cursorColor: Int
+    cursorColor: Int,
+    useSystemTextToolbar: Boolean
 ) : EditText(context) {
     var onSelectionChanged: ((start: Int, end: Int) -> Unit)? = null
     var onContextMenuRequested: (() -> Unit)? = null
@@ -70,12 +72,14 @@ internal class OverlaySelectionEditText(
 
     init {
         applyOverlayTextInteractionColor(cursorColor)
-        customSelectionActionModeCallback = interceptedActionModeCallback
-        customInsertionActionModeCallback = interceptedActionModeCallback
-        setOnLongClickListener {
-            selectTouchedWord()
-            onContextMenuRequested?.invoke()
-            true
+        if (!useSystemTextToolbar) {
+            customSelectionActionModeCallback = interceptedActionModeCallback
+            customInsertionActionModeCallback = interceptedActionModeCallback
+            setOnLongClickListener {
+                selectTouchedWord()
+                onContextMenuRequested?.invoke()
+                true
+            }
         }
     }
 

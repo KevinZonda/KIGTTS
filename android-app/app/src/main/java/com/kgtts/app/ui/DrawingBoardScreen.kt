@@ -260,6 +260,7 @@ import com.lhtstudio.kigtts.app.data.defaultSoundboardGroups
 import com.lhtstudio.kigtts.app.data.isKokoroVoiceDir
 import com.lhtstudio.kigtts.app.data.isSystemTtsVoiceDir
 import com.lhtstudio.kigtts.app.data.parseSoundboardConfig
+import com.lhtstudio.kigtts.app.data.resolveDefaultDrawingColorArgb
 import com.lhtstudio.kigtts.app.data.serializeSoundboardConfig
 import com.lhtstudio.kigtts.app.data.uniqueImportedGroupTitle
 import com.lhtstudio.kigtts.app.overlay.FloatingOverlayService
@@ -350,6 +351,7 @@ fun DrawingBoardScreen(
     viewModel: MainViewModel,
     fullscreen: Boolean,
     onToggleFullscreen: () -> Unit,
+    onOpenPaletteEditor: () -> Unit,
     forceLandscapeLayout: Boolean = false
 ) {
     val context = LocalContext.current
@@ -377,6 +379,7 @@ fun DrawingBoardScreen(
     var viewportScale by rememberSaveable { mutableFloatStateOf(1f) }
     var viewportPanX by rememberSaveable { mutableFloatStateOf(0f) }
     var viewportPanY by rememberSaveable { mutableFloatStateOf(0f) }
+    var showCustomColorPicker by rememberSaveable { mutableStateOf(false) }
     val toolbarCollapsed = viewModel.drawingToolbarCollapsed
     val navigationBarBottomInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
     val mandatoryGestureBottomInset =
@@ -413,26 +416,16 @@ fun DrawingBoardScreen(
         animationSpec = tween(180, easing = FastOutSlowInEasing),
         label = "drawing_board_reserve_bottom"
     )
-    val palette = if (isDark) {
-        listOf(
-            Color(0xFF7DE8EA),
-            Color(0xFF90CAF9),
-            Color(0xFFFF9E9E),
-            Color(0xFFAEE5B3),
-            Color(0xFFFFE08A),
-            Color(0xFFECEFF1),
-            Color(0xFFD1C4E9)
-        )
-    } else {
-        listOf(
-            UiTokens.Primary,
-            Color(0xFF1E88E5),
-            Color(0xFFE53935),
-            Color(0xFF43A047),
-            Color(0xFFFFA000),
-            Color(0xFF212121),
-            Color(0xFF5E35B1)
-        )
+    val palette = state.drawingPalette.entries.map { entry ->
+        Color(if (isDark) entry.darkColorArgb else entry.lightColorArgb)
+    }
+    val defaultDrawColorArgb = resolveDefaultDrawingColorArgb(
+        palette = state.drawingPalette,
+        darkTheme = isDark,
+        themeColorArgb = MaterialTheme.colorScheme.primary.toArgb()
+    )
+    LaunchedEffect(state.settingsLoaded, defaultDrawColorArgb) {
+        if (state.settingsLoaded) viewModel.applyDefaultDrawColor(Color(defaultDrawColorArgb))
     }
 
     BoxWithConstraints(
@@ -771,6 +764,7 @@ fun DrawingBoardScreen(
             landscapeToolbarHeight = landscapeToolbarHeight,
             portraitToolbarWidth = portraitToolbarWidth,
             onPickColor = { viewModel.updateDrawColor(it) },
+            onOpenCustomColor = { showCustomColorPicker = true },
             onBrushSize = { viewModel.updateDrawBrushSize(it) },
             onToggleEraser = { viewModel.updateDrawEraser(it) },
             onUndo = { viewModel.undoDrawingStroke() },
@@ -784,6 +778,22 @@ fun DrawingBoardScreen(
             fullscreen = fullscreen,
             onToggleFullscreen = onToggleFullscreen,
             onToggleCollapsed = { viewModel.updateDrawingToolbarCollapsed(!toolbarCollapsed) }
+        )
+    }
+    if (showCustomColorPicker) {
+        ThemeColorPickerDialog(
+            title = "自定义颜色",
+            initialColor = viewModel.drawColor,
+            colorLabel = "候选颜色",
+            onEditPalette = {
+                showCustomColorPicker = false
+                onOpenPaletteEditor()
+            },
+            onDismissRequest = { showCustomColorPicker = false },
+            onColorSelected = { color ->
+                viewModel.updateDrawColor(color)
+                showCustomColorPicker = false
+            }
         )
     }
 }
@@ -806,6 +816,7 @@ internal fun DrawingToolbar(
     landscapeToolbarHeight: Dp,
     portraitToolbarWidth: Dp,
     onPickColor: (Color) -> Unit,
+    onOpenCustomColor: () -> Unit,
     onBrushSize: (Float) -> Unit,
     onToggleEraser: (Boolean) -> Unit,
     onUndo: () -> Unit,
@@ -893,6 +904,11 @@ internal fun DrawingToolbar(
                                 verticalArrangement = Arrangement.spacedBy(8.dp),
                                 horizontalAlignment = Alignment.CenterHorizontally
                             ) {
+                                DrawingCustomColorWheel(
+                                    color = selectedColor,
+                                    selected = !eraserEnabled && selectedColor !in colors,
+                                    onClick = onOpenCustomColor
+                                )
                                 colors.forEach { color ->
                                     Md2ColorDot(
                                         color = color,
@@ -988,6 +1004,11 @@ internal fun DrawingToolbar(
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
+                            DrawingCustomColorWheel(
+                                color = selectedColor,
+                                selected = !eraserEnabled && selectedColor !in colors,
+                                onClick = onOpenCustomColor
+                            )
                             colors.forEach { color ->
                                 Md2ColorDot(
                                     color = color,
@@ -1312,5 +1333,3 @@ internal fun androidx.compose.ui.graphics.drawscope.DrawScope.drawStrokeOnBoard(
         )
     }
 }
-
-

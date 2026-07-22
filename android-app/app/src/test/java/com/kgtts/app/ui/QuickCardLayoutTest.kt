@@ -14,4 +14,12 @@ class QuickCardLayoutTest {
     fun noteAlwaysKeepsAtLeastOneVisibleLine() {
         assertEquals(1, quickCardNoteMaxLines(regionHeightDp = 20f, hasTitle = true))
     }
+
+    @Test
+    fun quickCardTypesRoundTripThroughPackageWireValues() {
+        QuickCardType.entries.forEach { type ->
+            assertEquals(type, QuickCardType.fromWire(type.wireValue))
+        }
+        assertEquals(QuickCardType.Text, QuickCardType.fromWire("unknown"))
+    }
 }

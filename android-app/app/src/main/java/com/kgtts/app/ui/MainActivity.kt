@@ -131,7 +131,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -145,7 +144,6 @@ import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
@@ -171,10 +169,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalLifecycleOwner
-import androidx.compose.ui.platform.LocalTextToolbar
 import androidx.compose.ui.platform.LocalView
-import androidx.compose.ui.platform.TextToolbar
-import androidx.compose.ui.platform.TextToolbarStatus
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.semantics.contentDescription
@@ -203,8 +198,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.unit.Constraints
-import androidx.compose.ui.unit.IntOffset
-import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
@@ -212,11 +205,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
-import androidx.compose.ui.window.Popup
-import androidx.compose.ui.window.PopupPositionProvider
-import androidx.compose.ui.window.PopupProperties
 import androidx.compose.ui.zIndex
 import androidx.core.content.FileProvider
 import androidx.core.content.ContextCompat
@@ -455,15 +444,14 @@ class MainActivity : ComponentActivity() {
                 val appTypography = remember(appFontFamily) {
                     KgtTypography.withAppFontFamily(appFontFamily)
                 }
-                val textToolbarState = remember { KigttsTextToolbarState() }
-                val textToolbar = remember(textToolbarState) { KigttsTextToolbar(textToolbarState) }
                 CompositionLocalProvider(
                     LocalMd2ExtraColors provides extraColors,
                     LocalKigttsHapticFeedbackEnabled provides state.hapticFeedbackEnabled,
+                    LocalUseSystemTextToolbar provides state.useSystemTextToolbar,
                     LocalTextSelectionColors provides textSelectionColors
                 ) {
-                    CompositionLocalProvider(LocalTextToolbar provides textToolbar) {
-                        MaterialTheme(colors = colors, typography = appTypography, shapes = Md2Shapes) {
+                    MaterialTheme(colors = colors, typography = appTypography, shapes = Md2Shapes) {
+                        KigttsTextToolbarHost(darkTheme = dark) {
                             Surface(
                                 modifier = Modifier.fillMaxSize(),
                                 color = MaterialTheme.colorScheme.background
@@ -488,10 +476,6 @@ class MainActivity : ComponentActivity() {
                                                 .background(MaterialTheme.colorScheme.background)
                                         )
                                     }
-                                    KigttsTextToolbarPopup(
-                                        state = textToolbarState,
-                                        darkTheme = dark
-                                    )
                                 }
                             }
                         }

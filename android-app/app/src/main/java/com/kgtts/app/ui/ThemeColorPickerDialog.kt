@@ -9,12 +9,15 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.MaterialTheme
+import androidx.compose.material.Divider
 import androidx.compose.material.OutlinedTextField
 import androidx.compose.material.Slider
 import androidx.compose.material.SliderDefaults
@@ -53,6 +56,7 @@ internal fun ThemeColorPickerDialog(
     title: String,
     initialColor: Color,
     colorLabel: String = "候选主题色",
+    onEditPalette: (() -> Unit)? = null,
     onDismissRequest: () -> Unit,
     onColorSelected: (Color) -> Unit
 ) {
@@ -170,7 +174,9 @@ internal fun ThemeColorPickerDialog(
                 },
                 singleLine = true,
                 label = { Text("HEX（#RRGGBB）") },
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .kigttsTextToolbarAnchor(),
                 keyboardOptions = KeyboardOptions(
                     capitalization = KeyboardCapitalization.Characters,
                     keyboardType = KeyboardType.Ascii,
@@ -190,6 +196,25 @@ internal fun ThemeColorPickerDialog(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
+            if (onEditPalette != null) {
+                Divider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.55f))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable(onClick = onEditPalette)
+                        .padding(vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    MsIcon("palette", contentDescription = null)
+                    androidx.compose.foundation.layout.Spacer(Modifier.width(12.dp))
+                    Text(
+                        text = "编辑调色板",
+                        modifier = Modifier.weight(1f),
+                        style = MaterialTheme.typography.body1
+                    )
+                    MsIcon("chevron_right", contentDescription = null)
+                }
+            }
         },
         confirmButton = {
             Md2TextButton(

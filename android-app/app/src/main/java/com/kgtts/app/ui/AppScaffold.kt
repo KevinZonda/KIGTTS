@@ -364,6 +364,7 @@ fun AppScaffold(viewModel: MainViewModel) {
 
     var page by rememberSaveable { mutableStateOf(pageQuickSubtitle) }
     var drawingFullscreen by rememberSaveable { mutableStateOf(false) }
+    var drawingPaletteEditorOpen by rememberSaveable { mutableStateOf(false) }
     var quickSubtitleFullscreen by rememberSaveable { mutableStateOf(false) }
     var overlayGestureSettingsOpen by rememberSaveable { mutableStateOf(false) }
     var runningStripCollapsed by rememberSaveable { mutableStateOf(true) }
@@ -372,10 +373,13 @@ fun AppScaffold(viewModel: MainViewModel) {
     var quickCardTopBarActions by remember { mutableStateOf<QuickCardTopBarActions?>(null) }
     var quickSubtitleEditorBatchTopBarActions by remember { mutableStateOf<EditorBatchTopBarActions?>(null) }
     var soundboardEditorBatchTopBarActions by remember { mutableStateOf<EditorBatchTopBarActions?>(null) }
+    var drawingPaletteTopBarActions by remember { mutableStateOf<DrawingPaletteTopBarActions?>(null) }
     var quickSubtitlePresetExportDialog by remember { mutableStateOf(false) }
     var soundboardPresetExportDialog by remember { mutableStateOf(false) }
+    var quickCardPackageExportDialog by remember { mutableStateOf(false) }
     var showBuiltinQuickSubtitlePresetPicker by remember { mutableStateOf(false) }
     var showBuiltinSoundboardPresetPicker by remember { mutableStateOf(false) }
+    var showBuiltinQuickCardPackagePicker by remember { mutableStateOf(false) }
     var showBuiltinRecognitionResourcePicker by remember { mutableStateOf(false) }
     var showBuiltinKokoroVoicePicker by remember { mutableStateOf(false) }
     var recognitionResourceSourceDialog by remember { mutableStateOf(false) }
@@ -654,6 +658,7 @@ fun AppScaffold(viewModel: MainViewModel) {
     val quickSubtitleSubPageOpen =
         basePage == pageQuickSubtitle && quickSubtitleRoute != QuickSubtitleRoutes.Main
     val overlayGestureSubPageOpen = basePage == pageOverlay && overlayGestureSettingsOpen
+    val drawingPaletteSubPageOpen = basePage == pageDrawing && drawingPaletteEditorOpen
     val soundboardEditorOpen =
         basePage == pageSoundboard && soundboardRoute == SoundboardRoutes.Editor
     val soundboardSubPageOpen =
@@ -876,7 +881,11 @@ fun AppScaffold(viewModel: MainViewModel) {
         }
     }
     LaunchedEffect(page) {
-        if (page != pageDrawing) drawingFullscreen = false
+        if (page != pageDrawing) {
+            drawingFullscreen = false
+            drawingPaletteEditorOpen = false
+            drawingPaletteTopBarActions = null
+        }
         if (page != pageQuickSubtitle) quickSubtitleFullscreen = false
     }
     LaunchedEffect(drawingFullscreen, page) {
@@ -940,6 +949,11 @@ fun AppScaffold(viewModel: MainViewModel) {
         if (now - lastTopBarBackClickAtMs < 280L) return
         lastTopBarBackClickAtMs = now
         when {
+            drawingPaletteSubPageOpen -> {
+                val handledByEditor = drawingPaletteTopBarActions?.onBackRequest != null
+                drawingPaletteTopBarActions?.onBackRequest?.invoke()
+                if (!handledByEditor) drawingPaletteEditorOpen = false
+            }
             overlayGestureSubPageOpen -> {
                 overlayGestureSettingsOpen = false
             }
@@ -1076,6 +1090,9 @@ fun AppScaffold(viewModel: MainViewModel) {
     val soundboardPresetPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri != null) viewModel.importSoundboardPresetPackage(uri) else toast(context, "未选择文件")
     }
+    val quickCardPackagePicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        if (uri != null) viewModel.prepareQuickCardPackageImport(uri) else toast(context, "未选择文件")
+    }
     val recognitionResourcePicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri != null) viewModel.installRecognitionResources(uri) else toast(context, "未选择文件")
     }
@@ -1086,6 +1103,7 @@ fun AppScaffold(viewModel: MainViewModel) {
     val voicePackageFileExtensions = remember { setOf("zip", "kigvpk") }
     val quickSubtitlePresetFileExtensions = remember { setOf("kigtpk", "zip", "json") }
     val soundboardPresetFileExtensions = remember { setOf("kigspk", "zip", "json") }
+    val quickCardPackageFileExtensions = remember { setOf("kigcard") }
     val recognitionResourceFileExtensions = remember { setOf("7z", "zip") }
     val kokoroVoiceFileExtensions = remember { setOf("zip", "tar", "bz2", "tbz2") }
     val openFileManagerAfterPermission = rememberFileManagerPermissionGate()
@@ -1250,6 +1268,21 @@ fun AppScaffold(viewModel: MainViewModel) {
             }
         )
     }
+    if (showBuiltinQuickCardPackagePicker) {
+        BuiltinFilePickerDialog(
+            title = "选择快捷名片包",
+            allowedExtensions = quickCardPackageFileExtensions,
+            onDismiss = { showBuiltinQuickCardPackagePicker = false },
+            onPicked = { uri ->
+                showBuiltinQuickCardPackagePicker = false
+                viewModel.prepareQuickCardPackageImport(uri)
+            },
+            onOpenSystemPicker = {
+                showBuiltinQuickCardPackagePicker = false
+                quickCardPackagePicker.launch("*/*")
+            }
+        )
+    }
     if (showBuiltinRecognitionResourcePicker) {
         BuiltinFilePickerDialog(
             title = "选择语音识别资源包",
@@ -1360,6 +1393,29 @@ fun AppScaffold(viewModel: MainViewModel) {
             }
         )
     }
+    if (quickCardPackageExportDialog) {
+        PresetGroupExportDialog(
+            title = "导出快捷名片",
+            groups = viewModel.quickCards.map { it.id to it.title.ifBlank { "未命名名片" } },
+            prompt = "选择需要导出的名片",
+            confirmLabel = "导出",
+            onDismiss = { quickCardPackageExportDialog = false },
+            onConfirm = { ids ->
+                quickCardPackageExportDialog = false
+                viewModel.exportQuickCardPackage(ids)
+            }
+        )
+    }
+    if (viewModel.quickCardPackageImportVisible) {
+        PresetGroupExportDialog(
+            title = "导入快捷名片",
+            groups = viewModel.quickCardPackageImportCandidates.map { it.id to it.title },
+            prompt = "选择需要导入的名片；同名名片会作为新名片添加",
+            confirmLabel = "导入",
+            onDismiss = viewModel::dismissQuickCardPackageImport,
+            onConfirm = viewModel::importPreparedQuickCardPackage
+        )
+    }
     var realtimePttDragTarget by remember { mutableStateOf(PttConfirmDragTarget.DefaultSend) }
     val realtimeConfirmOverlayEnabled = false
     val realtimeShowPttConfirmOverlay =
@@ -1423,6 +1479,8 @@ fun AppScaffold(viewModel: MainViewModel) {
     val topBar: @Composable ((() -> Unit)) -> Unit = { onNavClick ->
         val currentTitle = if (overlayGestureSubPageOpen) {
             "手势触发快捷文本"
+        } else if (drawingPaletteSubPageOpen) {
+            "编辑调色板"
         } else if (quickSubtitleEditorOpen) {
             "编辑便捷字幕"
         } else if (soundboardEditorOpen) {
@@ -1528,6 +1586,7 @@ fun AppScaffold(viewModel: MainViewModel) {
                 navigationIcon = {
                     AnimatedContent(
                         targetState = when {
+                            drawingPaletteSubPageOpen -> 6
                             overlayGestureSubPageOpen -> 5
                             quickSubtitleSubPageOpen -> 1
                             soundboardSubPageOpen -> 2
@@ -1547,7 +1606,7 @@ fun AppScaffold(viewModel: MainViewModel) {
                         },
                         label = "topbar_nav_switch"
                     ) { navMode ->
-                        if (navMode in 1..5) {
+                        if (navMode in 1..6) {
                             KigttsIconButton(onClick = {
                                 popSecondaryPageSafely()
                             }) {
@@ -1568,6 +1627,7 @@ fun AppScaffold(viewModel: MainViewModel) {
                 },
                 actions = {
                     val quickCardActions = quickCardTopBarActions
+                    val drawingPaletteActions = drawingPaletteTopBarActions
                     val showQuickSubtitleActions =
                         basePage == pageQuickSubtitle && quickSubtitleRoute == QuickSubtitleRoutes.Main
                     val quickSubtitleEffectiveLandscape = isLandscape || forceLandscapeContentLayout
@@ -1603,7 +1663,8 @@ fun AppScaffold(viewModel: MainViewModel) {
                                 quickCardRoute == QuickCardRoutes.Sort
                     val showQuickCardWebActions =
                         basePage == pageQuickCard && quickCardRoute == QuickCardRoutes.Web
-                    val showDrawingActions = basePage == pageDrawing
+                    val showDrawingActions = basePage == pageDrawing && !drawingPaletteSubPageOpen
+                    val showDrawingPaletteActions = drawingPaletteSubPageOpen
                     val showVoicePackActions = basePage == pageVoicePack
                     val showSettingsEntryActions =
                         basePage == pageSettings && settingsRoute == SettingsRoutes.Main
@@ -1636,6 +1697,11 @@ fun AppScaffold(viewModel: MainViewModel) {
                         targetValue = if (showDrawingActions) 1f else 0f,
                         animationSpec = tween(130, easing = FastOutSlowInEasing),
                         label = "topbar_drawing_actions_alpha"
+                    )
+                    val drawingPaletteAlpha by animateFloatAsState(
+                        targetValue = if (showDrawingPaletteActions) 1f else 0f,
+                        animationSpec = tween(130, easing = FastOutSlowInEasing),
+                        label = "topbar_drawing_palette_actions_alpha"
                     )
                     val quickCardMainAlpha by animateFloatAsState(
                         targetValue = if (showQuickCardMainActions) 1f else 0f,
@@ -1685,9 +1751,10 @@ fun AppScaffold(viewModel: MainViewModel) {
                         showQuickSubtitleCompactEditorAction -> 96.dp
                         showQuickCardMainActions || showQuickCardEditorActions -> 96.dp
                         showQuickCardSortActions ->
-                            if (quickCardActions?.canClose == true) 96.dp else 48.dp
+                            if (quickCardActions?.canClose == true) 96.dp else 144.dp
                         showQuickCardWebActions -> 48.dp
                         showDrawingActions -> 144.dp
+                        showDrawingPaletteActions -> 96.dp
                         showQuickSubtitleActions ||
                             showSoundboardActions ||
                             showVoicePackActions ||
@@ -1916,6 +1983,32 @@ fun AppScaffold(viewModel: MainViewModel) {
                             }
                         }
 
+                        key("topbar_drawing_palette_actions_layer") {
+                            Row(
+                                modifier = Modifier
+                                    .align(Alignment.CenterEnd)
+                                    .graphicsLayer { alpha = drawingPaletteAlpha }
+                                    .zIndex(if (showDrawingPaletteActions) 2f else 0f),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.End
+                            ) {
+                                KigttsIconButton(
+                                    onClick = { drawingPaletteActions?.onAdd?.invoke() },
+                                    enabled = showDrawingPaletteActions &&
+                                        drawingPaletteActions?.canAdd == true
+                                ) {
+                                    MsIcon("add", contentDescription = "新增调色板颜色")
+                                }
+                                KigttsIconButton(
+                                    onClick = { drawingPaletteActions?.onConfirm?.invoke() },
+                                    enabled = showDrawingPaletteActions &&
+                                        drawingPaletteActions?.canConfirm == true
+                                ) {
+                                    MsIcon("check", contentDescription = "保存调色板")
+                                }
+                            }
+                        }
+
                         key("topbar_quick_card_main_actions_layer") {
                             Row(
                                 modifier = Modifier
@@ -1987,6 +2080,26 @@ fun AppScaffold(viewModel: MainViewModel) {
                                         MsIcon("close", contentDescription = "结束选择模式")
                                     }
                                 } else {
+                                    KigttsIconButton(
+                                        onClick = {
+                                            openFileManagerAfterPermission(quickCardPackageFileExtensions) {
+                                                if (state.useBuiltinFileManager) {
+                                                    showBuiltinQuickCardPackagePicker = true
+                                                } else {
+                                                    quickCardPackagePicker.launch("*/*")
+                                                }
+                                            }
+                                        },
+                                        enabled = showQuickCardSortActions
+                                    ) {
+                                        MsIcon("folder_open", contentDescription = "导入快捷名片")
+                                    }
+                                    KigttsIconButton(
+                                        onClick = { quickCardPackageExportDialog = true },
+                                        enabled = showQuickCardSortActions && viewModel.quickCards.isNotEmpty()
+                                    ) {
+                                        MsIcon("share", contentDescription = "导出快捷名片")
+                                    }
                                     KigttsIconButton(
                                         onClick = { quickCardActions?.onConfirm?.invoke() },
                                         enabled = showQuickCardSortActions && quickCardActions?.canConfirm == true
@@ -2289,12 +2402,42 @@ fun AppScaffold(viewModel: MainViewModel) {
                         ultraSmallAdaptiveWindow = ultraSmallAdaptiveWindow
                     )
                     pageVoicePack -> VoicePackScreen(viewModel, state)
-                    pageDrawing -> DrawingBoardScreen(
-                        viewModel = viewModel,
-                        fullscreen = drawingFullscreen,
-                        onToggleFullscreen = { drawingFullscreen = !drawingFullscreen },
-                        forceLandscapeLayout = forceLandscapeContentLayout
-                    )
+                    pageDrawing -> AnimatedContent(
+                        targetState = drawingPaletteEditorOpen,
+                        transitionSpec = {
+                            ContentTransform(
+                                targetContentEnter = fadeIn(tween(180)) + slideInHorizontally(
+                                    initialOffsetX = { full -> full / 8 },
+                                    animationSpec = tween(180, easing = FastOutSlowInEasing)
+                                ),
+                                initialContentExit = fadeOut(tween(100)) + slideOutHorizontally(
+                                    targetOffsetX = { full -> -full / 8 },
+                                    animationSpec = tween(120, easing = FastOutSlowInEasing)
+                                )
+                            )
+                        },
+                        label = "drawing_palette_page"
+                    ) { editorOpen ->
+                        if (editorOpen) {
+                            DrawingPaletteEditorScreen(
+                                savedPalette = state.drawingPalette,
+                                onSave = viewModel::saveDrawingPalette,
+                                onClose = { drawingPaletteEditorOpen = false },
+                                onTopBarActionsChange = { drawingPaletteTopBarActions = it }
+                            )
+                        } else {
+                            DrawingBoardScreen(
+                                viewModel = viewModel,
+                                fullscreen = drawingFullscreen,
+                                onToggleFullscreen = { drawingFullscreen = !drawingFullscreen },
+                                onOpenPaletteEditor = {
+                                    drawingFullscreen = false
+                                    drawingPaletteEditorOpen = true
+                                },
+                                forceLandscapeLayout = forceLandscapeContentLayout
+                            )
+                        }
+                    }
                     pageSoundboard -> SoundboardNavHost(
                         navController = soundboardNavController,
                         viewModel = viewModel,
@@ -2443,7 +2586,7 @@ fun AppScaffold(viewModel: MainViewModel) {
         }
     }
 
-    val drawingImmersive = drawingFullscreen && basePage == pageDrawing
+    val drawingImmersive = drawingFullscreen && basePage == pageDrawing && !drawingPaletteSubPageOpen
     val quickSubtitleImmersive =
         quickSubtitleFullscreen && basePage == pageQuickSubtitle && !quickSubtitleSubPageOpen
     val ledSubtitleImmersive = quickSubtitleLedOpen
@@ -2456,6 +2599,9 @@ fun AppScaffold(viewModel: MainViewModel) {
     }
     BackHandler(enabled = overlayGestureSubPageOpen) {
         overlayGestureSettingsOpen = false
+    }
+    BackHandler(enabled = drawingPaletteSubPageOpen) {
+        popSecondaryPageSafely()
     }
     LaunchedEffect(fullScreenImmersive) {
         if (fullScreenImmersive) {

@@ -126,7 +126,8 @@ internal fun LedSubtitleInputPanel(
                 onValueChange = onValueChange,
                 modifier = Modifier
                     .weight(1f)
-                    .focusRequester(focusRequester),
+                    .focusRequester(focusRequester)
+                    .kigttsTextToolbarAnchor(),
                 singleLine = true,
                 placeholder = { Text("请输入文本", color = LedPanelSecondary) },
                 keyboardOptions = KeyboardOptions(

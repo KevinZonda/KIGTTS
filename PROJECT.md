@@ -369,3 +369,80 @@
 - 构建验证：`:app:testDebugUnitTest` 与 `:app:assembleDebug` 通过，17 个测试套件共 52 项，0 失败、0 错误、0 跳过；新增 6 项覆盖设置 JSON 往返、未知模板归一化、全部默认单笔轨迹、有效 M 手势和普通横滑拒绝。最终真机冷启动 `LaunchState=COLD`、`TotalTime=1662 ms`，进程正常驻留且日志无 `VerifyError`、ANR 或致命异常；`git diff --check` 通过。
 - APK：`D:\KGTTS_GradleOut\codex-build\app\outputs\apk\debug\app-debug.apk`，102028242 字节。
 - SHA-256：`4b1f7e00f9d7a261f5e5266477e667b4464a223d8bd45b2578bff97d372f4afb`。
+
+## 2026-07-22 Android 文本菜单、自定义字体测量与悬浮名片
+
+- 范围：仅修改 Android 原生端，Flutter 端未改动。
+- 文本上下文菜单：将自定义剪切、复制、粘贴和全选菜单从 `UiControls.kt` 拆为独立宿主；抑制文本框长按后同一轮布局产生的一次瞬时隐藏，解决快捷名片编辑页菜单不出现或一闪而过的问题。
+- 弹窗菜单：滚动弹窗、内置取色/文件选择弹窗、快捷文本编辑弹窗及全部 Material `AlertDialog` 不再注入应用自绘菜单，统一使用弹窗 Android 窗口自己的系统长按文本菜单，由系统处理键盘上浮、选区锚点和窗口避让。主页面与悬浮窗仍保留原有菜单设置和自绘样式。
+- 系统文本菜单：在“设置 → 系统 → 显示与主题”新增“使用系统长按文本菜单”，默认关闭以保持主页面现有行为；弹窗始终使用系统菜单，开启该选项后主页面、悬浮字幕输入栏和悬浮窗应用搜索框也不再拦截系统 ActionMode。设置通过 DataStore 持久化，并在切换时刷新悬浮窗输入控件。
+- 便捷字幕自适应：测量与实际 `Text` 统一使用同一份主题文字样式，完整保留自定义字体族、字重、字距、`PlatformTextStyle`、字体内边距和行高裁剪参数，修复部分三星设备使用自定义字体时字号与换行估算偏大、底部吞字的根因。
+- 悬浮窗大字幕：自适应测量直接复制实际 `TextView.paint`，并统一 `includeFontPadding`、简单断行和禁用断词参数，减少 OEM 字体度量差异；自定义字体和稳定字高继续由同一 `OverlayFontApplier` 应用。
+- 悬浮快捷名片：备注改为按二维码实际高度计算多行上限，文字区域与二维码区域使用同一尺寸来源；短备注完整换行，超过可用高度后才省略，无链接时使用卡片剩余高度。
+- 测试与设备：`:app:testDebugUnitTest` 和 `:app:assembleDebug` 通过，19 个测试套件共 60 项，0 失败、0 错误、0 跳过；新增菜单瞬时隐藏、宿主位移、输入框独立滚动后保持选区锚点、普通页面间距、系统菜单默认值和主题文字度量参数测试。Debug APK 已保留数据覆盖安装到设备 `cfc8ef16`，此前冷启动 `TotalTime=2066 ms`，应用进程日志无 `FATAL EXCEPTION`、`VerifyError` 或 ANR。当前设备不是三星，三星字体渲染结果仍需在原复现设备确认。
+- APK：`D:\KGTTS_GradleOut\codex-build\app\outputs\apk\debug\app-debug.apk`，104166607 字节。
+- SHA-256：`dcdad335be51ab3ddc2287b0e596f2e8821e5fdb90fe617c6499bee19c1baed6`。
+
+## 2026-07-22 Android 文件管理器全部文件访问
+
+- 权限：Android 11 及以上声明 `MANAGE_EXTERNAL_STORAGE`，内置文件管理器新增“全部文件”入口；用户主动点击后先展示用途与隐私说明，再跳转应用专属的系统“所有文件访问权限”页面，不在启动或后台主动申请。
+- 降级：Android 11+ 允许先进入内置文件管理器，再自行选择全部文件访问、媒体读取权限、持久化 SAF 目录授权或系统文件选择器；权限未开启或被撤销时其余路径继续可用。Android 8–10 仍使用原有 `READ_EXTERNAL_STORAGE` 门禁，不受新权限判断影响。
+- 刷新：从系统设置返回以及应用恢复前台时重新读取 `Environment.isExternalStorageManager()`；授权成功后跳过重复媒体读取申请，并重新加载文件列表。
+- 存储卷：获得权限后通过 `StorageManager.storageVolumes` 补充内部存储、SD 卡和外接存储根目录；仍遵循 Android 对其他应用私有目录和部分 `Android/data` 路径的系统限制。
+- 验证：合并后的 Debug Manifest 已确认包含 `android.permission.MANAGE_EXTERNAL_STORAGE`；`:app:testDebugUnitTest` 与 `:app:assembleDebug` 通过，19 个测试套件共 60 项，0 失败、0 错误、0 跳过。Debug APK 已覆盖安装到设备 `cfc8ef16`，冷启动 `TotalTime=1973 ms`；同一应用专属 Intent 可正常打开 MIUI“所有文件访问权限”页面。使用 `appops` 验证授权状态可切换后已恢复为 `default`，未替用户保留强制授权。
+- APK：`D:\KGTTS_GradleOut\codex-build\app\outputs\apk\debug\app-debug.apk`，104171322 字节。
+- SHA-256：`5bf5453a5bcccbc5d87e5a8a4f31565dea15c0d1a0e3bb07bfdd84fbc2686601`。
+
+## 2026-07-22 Android 快捷名片包与软件配置备份
+
+- 范围：仅修改 Android 原生端，Flutter 端未改动；长按名片进入的“管理名片”页顶栏新增导入与分享导出按钮，快捷名片主页仍只保留新建与扫码入口。
+- 快捷名片包：新增自包含 `.kigcard` ZIP 格式，清单保存名片类型、标题、备注、主题色、链接及横竖图片；导入和导出都会先弹出名片勾选列表，导入同名名片时作为“导入”副本追加，不合并或覆盖现有名片。
+- 类型持久化：修复快捷名片原持久化层强制写入 `text` 的问题，图片、二维码和文本类型现在按实际 wire value 读写，导入后重启不会丢失类型。
+- 专有文件图标：内置文件管理器为 `.kigvpk`、`.kigspk`、`.kigcard`、`.kigtpk` 和 `.kigconfig` 分别显示语音、音效、名片、字幕和设置还原图标，不再全部显示为普通压缩包。
+- 配置备份：在“设置 -> 系统”最底部新增“备份与还原”卡片；基础设置和快捷名片信息始终写入 `.kigconfig`，用户可按需额外包含快捷文本预设、快捷名片图片、当前字体文件、音效板预设与音频、已安装的本地语音包。
+- 还原语义：备份中的设置和同名资源覆盖当前内容，备份未包含的本机数据保留；偏好按原始 Boolean/Int/Long/Float/Double/String/StringSet 类型合并写回，并在还原后刷新快捷文本、音效板、名片、字体与语音包列表。
+- 包安全：两个格式都校验类型和版本、拒绝目录越界路径、限制清单/图片/备份解压大小；配置还原先解压到缓存暂存区，只允许资源写入应用的名片、音效、语音包和字体目录。
+- 验证：`:app:testDebugUnitTest` 与 `:app:assembleDebug` 通过，19 个测试套件共 61 项，0 失败、0 错误、0 跳过；真机 Instrumentation 另有 2 项通过，覆盖 `.kigcard` 类型/同名/图片往返和最小 `.kigconfig` 偏好往返。Debug APK 已安装到设备 `cfc8ef16`，最终冷启动 `TotalTime=1787 ms`，日志无 `FATAL EXCEPTION`、`VerifyError` 或 ANR。
+- APK：`D:\KGTTS_GradleOut\codex-build\app\outputs\apk\debug\app-debug.apk`，104223999 字节。
+- SHA-256：`0cd52b23f5b6cb5ab1c741545e6565fb1a487d28276e6230e118c77282d4a805`。
+
+## 2026-07-22 Android 高清名片图片、画板自定义颜色与 LED 间距
+
+- 范围：仅修改 Android 原生端及其 LAN 投屏网页资源，Flutter 端未改动。
+- 快捷名片图片：裁剪输出由固定 `1080x1920` 提升为最高 `2160x3840`，使用 `RESIZE_INSIDE` 只缩小超限图片、不强制放大低分辨率原图；横竖名片分别保持 16:9 和 9:16。
+- 高清渲染：名片图片缓存长边由 1600 提升到 2880 像素，覆盖手机和平板常见 QHD 显示；采样先保留目标分辨率以上的位图再高质量缩放，避免 4K 图片因二次幂采样直接退回 1080p。缓存键加入文件修改时间和目标尺寸，防止不同质量请求复用旧低清缓存。
+- 画板取色：原有 7 个主题色后新增“自定义颜色”色轮，点击复用现有 HSL/HEX 取色器；色轮由红、橙、黄、绿、青、蓝、紫 7 个 MD2 实色连续组成细空心环，中间显示当前最终取色。
+- 工具栏尺寸：自定义色轮保持与原色点相同的 22dp 大小，工具栏宽高仍按原有 7 色计算，第八项通过原有横向或纵向滚动访问，不扩大工具栏。
+- LED 循环间距：Android LED、Android 投屏设置、网页投屏端、网页遥控端、设置归一化和 LAN 服务消息解析统一使用 `24..1600 dp`，不再被服务端旧的 240dp 上限截断。
+- 验证：`:app:testDebugUnitTest` 与 `:app:assembleDebug` 通过，21 个测试套件共 66 项，0 失败、0 错误、0 跳过；新增 4K 名片采样、QHD 质量阈值、超大图采样、七色 MD2 色轮和 LED 最大间距测试。`git diff --check` 与 LAN 网页 JavaScript 语法检查通过。
+- 真机：Debug APK 已保留数据覆盖安装到设备 `cfc8ef16`，冷启动 `TotalTime=1815 ms`；启动后日志无 `FATAL EXCEPTION`、`VerifyError`、`OutOfMemoryError` 或 `AndroidRuntime` 致命异常。
+- APK：`D:\KGTTS_GradleOut\codex-build\app\outputs\apk\debug\app-debug.apk`，104227093 字节。
+- SHA-256：`315d7882ca574668f63f08970a4bc737c9e4275edef6012693b129e0451662c2`。
+
+## 2026-07-22 Android 画板可编辑亮暗调色板
+
+- 默认顺序：画板工具栏将自定义七色环移到首位，后接 6 组默认候选色；移除原末尾紫色/浅紫色组，总项数仍为 7，工具栏宽高保持不变。
+- 亮暗配色：默认色板和用户色板的每个条目都同时保存亮色主题颜色与暗色主题颜色，画板按当前主题自动取对应颜色。旧版本没有色板配置时自动使用新的 6 组默认色板。
+- 编辑入口：画板自定义颜色取色弹窗底部新增“编辑调色板”入口，进入独立二级页面；页面顶栏显示返回和确认按钮，列表样式与资源管理页面一致。
+- 编辑能力：每个条目提供亮色和暗色两个圆形颜色按钮，分别打开 HSL/HEX 取色器；支持新增、删除以及通过右侧拖动手柄上下排序，拖动时提供海拔与底色反馈。
+- 编辑页样式：条目直接沿用音效板编辑条目的 72dp 卡片规格、圆角、默认海拔、拖动抬升和右侧操作区；两个 40dp 色块使用亮色/暗色图标，并显示对应色名与两组 HEX。新增入口从悬浮按钮移至标题栏，与确认按钮并列；列表按字体管理页限宽，避免平板上过度拉伸。
+- 画板默认色：用户尚未手动选色时，亮色主题默认使用色板第一项的亮色，暗色主题默认使用第一项的暗色；色板为空时回退到当前实际主题主色。主题或色板刷新会同步尚未手动修改的默认值，但不会覆盖用户本次运行中已经选择的画笔颜色。
+- 中文颜色名称：使用本机 zh-CN Windows 的 `ColorHelper.ToDisplayName` 对 65×65×65、共 274625 个 RGB 点采样，得到 39 种系统中文色名；安卓端内置游程压缩表并以八邻点权重匹配任意颜色，不依赖网络或 Windows。10000 个固定随机样本与 Windows API 的名称一致率为 96.87%，12 个默认候选色另保留直接采样结果。
+- 色名显示：调色板条目的“配色 X”替换为“亮色色名 · 暗色色名”，例如“深青色 · 浅绿色”；Windows 返回的“深青”“浅绿”“冰蓝”等名称会统一补齐“色”后缀，下一行继续显示两组 HEX。
+- 保存防护：编辑期间使用独立草稿，不会实时破坏当前色板；点击顶栏确认会保存并返回，顶栏或系统返回遇到未保存修改时提供“保存 / 不保存 / 取消”选择。旋转屏幕后草稿仍保留。
+- 持久化：新增版本化 `drawing_palette` JSON，并通过 DataStore 写入；颜色统一转为不透明 ARGB、异常或重复 ID 会归一化，最多允许 24 个条目。该偏好会随现有 `.kigconfig` 配置备份与还原。
+- 验证：`:app:testDebugUnitTest` 与 `:app:assembleDebug` 通过，23 个测试套件共 74 项，0 失败、0 错误、0 跳过；新增默认迁移、亮暗颜色对、顺序、重复 ID、透明色、新增 ID、亮暗首项默认色、空色板回退、Windows 默认色名、透明度忽略和全域色名后缀测试。真实 Android instrumentation 另有 1 项通过，确认色板 JSON 顺序和亮暗颜色往返一致；测试包已单独卸载，未清除主应用数据。
+- 真机：完成编辑页样式、默认颜色和中文色名重构后，Debug APK 已保留数据覆盖安装到设备 `cfc8ef16`，冷启动 `TotalTime=1440 ms`；应用进程日志无 `FATAL EXCEPTION`、`AndroidRuntime`、`VerifyError`、`OutOfMemoryError` 或 `IllegalStateException`。
+- APK：`D:\KGTTS_GradleOut\codex-build\app\outputs\apk\debug\app-debug.apk`，104303998 字节。
+- SHA-256：`09598c282b1987a606244a7e01ec73b9aba6b563cd8b39b45ced486a9e29bb52`。
+
+## 2026-07-22 Android 主题色备注、官网入口与 0.1.2 版本
+
+- 主题色备注：设置“显示与主题”中的应用主题色，以及快捷名片编辑页的“当前主题色”，统一显示为“`#RRGGBB · 中文颜色名`”，例如“`#038387 · 深青色`”。
+- 格式复用：色号统一使用不含透明度的大写六位 HEX，颜色名复用内置 Windows 中文颜色名称采样表，两处界面不会再分别维护文案。
+- 应用版本：Debug 与 Release 共用版本名 `0.1.2`，`versionCode` 由 2 递增到 3。
+- 二维码外链页：顶部信息图标改为 64dp 居中容器内的 52dp Material Symbol，修复原先只扩大布局框、字形仍为 24dp 导致的图标偏小和基线偏位；同类网页错误页同步统一。
+- 关于页官网：KIGTTS Logo 增加可点击波纹，点击后优先以 Custom Tab 打开 `https://kigtts.lhtstudio.com`，不可用或启动失败时回退系统外部浏览器。
+- 验证：`:app:testDebugUnitTest`、`:app:assembleDebug` 与 `:app:assembleRelease` 通过，23 个测试套件共 75 项，0 失败、0 错误、0 跳过；Debug 与 Release 包元数据均确认是 `0.1.2 (3)`，Release APK 通过 v2 签名校验。
+- Debug APK：`D:\KGTTS_GradleOut\codex-build\app\outputs\apk\debug\app-debug.apk`，102531778 字节，SHA-256 `c48111fc75b029d7e9db315459cc72470c4c9236fd7248ff065bb2285c2b4182`。
+- Release APK：`D:\KGTTS_GradleOut\codex-build\app\outputs\apk\release\app-release.apk`，95714243 字节，SHA-256 `279a2ffd0fc837fb0d2bd8d99d3ce046c8f710a8ccfd87f547a82e8621eecd54`。

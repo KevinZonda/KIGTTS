@@ -2,6 +2,7 @@ package com.lhtstudio.kigtts.app.ui
 
 import android.Manifest
 import android.content.pm.PackageManager
+import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
@@ -48,7 +49,11 @@ internal fun rememberFileManagerPermissionGate(): (Set<String>, () -> Unit) -> U
             .map { it.lowercase(Locale.US).trim('.') }
             .filter { it.isNotBlank() }
             .toSet()
-        val permission = builtinReadPermissionForExtensions(normalizedExtensions)
+        val permission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            null
+        } else {
+            builtinReadPermissionForExtensions(normalizedExtensions)
+        }
         val hasPermission = permission == null ||
             ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED
         if (hasPermission) {

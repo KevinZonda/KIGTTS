@@ -3,11 +3,13 @@ package com.lhtstudio.kigtts.app.data
 import android.content.Context
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
+import androidx.datastore.preferences.core.doublePreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.lhtstudio.kigtts.app.audio.AudioDenoiserMode
 import com.lhtstudio.kigtts.app.audio.AudioRoutePreference
@@ -131,6 +133,7 @@ object UserPrefs {
     private val KEY_APP_FONT_PREFERRED_SOURCE = intPreferencesKey("app_font_preferred_source")
     private val KEY_FLOATING_OVERLAY_USE_SYSTEM_FONT =
         booleanPreferencesKey("floating_overlay_use_system_font")
+    private val KEY_USE_SYSTEM_TEXT_TOOLBAR = booleanPreferencesKey("use_system_text_toolbar")
     private val KEY_FONT_SCALE_BLOCK_MODE = intPreferencesKey("font_scale_block_mode")
     private val KEY_HAPTIC_FEEDBACK_ENABLED = booleanPreferencesKey("haptic_feedback_enabled")
     private val KEY_ONBOARDING_COMPLETED = booleanPreferencesKey("onboarding_completed")
@@ -204,6 +207,7 @@ object UserPrefs {
         intPreferencesKey("lan_cast_audio_output_mode")
     private val KEY_DRAWING_KEEP_CANVAS_ORIENTATION_TO_DEVICE =
         booleanPreferencesKey("drawing_keep_canvas_orientation_to_device")
+    private val KEY_DRAWING_PALETTE = stringPreferencesKey("drawing_palette")
     private val KEY_SPEAKER_VERIFY_ENABLED = booleanPreferencesKey("speaker_verify_enabled")
     private val KEY_SPEAKER_VERIFY_THRESHOLD = floatPreferencesKey("speaker_verify_threshold")
     private val KEY_SPEAKER_VERIFY_PROFILE = stringPreferencesKey("speaker_verify_profile")
@@ -260,6 +264,7 @@ object UserPrefs {
         val appFontHuggingFaceUrl: String = AppFontRemoteSource.HuggingFace.defaultRepositoryBaseUrl,
         val appFontPreferredSource: Int = APP_FONT_SOURCE_MODELSCOPE,
         val floatingOverlayUseSystemFont: Boolean = false,
+        val useSystemTextToolbar: Boolean = false,
         val fontScaleBlockMode: Int = FONT_SCALE_BLOCK_ICONS_ONLY,
         val hapticFeedbackEnabled: Boolean = true,
         val onboardingCompleted: Boolean = false,
@@ -306,6 +311,7 @@ object UserPrefs {
         val liveSubtitleNotificationEnabled: Boolean = false,
         val lanCastAudioOutputMode: Int = LAN_CAST_AUDIO_LOCAL,
         val drawingKeepCanvasOrientationToDevice: Boolean = true,
+        val drawingPalette: DrawingPalette = DrawingPalette(),
         val speakerVerifyEnabled: Boolean = false,
         val speakerVerifyThreshold: Float = 0.5f,
         val speakerVerifyProfileCsv: String = "",
@@ -415,6 +421,75 @@ object UserPrefs {
         return prefs.toAppSettings()
     }
 
+    suspend fun exportPreferencesForBackup(
+        context: Context,
+        includeQuickSubtitlePresets: Boolean,
+        includeSoundboard: Boolean
+    ): JSONObject {
+        val excludedNames = buildSet {
+            if (!includeQuickSubtitlePresets) add(KEY_QUICK_SUBTITLE_CONFIG.name)
+            if (!includeSoundboard) add(KEY_SOUNDBOARD_CONFIG.name)
+        }
+        val entries = JSONArray()
+        context.dataStore.data.first().asMap()
+            .entries
+            .sortedBy { it.key.name }
+            .forEach { (key, value) ->
+                if (key.name in excludedNames) return@forEach
+                val item = JSONObject().put("name", key.name)
+                when (value) {
+                    is Boolean -> item.put("type", "boolean").put("value", value)
+                    is Int -> item.put("type", "int").put("value", value)
+                    is Long -> item.put("type", "long").put("value", value)
+                    is Float -> item.put("type", "float").put("value", value.toDouble())
+                    is Double -> item.put("type", "double").put("value", value)
+                    is String -> item.put("type", "string").put("value", value)
+                    is Set<*> -> {
+                        val strings = value.filterIsInstance<String>()
+                        if (strings.size != value.size) return@forEach
+                        item.put("type", "string_set").put("value", JSONArray(strings))
+                    }
+                    else -> return@forEach
+                }
+                entries.put(item)
+            }
+        return JSONObject()
+            .put("version", 1)
+            .put("entries", entries)
+    }
+
+    suspend fun importPreferencesFromBackup(context: Context, payload: JSONObject): Int {
+        require(payload.optInt("version", 0) == 1) { "不支持的配置数据版本" }
+        val entries = payload.optJSONArray("entries") ?: error("配置备份缺少设置数据")
+        var restored = 0
+        context.dataStore.edit { prefs ->
+            for (index in 0 until entries.length()) {
+                val item = entries.optJSONObject(index) ?: continue
+                val name = item.optString("name").trim()
+                if (name.isEmpty() || name.length > 160) continue
+                when (item.optString("type")) {
+                    "boolean" -> prefs[booleanPreferencesKey(name)] = item.optBoolean("value")
+                    "int" -> prefs[intPreferencesKey(name)] = item.optInt("value")
+                    "long" -> prefs[longPreferencesKey(name)] = item.optLong("value")
+                    "float" -> prefs[floatPreferencesKey(name)] = item.optDouble("value").toFloat()
+                    "double" -> prefs[doublePreferencesKey(name)] = item.optDouble("value")
+                    "string" -> prefs[stringPreferencesKey(name)] = item.optString("value")
+                    "string_set" -> {
+                        val values = item.optJSONArray("value") ?: continue
+                        prefs[stringSetPreferencesKey(name)] = buildSet {
+                            for (valueIndex in 0 until values.length()) {
+                                values.optString(valueIndex).takeIf { it.isNotEmpty() }?.let(::add)
+                            }
+                        }
+                    }
+                    else -> continue
+                }
+                restored += 1
+            }
+        }
+        return restored
+    }
+
     fun observeSettings(context: Context): Flow<AppSettings> {
         return context.dataStore.data.map { prefs -> prefs.toAppSettings() }
     }
@@ -506,6 +581,7 @@ object UserPrefs {
                 this[KEY_APP_FONT_PREFERRED_SOURCE] ?: APP_FONT_SOURCE_MODELSCOPE
             ).preferenceValue,
             floatingOverlayUseSystemFont = this[KEY_FLOATING_OVERLAY_USE_SYSTEM_FONT] ?: false,
+            useSystemTextToolbar = this[KEY_USE_SYSTEM_TEXT_TOOLBAR] ?: false,
             fontScaleBlockMode = normalizeFontScaleBlockMode(
                 this[KEY_FONT_SCALE_BLOCK_MODE] ?: FONT_SCALE_BLOCK_ICONS_ONLY
             ),
@@ -572,6 +648,7 @@ object UserPrefs {
                 this[KEY_LAN_CAST_AUDIO_OUTPUT_MODE] ?: LAN_CAST_AUDIO_LOCAL
             ),
             drawingKeepCanvasOrientationToDevice = this[KEY_DRAWING_KEEP_CANVAS_ORIENTATION_TO_DEVICE] ?: true,
+            drawingPalette = decodeDrawingPalette(this[KEY_DRAWING_PALETTE]),
             speakerVerifyEnabled = this[KEY_SPEAKER_VERIFY_ENABLED] ?: false,
             speakerVerifyThreshold = (this[KEY_SPEAKER_VERIFY_THRESHOLD] ?: 0.5f).coerceIn(0.05f, 0.95f),
             speakerVerifyProfileCsv = this[KEY_SPEAKER_VERIFY_PROFILE] ?: "",
@@ -857,6 +934,12 @@ object UserPrefs {
     suspend fun setFloatingOverlayUseSystemFont(context: Context, enabled: Boolean) {
         context.dataStore.edit { prefs ->
             prefs[KEY_FLOATING_OVERLAY_USE_SYSTEM_FONT] = enabled
+        }
+    }
+
+    suspend fun setUseSystemTextToolbar(context: Context, enabled: Boolean) {
+        context.dataStore.edit { prefs ->
+            prefs[KEY_USE_SYSTEM_TEXT_TOOLBAR] = enabled
         }
     }
 
@@ -1153,6 +1236,12 @@ object UserPrefs {
     suspend fun setDrawingKeepCanvasOrientationToDevice(context: Context, enabled: Boolean) {
         context.dataStore.edit { prefs ->
             prefs[KEY_DRAWING_KEEP_CANVAS_ORIENTATION_TO_DEVICE] = enabled
+        }
+    }
+
+    suspend fun setDrawingPalette(context: Context, palette: DrawingPalette) {
+        context.dataStore.edit { prefs ->
+            prefs[KEY_DRAWING_PALETTE] = encodeDrawingPalette(palette)
         }
     }
 

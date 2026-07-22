@@ -793,7 +793,7 @@ fun FloatingOverlayScreen(
     }
 
     pendingVolumeHotkeyEnableSequence?.let { sequence ->
-        AlertDialog(
+        KigttsAlertDialog(
             onDismissRequest = {
                 pendingVolumeHotkeyEnableSequence = null
                 dismissVolumeHotkeyEnableWarning = false
@@ -854,7 +854,7 @@ fun FloatingOverlayScreen(
     }
 
     hotkeyActionPickerSequence?.let { sequence ->
-        AlertDialog(
+        KigttsAlertDialog(
             onDismissRequest = { hotkeyActionPickerSequence = null },
             title = {
                 Text(
@@ -924,7 +924,7 @@ fun FloatingOverlayScreen(
     }
 
     if (accessibilityExplainDialogOpen) {
-        AlertDialog(
+        KigttsAlertDialog(
             onDismissRequest = { accessibilityExplainDialogOpen = false },
             title = { Text("启用无障碍稳定监听") },
             text = {
@@ -954,7 +954,7 @@ fun FloatingOverlayScreen(
     }
 
     externalShortcutPickerSequence?.let { sequence ->
-        AlertDialog(
+        KigttsAlertDialog(
             onDismissRequest = {
                 externalShortcutPickerSequence = null
                 externalShortcutLoading = false

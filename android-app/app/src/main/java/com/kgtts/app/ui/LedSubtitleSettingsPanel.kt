@@ -19,7 +19,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.AlertDialog
 import androidx.compose.material.Divider
 import androidx.compose.material.IconButton
 import androidx.compose.material.Slider
@@ -190,7 +189,7 @@ internal fun LedSubtitleSettingsPanel(
                     LedSettingsSlider(
                         label = "循环间距",
                         value = settings.loopGapDp,
-                        valueRange = 24f..240f,
+                        valueRange = LedSubtitleSettings.MIN_LOOP_GAP_DP..LedSubtitleSettings.MAX_LOOP_GAP_DP,
                         valueLabel = "${settings.loopGapDp.roundToInt()} dp",
                         accent = accent,
                         onValueChange = { onSettingsChange(settings.copy(loopGapDp = it)) }
@@ -279,7 +278,7 @@ internal fun LedSubtitleSettingsPanel(
     }
 
     if (resetConfirmationVisible) {
-        AlertDialog(
+        KigttsAlertDialog(
             onDismissRequest = { resetConfirmationVisible = false },
             title = { Text("恢复 LED 默认设置") },
             text = { Text("确定恢复全部 LED 显示设置？") },

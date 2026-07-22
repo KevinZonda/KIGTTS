@@ -569,7 +569,7 @@ fun VoicePackScreen(viewModel: MainViewModel, state: UiState) {
             File(detailPack.dir, detailPack.meta.avatar)
         }
         val avatarBitmap = rememberAvatarBitmap(avatarFile)
-        AlertDialog(
+        KigttsAlertDialog(
             onDismissRequest = { detailPackPath = null },
             title = {
                 Row(
@@ -675,7 +675,7 @@ fun VoicePackScreen(viewModel: MainViewModel, state: UiState) {
 
     if (deletePack != null) {
         val deletingKokoro = deletePack?.let { isKokoroVoiceDir(it.dir) } == true
-        AlertDialog(
+        KigttsAlertDialog(
             onDismissRequest = { deletePack = null },
             title = { Text(if (deletingKokoro) "删除 Kokoro 离线语音" else "删除语音包") },
             text = {
@@ -1432,4 +1432,3 @@ internal fun resetVoicePackStaggerView(view: View) {
     view.alpha = 1f
     view.translationY = 0f
 }
-

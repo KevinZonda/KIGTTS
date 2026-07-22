@@ -3010,7 +3010,8 @@ fun QuickSubtitleScreen(
                             },
                             modifier = Modifier
                                 .weight(1f)
-                                .onFocusChanged { inputFieldFocused = it.isFocused },
+                                .onFocusChanged { inputFieldFocused = it.isFocused }
+                                .kigttsTextToolbarAnchor(),
                             singleLine = true,
                             placeholder = { Text("请输入文本") },
                             keyboardOptions = KeyboardOptions(
@@ -3097,7 +3098,8 @@ fun QuickSubtitleScreen(
                             },
                             modifier = Modifier
                                 .weight(1f)
-                                .onFocusChanged { inputFieldFocused = it.isFocused },
+                                .onFocusChanged { inputFieldFocused = it.isFocused }
+                                .kigttsTextToolbarAnchor(),
                             singleLine = true,
                             placeholder = { Text("请输入文本") },
                             keyboardOptions = KeyboardOptions(
@@ -3324,6 +3326,7 @@ internal fun QuickSubtitleAdaptiveText(
         val density = LocalDensity.current
         val scrollState = rememberScrollState()
         val textMeasurer = rememberTextMeasurer()
+        val baseTextStyle = MaterialTheme.typography.bodyLarge
         var textLayoutResult by remember(text) { mutableStateOf<TextLayoutResult?>(null) }
         val cursorStrokeWidthPx = with(density) { cursorWidth.toPx() }
         val maxWidthPx = remember(maxWidth, density) { with(density) { maxWidth.roundToPx() }.coerceAtLeast(1) }
@@ -3340,21 +3343,22 @@ internal fun QuickSubtitleAdaptiveText(
             autoFitEnabled,
             maxWidthPx,
             maxHeightPx,
-            density
+            density,
+            baseTextStyle
         ) {
             if (!autoFitEnabled) {
                 QuickSubtitleFitResult(fontSizeSp = boundedMaxFont, needsScroll = true)
             } else {
                 fun overflows(sizeSp: Float): Boolean {
-                    val lineHeightSp = (sizeSp * lineHeightMultiplier).coerceAtLeast(sizeSp)
                     val result = textMeasurer.measure(
                         text = text,
-                        style = TextStyle(
-                            fontWeight = fontWeight,
-                            fontSize = sizeSp.sp,
-                            lineHeight = lineHeightSp.sp,
+                        style = quickSubtitleAdaptiveTextStyle(
+                            baseStyle = baseTextStyle,
+                            color = color,
                             textAlign = textAlign,
-                            color = color
+                            fontWeight = fontWeight,
+                            fontSizeSp = sizeSp,
+                            lineHeightMultiplier = lineHeightMultiplier
                         ),
                         overflow = TextOverflow.Clip,
                         softWrap = true,
@@ -3399,6 +3403,14 @@ internal fun QuickSubtitleAdaptiveText(
         }
         val rotateWholeViewport = textRotationZ != 0f && !fitResult.needsScroll
         val rotateTextOnly = textRotationZ != 0f && fitResult.needsScroll
+        val fittedTextStyle = quickSubtitleAdaptiveTextStyle(
+            baseStyle = baseTextStyle,
+            color = color,
+            textAlign = textAlign,
+            fontWeight = fontWeight,
+            fontSizeSp = fitResult.fontSizeSp,
+            lineHeightMultiplier = lineHeightMultiplier
+        )
         Box(
             modifier = contentModifier.then(
                 if (rotateWholeViewport) Modifier.graphicsLayer(rotationZ = textRotationZ) else Modifier
@@ -3407,13 +3419,7 @@ internal fun QuickSubtitleAdaptiveText(
         ) {
             Text(
                 text = text,
-                style = MaterialTheme.typography.bodyLarge.copy(
-                    fontWeight = fontWeight,
-                    fontSize = fitResult.fontSizeSp.sp,
-                    lineHeight = (fitResult.fontSizeSp * lineHeightMultiplier).sp
-                ),
-                color = color,
-                textAlign = textAlign,
+                style = fittedTextStyle,
                 onTextLayout = { textLayoutResult = it },
                 modifier = Modifier
                     .fillMaxWidth()
@@ -3773,7 +3779,7 @@ internal fun GroupIconPickerRow(
     }
 
     if (showDialog) {
-        AlertDialog(
+        KigttsAlertDialog(
             onDismissRequest = { showDialog = false },
             title = { Text("分组图标") },
             text = {
@@ -4422,7 +4428,7 @@ internal fun QuickSubtitleEditorScreen(
 
     if (showBatchDeleteConfirm) {
         val count = selectedItemIndexes.size
-        AlertDialog(
+        KigttsAlertDialog(
             onDismissRequest = { showBatchDeleteConfirm = false },
             title = { Text("删除快捷文本") },
             text = { Text("确定删除已选择的 $count 条快捷文本吗？") },
@@ -4445,7 +4451,7 @@ internal fun QuickSubtitleEditorScreen(
     }
 
     if (showBatchMoveDialog) {
-        AlertDialog(
+        KigttsAlertDialog(
             onDismissRequest = { showBatchMoveDialog = false },
             title = { Text("移动到其它分组") },
             text = {
@@ -4573,7 +4579,7 @@ internal fun QuickSubtitleItemsRecyclerCard(
     }
 
     if (showAddDialog) {
-        Dialog(
+        KigttsDialog(
             onDismissRequest = { showAddDialog = false },
             properties = DialogProperties(usePlatformDefaultWidth = false)
         ) {
@@ -4644,7 +4650,7 @@ internal fun QuickSubtitleItemsRecyclerCard(
 
     val editingIndex = editTargetIndex
     if (editingIndex != null && editingIndex in items.indices) {
-        Dialog(
+        KigttsDialog(
             onDismissRequest = { editTargetIndex = null },
             properties = DialogProperties(usePlatformDefaultWidth = false)
         ) {

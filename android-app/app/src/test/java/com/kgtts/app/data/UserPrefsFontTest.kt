@@ -31,6 +31,11 @@ class UserPrefsFontTest {
     }
 
     @Test
+    fun customTextToolbarRemainsDefaultForExistingUsers() {
+        assertFalse(UserPrefs.AppSettings().useSystemTextToolbar)
+    }
+
+    @Test
     fun floatingOverlayFabUsesVoicePriorityByDefault() {
         assertFalse(UserPrefs.AppSettings().floatingOverlayFabPrefersKeyboard)
         assertFalse(UserPrefs.AppSettings().floatingOverlayFabInputGuideShown)

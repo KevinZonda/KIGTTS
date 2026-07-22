@@ -254,6 +254,7 @@ import com.lhtstudio.kigtts.app.data.SoundboardConfig
 import com.lhtstudio.kigtts.app.data.SoundboardPresetIo
 import com.lhtstudio.kigtts.app.data.KOKORO_VOICE_NAME
 import com.lhtstudio.kigtts.app.data.LedSubtitleSettings
+import com.lhtstudio.kigtts.app.data.DrawingPalette
 import com.lhtstudio.kigtts.app.data.QuickTextGestureSettings
 import com.lhtstudio.kigtts.app.data.SYSTEM_TTS_VOICE_NAME
 import com.lhtstudio.kigtts.app.data.VoicePackInfo
@@ -409,6 +410,7 @@ data class UiState(
     val appFontFamilySource: AppFontFamilySource? = null,
     val appFontWeight: Int = 400,
     val floatingOverlayUseSystemFont: Boolean = false,
+    val useSystemTextToolbar: Boolean = false,
     val fontScaleBlockMode: Int = UserPrefs.FONT_SCALE_BLOCK_ICONS_ONLY,
     val hapticFeedbackEnabled: Boolean = true,
     val onboardingCompleted: Boolean = false,
@@ -453,6 +455,7 @@ data class UiState(
     val liveSubtitleNotificationEnabled: Boolean = false,
     val lanCastAudioOutputMode: Int = UserPrefs.LAN_CAST_AUDIO_LOCAL,
     val drawingKeepCanvasOrientationToDevice: Boolean = true,
+    val drawingPalette: DrawingPalette = DrawingPalette(),
     val pushToTalkPressed: Boolean = false,
     val pushToTalkStreamingText: String = "",
     val speakerVerifyEnabled: Boolean = false,

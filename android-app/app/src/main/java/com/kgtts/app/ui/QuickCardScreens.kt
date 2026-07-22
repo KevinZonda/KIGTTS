@@ -253,6 +253,7 @@ import com.lhtstudio.kigtts.app.data.UserPrefs
 import com.lhtstudio.kigtts.app.data.VoicePackMeta
 import com.lhtstudio.kigtts.app.data.ResourceStorageCleaner
 import com.lhtstudio.kigtts.app.data.defaultSoundboardGroups
+import com.lhtstudio.kigtts.app.data.formatColorHexAndNameZhCn
 import com.lhtstudio.kigtts.app.data.isKokoroVoiceDir
 import com.lhtstudio.kigtts.app.data.isSystemTtsVoiceDir
 import com.lhtstudio.kigtts.app.data.parseSoundboardConfig
@@ -276,6 +277,8 @@ import com.lhtstudio.kigtts.app.util.LauncherMenuShortcuts
 import com.lhtstudio.kigtts.app.util.LiveSubtitleNotificationBridge
 import com.lhtstudio.kigtts.app.util.QqScannerSupport
 import com.lhtstudio.kigtts.app.util.QuickCardRenderCache
+import com.lhtstudio.kigtts.app.util.QUICK_CARD_CROP_LONG_EDGE_PX
+import com.lhtstudio.kigtts.app.util.QUICK_CARD_CROP_SHORT_EDGE_PX
 import com.lhtstudio.kigtts.app.util.VolumeHotkeyActionSpec
 import com.lhtstudio.kigtts.app.util.VolumeHotkeyActions
 import com.lhtstudio.kigtts.app.util.VolumeHotkeySequence
@@ -1016,7 +1019,7 @@ internal fun QuickCardSortScreen(
 
     pendingDeleteIds?.let { deleteIds ->
         val count = deleteIds.size
-        AlertDialog(
+        KigttsAlertDialog(
             onDismissRequest = { pendingDeleteIds = null },
             title = { Text("删除名片") },
             text = {
@@ -2290,12 +2293,17 @@ internal fun QuickCardExternalLinkPage(url: String) {
                 verticalArrangement = Arrangement.spacedBy(14.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                MsIcon(
-                    name = "info",
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.accentText,
-                    modifier = Modifier.size(42.dp)
-                )
+                Box(
+                    modifier = Modifier.size(64.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    MsIcon(
+                        name = "info",
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.accentText,
+                        iconSize = 52.dp
+                    )
+                }
                 Text(
                     text = "第三方外部链接",
                     style = MaterialTheme.typography.h6,
@@ -2363,12 +2371,17 @@ internal fun QuickCardWebErrorPage(
                 verticalArrangement = Arrangement.spacedBy(14.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                MsIcon(
-                    name = "info",
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.accentText,
-                    modifier = Modifier.size(42.dp)
-                )
+                Box(
+                    modifier = Modifier.size(64.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    MsIcon(
+                        name = "info",
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.accentText,
+                        iconSize = 52.dp
+                    )
+                }
                 Text(
                     text = "无法打开此页面",
                     style = MaterialTheme.typography.h6,
@@ -3509,8 +3522,16 @@ internal fun QuickCardEditorScreen(
         activeCropLandscape = targetLandscape
         val aspectX = if (targetLandscape) 16 else 9
         val aspectY = if (targetLandscape) 9 else 16
-        val outputWidth = if (targetLandscape) 1920 else 1080
-        val outputHeight = if (targetLandscape) 1080 else 1920
+        val outputWidth = if (targetLandscape) {
+            QUICK_CARD_CROP_LONG_EDGE_PX
+        } else {
+            QUICK_CARD_CROP_SHORT_EDGE_PX
+        }
+        val outputHeight = if (targetLandscape) {
+            QUICK_CARD_CROP_SHORT_EDGE_PX
+        } else {
+            QUICK_CARD_CROP_LONG_EDGE_PX
+        }
         val options = CropImageOptions(
             fixAspectRatio = true,
             aspectRatioX = aspectX,
@@ -3532,7 +3553,7 @@ internal fun QuickCardEditorScreen(
             outputCompressQuality = 100,
             outputRequestWidth = outputWidth,
             outputRequestHeight = outputHeight,
-            outputRequestSizeOptions = CropImageView.RequestSizeOptions.RESIZE_EXACT
+            outputRequestSizeOptions = CropImageView.RequestSizeOptions.RESIZE_INSIDE
         )
         cropLauncher.launch(CropImageContractOptions(uri, options))
     }
@@ -3623,15 +3644,15 @@ internal fun QuickCardEditorScreen(
                     null
                 }
             )
-            OutlinedTextField(
+            Md2OutlinedField(
                 value = draft.note,
                 onValueChange = { viewModel.updateQuickCardDraft { old -> old.copy(note = it) } },
-                label = { Text("备注") },
+                label = "备注",
                 modifier = Modifier
                     .fillMaxWidth()
                     .onFocusChanged { noteFocused = it.isFocused },
+                singleLine = false,
                 maxLines = 3,
-                shape = Md2ControlShape,
                 trailingIcon = if (noteFocused && draft.note.isNotEmpty()) {
                     {
                         Md2ClearFieldButton {
@@ -3640,14 +3661,7 @@ internal fun QuickCardEditorScreen(
                     }
                 } else {
                     null
-                },
-                colors = TextFieldDefaults.outlinedTextFieldColors(
-                    focusedBorderColor = MaterialTheme.colorScheme.accentText,
-                    unfocusedBorderColor = MaterialTheme.colorScheme.outline,
-                    focusedLabelColor = MaterialTheme.colorScheme.accentText,
-                    unfocusedLabelColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                    cursorColor = MaterialTheme.colorScheme.accentText
-                )
+                }
             )
             Md2OutlinedField(
                 value = draft.link,
@@ -3689,7 +3703,7 @@ internal fun QuickCardEditorScreen(
                 Column(modifier = Modifier.weight(1f)) {
                     Text("当前主题色", fontWeight = FontWeight.SemiBold)
                     Text(
-                        draft.themeColor.uppercase(Locale.US),
+                        formatColorHexAndNameZhCn(quickCardThemeColor(draft.themeColor).toArgb()),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -3754,7 +3768,7 @@ internal fun QuickCardEditorScreen(
     }
 
     if (showDeleteConfirm) {
-        AlertDialog(
+        KigttsAlertDialog(
             onDismissRequest = { showDeleteConfirm = false },
             title = { Text("删除名片") },
             text = { Text("确定删除当前名片吗？") },
@@ -3786,7 +3800,7 @@ internal fun QuickCardEditorScreen(
     }
 
     if (showExitConfirm) {
-        AlertDialog(
+        KigttsAlertDialog(
             onDismissRequest = { showExitConfirm = false },
             title = { Text("名片已编辑") },
             text = {

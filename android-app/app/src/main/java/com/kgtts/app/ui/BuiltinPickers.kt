@@ -8,6 +8,7 @@ import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Build
 import android.os.Environment
+import android.os.storage.StorageManager
 import android.provider.DocumentsContract
 import android.provider.MediaStore
 import android.util.Size
@@ -300,7 +301,13 @@ fun BuiltinFilePickerDialog(
     var sortOption by remember { mutableStateOf(BuiltinFileSortOption.TimeDesc) }
     var sortExpanded by remember { mutableStateOf(false) }
 
-    val fileRoots = remember { builtinFileRoots(context) }
+    val allFilesAccess = rememberAllFilesAccessController()
+    val fileRoots = remember(allFilesAccess.granted) {
+        builtinFileRoots(
+            context = context,
+            includeSharedStorageVolumes = allFilesAccess.granted
+        )
+    }
     var selectedUris by remember { mutableStateOf<Map<String, Uri>>(emptyMap()) }
     var safRootsRevision by remember { mutableStateOf(0) }
     var navigationStack by remember { mutableStateOf(listOf<BuiltinBrowserLocation>(BuiltinBrowserLocation.Root)) }
@@ -309,9 +316,12 @@ fun BuiltinFilePickerDialog(
     val normalizedExt = remember(allowedExtensions) {
         allowedExtensions.map { it.lowercase(Locale.US).trim('.') }.filter { it.isNotBlank() }.toSet()
     }
-    val readPermission = remember(normalizedExt) { builtinReadPermissionForExtensions(normalizedExt) }
-    val usesSharedNonMediaFallback = remember(normalizedExt) {
-        Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+    val readPermission = remember(normalizedExt, allFilesAccess.granted) {
+        if (allFilesAccess.granted) null else builtinReadPermissionForExtensions(normalizedExt)
+    }
+    val usesSharedNonMediaFallback = remember(normalizedExt, allFilesAccess.granted) {
+        !allFilesAccess.granted &&
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
             normalizedExt.any { it !in BuiltinAudioFileExtensions && it !in BuiltinImageFileExtensions }
     }
     val systemPickerAction = remember(multiSelect, onOpenSystemPicker, onOpenSystemPickerMultiple) {
@@ -359,6 +369,7 @@ fun BuiltinFilePickerDialog(
         sortOption,
         normalizedExt,
         hasReadPermission,
+        allFilesAccess.granted,
         safRoots
     ) {
         value = withContext(Dispatchers.IO) {
@@ -381,7 +392,7 @@ fun BuiltinFilePickerDialog(
     val allSelectableFilesSelected = selectableFileIds.isNotEmpty() &&
             selectableFileIds.all { selectedUris.containsKey(it) }
 
-    androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
+    KigttsDialog(onDismissRequest = onDismiss) {
         KigttsFontScaleProvider {
             Column(
                 modifier = Modifier
@@ -397,6 +408,17 @@ fun BuiltinFilePickerDialog(
                 Button(onClick = { permissionLauncher.launch(readPermission) }) {
                     Text("授予读取权限")
                 }
+            } else if (allFilesAccess.supported && allFilesAccess.granted) {
+                Text(
+                    "全部文件访问已开启，可直接浏览共享存储。",
+                    style = MaterialTheme.typography.body2,
+                    color = MaterialTheme.colors.primary
+                )
+            } else if (allFilesAccess.supported && !allFilesAccess.granted) {
+                Text(
+                    "若共享目录中的资源没有显示，可选择“全部文件”一次开启共享存储访问；也可以继续按目录授权或使用系统文件选择器。",
+                    style = MaterialTheme.typography.body2
+                )
             } else if ((usesSharedNonMediaFallback || Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) && systemPickerAction != null) {
                 Text(
                     "若共享目录中的语音包、预设包、模型或音频文件没有显示，请点击“授权目录”授予目录访问，或直接使用系统文件选择器。",
@@ -413,11 +435,27 @@ fun BuiltinFilePickerDialog(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Md2OutlinedButton(onClick = { treePermissionLauncher.launch(null) }) {
+                    if (allFilesAccess.supported) {
+                        Md2OutlinedButton(
+                            onClick = allFilesAccess.openSettings,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text(if (allFilesAccess.granted) "管理权限" else "全部文件", maxLines = 1)
+                        }
+                    }
+                    Md2OutlinedButton(
+                        onClick = { treePermissionLauncher.launch(null) },
+                        modifier = Modifier.weight(1f)
+                    ) {
                         Text("授权目录")
                     }
                     if (systemPickerAction != null) {
-                        Md2OutlinedButton(onClick = systemPickerAction) { Text("系统文件选择器") }
+                        Md2OutlinedButton(
+                            onClick = systemPickerAction,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text("系统选择", maxLines = 1)
+                        }
                     }
                 }
 
@@ -604,7 +642,7 @@ fun BuiltinGalleryPickerDialog(
         else allImages.filter { it.bucketId == selectedAlbumId }
     }
 
-    androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
+    KigttsDialog(onDismissRequest = onDismiss) {
         KigttsFontScaleProvider {
             Column(
                 modifier = Modifier
@@ -771,7 +809,10 @@ private fun BuiltinGalleryGridItem(
     }
 }
 
-private fun builtinFileRoots(context: Context): List<BuiltinFileRoot> {
+private fun builtinFileRoots(
+    context: Context,
+    includeSharedStorageVolumes: Boolean
+): List<BuiltinFileRoot> {
     val roots = linkedMapOf<String, BuiltinFileRoot>()
 
     fun add(file: File?, label: String, iconName: String) {
@@ -781,6 +822,15 @@ private fun builtinFileRoots(context: Context): List<BuiltinFileRoot> {
         roots[key] = BuiltinFileRoot(dir = file, label = label, iconName = iconName)
     }
 
+    if (includeSharedStorageVolumes && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+        context.getSystemService(StorageManager::class.java)?.storageVolumes?.forEach { volume ->
+            add(
+                file = volume.directory,
+                label = if (volume.isPrimary) "内部存储" else volume.getDescription(context),
+                iconName = if (volume.isPrimary) "storage" else "sd_storage"
+            )
+        }
+    }
     add(runCatching { Environment.getExternalStorageDirectory() }.getOrNull(), "内部存储", "storage")
     add(
         runCatching { Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS) }.getOrNull(),
@@ -858,7 +908,9 @@ private val BuiltinArchiveFileExtensions = setOf(
     "json",
     "kigvpk",
     "kigtpk",
-    "kigspk"
+    "kigspk",
+    "kigcard",
+    "kigconfig"
 )
 
 internal fun builtinReadPermissionForExtensions(allowedExtensions: Set<String>): String? {
@@ -908,6 +960,11 @@ private fun builtinReadPermissionPurpose(permission: String): PermissionPurposeI
 private fun builtinItemIconName(name: String, isDirectory: Boolean): String {
     if (isDirectory) return "folder"
     return when (builtinFileExtension(name)) {
+        "kigvpk" -> "record_voice_over"
+        "kigspk" -> "music_note"
+        "kigcard" -> "badge"
+        "kigtpk" -> "subtitles"
+        "kigconfig" -> "settings_backup_restore"
         in BuiltinAudioFileExtensions -> "audio_file"
         in BuiltinImageFileExtensions -> "image"
         in BuiltinArchiveFileExtensions -> "folder_zip"

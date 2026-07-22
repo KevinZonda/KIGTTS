@@ -344,6 +344,8 @@ import kotlin.math.atan2
 import kotlin.math.sin
 import kotlin.math.roundToInt
 
+private const val KIGTTS_OFFICIAL_WEBSITE = "https://kigtts.lhtstudio.com"
+
 
 @Composable
 internal fun SettingsNavHost(
@@ -709,7 +711,7 @@ fun SettingsScreen(
 
     if (themeToneCorrectionSuggestionVisible) {
         val dialogActionColor = MaterialTheme.colorScheme.onSurface
-        AlertDialog(
+        KigttsAlertDialog(
             onDismissRequest = { themeToneCorrectionSuggestionVisible = false },
             title = { Text("主题色可能影响可读性") },
             text = {
@@ -924,6 +926,14 @@ fun SettingsScreen(
             } ?: 0L
             "版本 $versionName ($versionCode)"
         }
+        val openOfficialWebsite = rememberKigttsHapticClick {
+            if (
+                !openChromeCustomTab(context, KIGTTS_OFFICIAL_WEBSITE) &&
+                !openExternalBrowser(context, KIGTTS_OFFICIAL_WEBSITE)
+            ) {
+                toast(context, "无法打开官网")
+            }
+        }
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Md2StaggeredFloatIn(index = 0) {
                 Card(
@@ -945,7 +955,13 @@ fun SettingsScreen(
                             contentDescription = "KIGTTS Logo",
                             modifier = Modifier
                                 .fillMaxWidth(0.82f)
-                                .height(50.dp),
+                                .height(50.dp)
+                                .clip(RoundedCornerShape(4.dp))
+                                .clickable(
+                                    interactionSource = remember { MutableInteractionSource() },
+                                    indication = rememberRipple(bounded = true),
+                                    onClick = openOfficialWebsite
+                                ),
                             contentScale = ContentScale.Fit
                         )
                         Text(
@@ -1798,6 +1814,12 @@ fun SettingsScreen(
                         onClick = onOpenFonts
                     )
                     Md2SettingSwitchRow(
+                        title = "使用系统长按文本菜单",
+                        checked = state.useSystemTextToolbar,
+                        onCheckedChange = { viewModel.setUseSystemTextToolbar(it) },
+                        supportingText = "弹窗始终使用 Android 系统菜单。默认关闭；开启后主界面和悬浮窗也改用系统菜单。"
+                    )
+                    Md2SettingSwitchRow(
                         title = "悬浮窗使用系统字体",
                         checked = state.floatingOverlayUseSystemFont,
                         onCheckedChange = { viewModel.setFloatingOverlayUseSystemFont(it) },
@@ -2035,6 +2057,12 @@ fun SettingsScreen(
                     )
                 }
             }
+            Md2StaggeredFloatIn(index = 9) {
+                AppConfigBackupSettingsCard(
+                    viewModel = viewModel,
+                    state = state
+                )
+            }
         }
     }
 
@@ -2158,7 +2186,7 @@ fun SettingsScreen(
 
     if (showSpeakerEnrollDialog) {
         val canDismiss = !(speakerEnrollReading || speakerEnrollCountingDown)
-        AlertDialog(
+        KigttsAlertDialog(
             onDismissRequest = {
                 if (canDismiss) {
                     closeSpeakerEnrollDialog()
@@ -2297,7 +2325,7 @@ fun SettingsScreen(
     }
 
     if (speakerEnrollRetryDialog) {
-        AlertDialog(
+        KigttsAlertDialog(
             onDismissRequest = { speakerEnrollRetryDialog = false },
             title = { Text("录制失败") },
             text = { Text("${speakerEnrollMessage}\n请重录当前句子。") },

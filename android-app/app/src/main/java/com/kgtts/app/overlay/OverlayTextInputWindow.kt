@@ -208,7 +208,11 @@ internal class OverlayTextInputWindow(
         inputBar.addView(playButton)
 
         val inputContainer = FrameLayout(context)
-        input = OverlaySelectionEditText(context, style.accentColor).apply {
+        input = OverlaySelectionEditText(
+            context = context,
+            cursorColor = style.accentColor,
+            useSystemTextToolbar = style.useSystemTextToolbar
+        ).apply {
             setTextColor(Color.WHITE)
             setHintTextColor(ColorUtils.setAlphaComponent(Color.WHITE, 138))
             hint = "请输入文本"
@@ -274,12 +278,16 @@ internal class OverlayTextInputWindow(
                 Gravity.BOTTOM
             )
         )
-        textContextMenu = OverlayTextContextMenuController(
-            context = context,
-            host = rootView,
-            field = requireNotNull(input),
-            styleProvider = styleProvider
-        )
+        textContextMenu = if (style.useSystemTextToolbar) {
+            null
+        } else {
+            OverlayTextContextMenuController(
+                context = context,
+                host = rootView,
+                field = requireNotNull(input),
+                styleProvider = styleProvider
+            )
+        }
         var systemTop = 0
         var systemBottom = 0
         var imeBottom = 0

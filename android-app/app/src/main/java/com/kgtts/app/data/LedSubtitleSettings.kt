@@ -33,7 +33,7 @@ data class LedSubtitleSettings(
             MAX_SCROLL_SPEED_DP_PER_SECOND
         ),
         scrollDirection = scrollDirection.coerceIn(SCROLL_RIGHT_TO_LEFT, SCROLL_LEFT_TO_RIGHT),
-        loopGapDp = loopGapDp.coerceIn(24f, 240f),
+        loopGapDp = loopGapDp.coerceIn(MIN_LOOP_GAP_DP, MAX_LOOP_GAP_DP),
         shortTextAlignment = shortTextAlignment.coerceIn(ALIGN_START, ALIGN_END),
         screenBrightness = screenBrightness.coerceIn(0.1f, 1f)
     )
@@ -50,6 +50,8 @@ data class LedSubtitleSettings(
         const val ALIGN_END = 2
         const val MIN_SCROLL_SPEED_DP_PER_SECOND = 24f
         const val MAX_SCROLL_SPEED_DP_PER_SECOND = 1600f
+        const val MIN_LOOP_GAP_DP = 24f
+        const val MAX_LOOP_GAP_DP = 1600f
 
         private fun opaque(color: Int): Int = color or (0xFF shl 24)
     }

@@ -432,16 +432,18 @@ internal fun SoundboardNavHost(
 internal fun PresetGroupExportDialog(
     title: String,
     groups: List<Pair<Long, String>>,
+    prompt: String = "选择需要导出的分组",
+    confirmLabel: String = "导出",
     onDismiss: () -> Unit,
     onConfirm: (Set<Long>) -> Unit
 ) {
     var selectedIds by remember(groups) { mutableStateOf(groups.map { it.first }.toSet()) }
-    AlertDialog(
+    KigttsAlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(title) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text("选择需要导出的分组")
+                Text(prompt)
                 LazyColumn(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -475,7 +477,7 @@ internal fun PresetGroupExportDialog(
                 onClick = { onConfirm(selectedIds) },
                 enabled = selectedIds.isNotEmpty()
             ) {
-                Text("导出")
+                Text(confirmLabel)
             }
         },
         dismissButton = {
@@ -1805,7 +1807,7 @@ internal fun SoundboardEditorScreen(
 
     if (showBatchDeleteConfirm) {
         val count = selectedItemIds.size
-        AlertDialog(
+        KigttsAlertDialog(
             onDismissRequest = { showBatchDeleteConfirm = false },
             title = { Text("删除音效条目") },
             text = { Text("确定删除已选择的 $count 个音效条目吗？") },
@@ -1828,7 +1830,7 @@ internal fun SoundboardEditorScreen(
     }
 
     if (showBatchMoveDialog) {
-        AlertDialog(
+        KigttsAlertDialog(
             onDismissRequest = { showBatchMoveDialog = false },
             title = { Text("移动到其它分组") },
             text = {
@@ -2010,7 +2012,7 @@ internal fun SoundboardItemsRecyclerCard(
     }
 
     if (showAddDialog) {
-        AlertDialog(
+        KigttsAlertDialog(
             onDismissRequest = { showAddDialog = false },
             title = { Text("新增音效条目") },
             text = {
@@ -2051,7 +2053,7 @@ internal fun SoundboardItemsRecyclerCard(
     }
 
     deleteTargetItem?.let { target ->
-        AlertDialog(
+        KigttsAlertDialog(
             onDismissRequest = { deleteTargetItem = null },
             title = { Text("删除音效条目") },
             text = { Text("确定删除“${target.title.ifBlank { "未命名音效" }}”吗？") },
@@ -2132,7 +2134,7 @@ internal fun SoundboardItemsRecyclerCard(
 
     val editingIndex = editTargetIndex
     if (editingIndex != null && editingIndex in items.indices) {
-        AlertDialog(
+        KigttsAlertDialog(
             onDismissRequest = { editTargetIndex = null },
             title = { Text("编辑音效条目") },
             text = {
@@ -2257,7 +2259,7 @@ internal fun SoundboardAudioClipDialog(
         onDispose { stopPreview() }
     }
 
-    AlertDialog(
+    KigttsAlertDialog(
         onDismissRequest = {
             stopPreview()
             onDismiss()

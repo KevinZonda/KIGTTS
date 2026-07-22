@@ -363,7 +363,10 @@ internal object LanCastRuntime {
                 current.quickSwipeOpensQuickText
             ),
             loopGap = source.optDouble("loopGap", current.loopGap.toDouble())
-                .toFloat().coerceIn(24f, 240f),
+                .toFloat().coerceIn(
+                    LedSubtitleSettings.MIN_LOOP_GAP_DP,
+                    LedSubtitleSettings.MAX_LOOP_GAP_DP
+                ),
             shortTextAlignment = source.optInt(
                 "shortTextAlignment",
                 current.shortTextAlignment

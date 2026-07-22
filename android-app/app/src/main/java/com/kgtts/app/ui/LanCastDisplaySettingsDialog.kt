@@ -134,7 +134,12 @@ internal fun LanCastDisplaySettingsDialog(
                     onSettingsChange(settings.copy(scrollDirection = 1))
                 }
             }
-            CastSettingsSlider("循环间距", settings.loopGapDp, 24f..240f, "${settings.loopGapDp.roundToInt()} dp") {
+            CastSettingsSlider(
+                "循环间距",
+                settings.loopGapDp,
+                LedSubtitleSettings.MIN_LOOP_GAP_DP..LedSubtitleSettings.MAX_LOOP_GAP_DP,
+                "${settings.loopGapDp.roundToInt()} dp"
+            ) {
                 onSettingsChange(settings.copy(loopGapDp = it))
             }
         }

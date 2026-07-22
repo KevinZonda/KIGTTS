@@ -101,6 +101,7 @@ import com.lhtstudio.kigtts.app.theme.ThemeColorRoles
 import com.lhtstudio.kigtts.app.theme.ThemeColorResolver
 import com.lhtstudio.kigtts.app.ui.QuickCard
 import com.lhtstudio.kigtts.app.ui.QuickCardType
+import com.lhtstudio.kigtts.app.ui.quickCardNoteMaxLines
 import com.lhtstudio.kigtts.app.util.AlipayScannerSupport
 import com.lhtstudio.kigtts.app.util.AppLogger
 import com.lhtstudio.kigtts.app.util.BluetoothMediaTitleBridge
@@ -2083,6 +2084,7 @@ class FloatingOverlayService : Service() {
                 val previousThemeToneCorrectionEnabled = settings.themeToneCorrectionEnabled
                 val previousShowOnLockScreen = settings.floatingOverlayShowOnLockScreen
                 val previousBluetoothTitleSubtitle = settings.bluetoothMediaTitleSubtitle
+                val previousUseSystemTextToolbar = settings.useSystemTextToolbar
                 settings = next
                 if (!next.floatingOverlayEnabled) {
                     stopSelf()
@@ -2100,6 +2102,10 @@ class FloatingOverlayService : Service() {
                     return@collectLatest
                 }
                 if (next.fontScaleBlockMode != previousFontScaleBlockMode) {
+                    rebuildWindowsPreservingState()
+                    return@collectLatest
+                }
+                if (next.useSystemTextToolbar != previousUseSystemTextToolbar) {
                     rebuildWindowsPreservingState()
                     return@collectLatest
                 }
@@ -2824,7 +2830,11 @@ class FloatingOverlayService : Service() {
             orientation = LinearLayout.VERTICAL
         }
         panelPickerListContainer = pickerListContainer
-        val pickerSearchInput = OverlaySelectionEditText(this, overlayPrimaryColor()).apply {
+        val pickerSearchInput = OverlaySelectionEditText(
+            context = this,
+            cursorColor = overlayPrimaryColor(),
+            useSystemTextToolbar = settings.useSystemTextToolbar
+        ).apply {
             setTextColor(overlayOnSurfaceColor())
             setHintTextColor(overlayOnSurfaceVariantColor())
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
@@ -2911,12 +2921,16 @@ class FloatingOverlayService : Service() {
             )
         }
         panelPickerOverlay = pickerOverlay
-        panelPickerTextContextMenu = OverlayTextContextMenuController(
-            context = this,
-            host = pickerOverlay,
-            field = pickerSearchInput,
-            styleProvider = ::overlayInteractionStyle
-        )
+        panelPickerTextContextMenu = if (settings.useSystemTextToolbar) {
+            null
+        } else {
+            OverlayTextContextMenuController(
+                context = this,
+                host = pickerOverlay,
+                field = pickerSearchInput,
+                styleProvider = ::overlayInteractionStyle
+            )
+        }
         panelPickerParams = WindowManager.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT,
             WindowManager.LayoutParams.MATCH_PARENT,
@@ -4326,7 +4340,8 @@ class FloatingOverlayService : Service() {
         regularTypeface = overlayFontApplier.typeface(bold = false),
         boldTypeface = overlayFontApplier.typeface(bold = true),
         iconTypeface = iconTypeface,
-        usesCustomFontMetrics = overlayFontApplier.hasCustomTypeface
+        usesCustomFontMetrics = overlayFontApplier.hasCustomTypeface,
+        useSystemTextToolbar = settings.useSystemTextToolbar
     )
 
     private fun textInputWindow(): OverlayTextInputWindow =
@@ -6226,6 +6241,8 @@ class FloatingOverlayService : Service() {
         textView.text = text
         overlayFontApplier.apply(textView, quickSubtitleBold)
         overlayFontApplier.applyStableLineHeight(textView, lineHeightMultiplier)
+        textView.breakStrategy = Layout.BREAK_STRATEGY_SIMPLE
+        textView.hyphenationFrequency = Layout.HYPHENATION_FREQUENCY_NONE
         textView.gravity = if (quickSubtitleCentered) {
             if (centerVerticallyWhenCentered) Gravity.CENTER else Gravity.CENTER_HORIZONTAL or Gravity.TOP
         } else {
@@ -6270,6 +6287,7 @@ class FloatingOverlayService : Service() {
                 return
             }
             val fit = measureOverlayQuickSubtitleText(
+                textView = textView,
                 text = text,
                 widthPx = availableWidth,
                 heightPx = availableHeight,
@@ -6290,6 +6308,7 @@ class FloatingOverlayService : Service() {
     }
 
     private fun measureOverlayQuickSubtitleText(
+        textView: TextView,
         text: CharSequence,
         widthPx: Int,
         heightPx: Int,
@@ -6306,9 +6325,7 @@ class FloatingOverlayService : Service() {
         val textValue = text.ifEmpty { defaultQuickSubtitleText }
 
         fun fits(sp: Int): Boolean {
-            val textPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
-                color = overlayOnSurfaceColor()
-                typeface = overlayFontApplier.typeface(quickSubtitleBold)
+            val textPaint = TextPaint(textView.paint).apply {
                 textSize = TypedValue.applyDimension(
                     TypedValue.COMPLEX_UNIT_SP,
                     sp.toFloat(),
@@ -6318,7 +6335,9 @@ class FloatingOverlayService : Service() {
             val layoutBuilder = StaticLayout.Builder
                 .obtain(textValue, 0, textValue.length, textPaint, widthPx)
                 .setAlignment(layoutAlignment)
-                .setIncludePad(false)
+                .setIncludePad(textView.includeFontPadding)
+                .setBreakStrategy(Layout.BREAK_STRATEGY_SIMPLE)
+                .setHyphenationFrequency(Layout.HYPHENATION_FREQUENCY_NONE)
             overlayFontApplier.lineHeightPxFor(
                 textSizePx = textPaint.textSize,
                 scaledDensity = TypedValue.applyDimension(
@@ -8299,9 +8318,26 @@ class FloatingOverlayService : Service() {
             }
 
             val foreground = if (imagePath.isNotBlank()) Color.WHITE else onThemeColor
-            addOverlayQuickCardHeader(this, card, foreground, onOpenPageClick)
+            val qrSizePx = overlayQuickCardQrSizePx(min(cardWidthPx, cardHeightPx))
+            val noteRegionHeightPx = if (linkText.isNotBlank()) {
+                qrSizePx
+            } else {
+                (cardHeightPx - dp(28)).coerceAtLeast(dp(16))
+            }
+            val noteMaxLines = quickCardNoteMaxLines(
+                regionHeightDp = noteRegionHeightPx / resources.displayMetrics.density,
+                hasTitle = card.title.isNotBlank()
+            )
+            addOverlayQuickCardHeader(
+                container = this,
+                card = card,
+                foreground = foreground,
+                noteRegionHeightPx = noteRegionHeightPx,
+                noteMaxLines = noteMaxLines,
+                onOpenPageClick = onOpenPageClick
+            )
             if (linkText.isNotBlank()) {
-                addOverlayQuickCardQr(this, linkText, min(cardWidthPx, cardHeightPx))
+                addOverlayQuickCardQr(this, linkText, qrSizePx)
             }
             addOverlayQuickCardFooter(this, card, foreground, linkText)
         }
@@ -8377,6 +8413,8 @@ class FloatingOverlayService : Service() {
         container: FrameLayout,
         card: QuickCard,
         foreground: Int,
+        noteRegionHeightPx: Int,
+        noteMaxLines: Int,
         onOpenPageClick: () -> Unit
     ) {
         container.addView(
@@ -8406,14 +8444,14 @@ class FloatingOverlayService : Service() {
                                 TextView(this@FloatingOverlayService).apply {
                                     setTextColor(ColorUtils.setAlphaComponent(foreground, 230))
                                     setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
-                                    maxLines = 1
+                                    maxLines = noteMaxLines
                                     ellipsize = TextUtils.TruncateAt.END
                                     text = noteText
                                 }
                             )
                         }
                     },
-                    LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+                    LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f)
                 )
                 addView(
                     createOverlayQuickCardActionSymbol("open_in_new", foreground, onOpenPageClick).apply {
@@ -8422,16 +8460,18 @@ class FloatingOverlayService : Service() {
                     LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
                 )
             },
-            FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP)
+            FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, noteRegionHeightPx, Gravity.TOP)
         )
     }
+
+    private fun overlayQuickCardQrSizePx(baseSizePx: Int): Int =
+        (baseSizePx * 0.44f).roundToInt().coerceIn(dp(72), dp(150))
 
     private fun addOverlayQuickCardQr(
         container: FrameLayout,
         linkText: String,
-        baseSizePx: Int
+        qrSize: Int
     ) {
-        val qrSize = (baseSizePx * 0.44f).roundToInt().coerceIn(dp(72), dp(150))
         val qrFrame = FrameLayout(this).apply {
             background = roundedRectDrawable(overlayRadiusDp, Color.WHITE)
             elevation = dp(4).toFloat()

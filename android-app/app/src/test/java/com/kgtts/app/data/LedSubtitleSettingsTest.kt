@@ -63,6 +63,14 @@ class LedSubtitleSettingsTest {
     }
 
     @Test
+    fun normalizedCapsMaximumLoopGap() {
+        val value = LedSubtitleSettings(loopGapDp = 9_999f).normalized()
+
+        assertEquals(1600f, LedSubtitleSettings.MAX_LOOP_GAP_DP)
+        assertEquals(LedSubtitleSettings.MAX_LOOP_GAP_DP, value.loopGapDp)
+    }
+
+    @Test
     fun normalizedPreservesAdaptiveMultiLine() {
         val original = LedSubtitleSettings(
             adaptiveMultiLine = true,
