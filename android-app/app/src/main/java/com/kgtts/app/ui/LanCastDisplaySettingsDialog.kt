@@ -63,7 +63,7 @@ internal fun LanCastDisplaySettingsDialog(
     ) {
         CastSettingsSection("外观")
         Md2SettingSwitchRow(
-            title = "使用正常字形",
+            title = "使用普通字体",
             checked = !settings.dotMatrixEnabled,
             onCheckedChange = { onSettingsChange(settings.copy(dotMatrixEnabled = !it)) }
         )
@@ -106,7 +106,7 @@ internal fun LanCastDisplaySettingsDialog(
         }
 
         CastSettingsSection("排版")
-        Md2SettingSwitchRow("自适应多行", settings.adaptiveMultiLine, {
+        Md2SettingSwitchRow("内容较多时自动换行", settings.adaptiveMultiLine, {
             onSettingsChange(settings.copy(adaptiveMultiLine = it))
         })
         if (!settings.adaptiveMultiLine) {
@@ -115,7 +115,7 @@ internal fun LanCastDisplaySettingsDialog(
                 settings.scrollSpeedDpPerSecond,
                 LedSubtitleSettings.MIN_SCROLL_SPEED_DP_PER_SECOND..
                     LedSubtitleSettings.MAX_SCROLL_SPEED_DP_PER_SECOND,
-                "${settings.scrollSpeedDpPerSecond.roundToInt()} dp/s"
+                settings.scrollSpeedDpPerSecond.roundToInt().toString()
             ) {
                 onSettingsChange(settings.copy(scrollSpeedDpPerSecond = it))
             }
@@ -135,15 +135,15 @@ internal fun LanCastDisplaySettingsDialog(
                 }
             }
             CastSettingsSlider(
-                "循环间距",
+                "字幕间距",
                 settings.loopGapDp,
                 LedSubtitleSettings.MIN_LOOP_GAP_DP..LedSubtitleSettings.MAX_LOOP_GAP_DP,
-                "${settings.loopGapDp.roundToInt()} dp"
+                settings.loopGapDp.roundToInt().toString()
             ) {
                 onSettingsChange(settings.copy(loopGapDp = it))
             }
         }
-        Md2SettingSwitchRow("快速左滑打开快捷文本", settings.quickSwipeOpensQuickText, {
+        Md2SettingSwitchRow("快速左滑打开快捷文本面板", settings.quickSwipeOpensQuickText, {
             onSettingsChange(settings.copy(quickSwipeOpensQuickText = it))
         })
         Md2SettingDropdownRow(
@@ -193,7 +193,7 @@ internal fun LanCastDisplaySettingsDialog(
                 }.normalized()
                 onSettingsChange(next)
                 if (ColorUtils.calculateContrast(next.ledColorArgb, next.backgroundColorArgb) < 2.0) {
-                    toast(context, "字幕与背景颜色对比度较低")
+                    toast(context, "字幕与背景颜色太接近，可能看不清")
                 }
                 colorTarget = null
             }

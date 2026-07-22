@@ -459,3 +459,16 @@
 - 真机：Release APK 已保留数据覆盖安装到设备 `cfc8ef16`，冷启动 `TotalTime=766 ms`；应用启动日志无 `AndroidRuntime` 致命异常，设备包仍为非调试版 `0.1.2 (3)`。
 - Debug APK：`D:\KGTTS_GradleOut\codex-build\app\outputs\apk\debug\app-debug.apk`，102530450 字节，SHA-256 `085e47b372cf7fdc3bc6bc80e9516afa2ee116996d968b4a01dde8405494e36b`。
 - Release APK：`D:\KGTTS_GradleOut\codex-build\app\outputs\apk\release\app-release.apk`，95714243 字节，SHA-256 `47f63cf620da69da3aaa83d54ea7c2c66c788a60024111d214e4f46c84eb2962`。
+
+## 2026-07-22 Android 页面文案用户化与 APP 0.1.2 发布
+
+- 页面与编辑器：快捷文本编辑页统一使用“紧凑快捷文本布局”和明确的目标分组提示；音效板将“关键词 / 唤醒词 / 音效条目”统一为“触发词 / 音效”，并改写新增、编辑、删除、移动和音频剪辑文案。
+- 名片与网页：扫码相机、图片裁剪、自动保存、链接打开和分享失败提示补充可执行的处理建议；外部链接页改为可信网址提醒，网页错误页只显示易懂原因，错误代码与 HTTP 状态折叠到“技术详情”。
+- 资源与显示：模型管理页不再展示 ASR 和语音包内部路径；系统 TTS / ASR 的用户侧状态统一改为“系统语音合成 / 语音识别”；LED 与投屏设置移除 `dp`、`dp/s` 等实现单位，并优化自动换行、字幕间距、手势和低对比度提示。
+- 文件与备份：文件选择器使用“允许访问文件 / 添加可访问目录 / 系统文件选择器”等行为文案；“备份和还原软件配置”统一改为“备份和恢复应用数据”，精简恢复覆盖规则说明。
+- 错误信息：导入、导出、下载、分享、字体、画板和语音资源失败时不再把异常原文直接显示给用户；完整异常继续写入 `AppLogger`，界面只给出检查文件、网络、权限、存储空间或重试等下一步操作。
+- 下载入口：根目录 README 的 GitHub 发行页和 APK 直链更新到 `APP0.1.2`，移除下载卡片中仍指向 `0.1.1` 的旧 Gitee APK 直链。
+- 版本：Debug 与 Release 继续使用 `0.1.2 (3)`，本次未修改 `versionName` 或 `versionCode`。
+- 验证：`:app:testDebugUnitTest` 通过，23 个测试套件共 75 项，0 失败、0 错误、0 跳过；`:app:assembleRelease` 完整通过，包含 Release Kotlin/DEX、arm64-v8a 原生库、签名和 `lintVitalRelease`。
+- 真机：Release APK 已使用 `adb install -r` 保留数据覆盖安装到设备 `cfc8ef16`；冷启动 `TotalTime=386 ms`，应用进程存活，当前进程日志无 `FATAL EXCEPTION`、`AndroidRuntime`、`VerifyError`、`OutOfMemoryError` 或 ANR。
+- Release APK：`D:\KGTTS_GradleOut\build\app\outputs\apk\release\app-release.apk`，95714243 字节，SHA-256 `6c25efa4fd9e86e1e14fd6b684350fc3f6fc2df826201e6c89de7a662b27e7d0`；APK Signature Scheme v2 验证通过，签名证书 SHA-256 为 `3193af87840d767843e42770c92823b20df10b5edf03a7d618ce9f4da0f5e197`。

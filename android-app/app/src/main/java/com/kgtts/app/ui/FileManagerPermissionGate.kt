@@ -86,7 +86,7 @@ private fun fileManagerReadPermissionPurpose(permission: String): PermissionPurp
             privacyNote = "仅在你主动选择导入文件时读取本机图片文件，不会自动上传。"
         )
         else -> PermissionPurposeInfo(
-            title = "需要读取本机文件",
+            title = "需要访问本机文件",
             iconName = "folder_open",
             summary = "用于选择并导入语音包、预设包、模型或媒体文件。",
             permissionName = "存储读取权限",

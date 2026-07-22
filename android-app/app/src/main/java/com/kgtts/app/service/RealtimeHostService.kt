@@ -120,7 +120,7 @@ class RealtimeHostService : Service(), RealtimeRuntimeBridge.AppDelegate, LanCas
                             if (queued != null) {
                                 "已加入朗读队列"
                             } else if (currentSettings.ttsDisabled) {
-                                "TTS 已禁用"
+                                "语音朗读已关闭"
                             } else {
                                 "播放文本失败，请检查语音包"
                             }
@@ -200,7 +200,7 @@ class RealtimeHostService : Service(), RealtimeRuntimeBridge.AppDelegate, LanCas
         if (preload && dir != null) {
             val loaded = withContext(Dispatchers.IO) { ensureController().loadAsr(dir) }
             if (!loaded && currentState().asrDir?.absolutePath == dir.absolutePath) {
-                updateStatus("ASR 模型加载失败")
+                updateStatus("语音识别资源加载失败")
             }
         }
     }
@@ -217,7 +217,7 @@ class RealtimeHostService : Service(), RealtimeRuntimeBridge.AppDelegate, LanCas
             if (!loaded && currentState().voiceDir?.absolutePath == dir.absolutePath) {
                 updateStatus(
                     if (isSystemTtsVoiceDir(dir)) {
-                        "系统 TTS 初始化失败，请先完成系统 TTS 设置"
+                        "系统语音合成初始化失败，请先完成系统语音合成设置"
                     } else {
                         "音色包加载失败"
                     }
@@ -242,7 +242,7 @@ class RealtimeHostService : Service(), RealtimeRuntimeBridge.AppDelegate, LanCas
                 if (!loaded && currentState().voiceDir?.absolutePath == voice.absolutePath) {
                     updateStatus(
                         if (isSystemTtsVoiceDir(voice)) {
-                            "系统 TTS 初始化失败，请先完成系统 TTS 设置"
+                            "系统语音合成初始化失败，请先完成系统语音合成设置"
                         } else {
                             "音色包加载失败"
                         }
@@ -517,7 +517,7 @@ class RealtimeHostService : Service(), RealtimeRuntimeBridge.AppDelegate, LanCas
     override fun replaySubtitle(text: String) {
         serviceScope.launch {
             val queued = speakText(text, interruptCurrent = currentSettings.quickSubtitleInterruptQueue)
-            updateStatus(if (queued != null) "已加入朗读队列" else "播放文本失败，请检查 TTS 设置")
+            updateStatus(if (queued != null) "已加入朗读队列" else "播放文本失败，请检查语音合成设置")
         }
     }
 
@@ -686,8 +686,8 @@ class RealtimeHostService : Service(), RealtimeRuntimeBridge.AppDelegate, LanCas
                     asrDir = asrDir,
                     voiceDir = voiceDir,
                     status = buildList {
-                        if (asrDir != null) add("已加载 ASR")
-                        if (voiceDir != null) add(if (isSystemTtsVoiceDir(voiceDir)) "已加载系统 TTS" else "已加载音色包")
+                        if (asrDir != null) add("已加载语音识别资源")
+                        if (voiceDir != null) add(if (isSystemTtsVoiceDir(voiceDir)) "已加载系统语音合成" else "已加载音色包")
                     }.joinToString(" / ")
                 )
             }
@@ -704,7 +704,7 @@ class RealtimeHostService : Service(), RealtimeRuntimeBridge.AppDelegate, LanCas
                 if (!loaded) {
                     updateStatus(
                         if (isSystemTtsVoiceDir(voiceDir)) {
-                            "系统 TTS 初始化失败，请先完成系统 TTS 设置"
+                            "系统语音合成初始化失败，请先完成系统语音合成设置"
                         } else {
                             "音色包加载失败"
                         }
@@ -972,7 +972,7 @@ class RealtimeHostService : Service(), RealtimeRuntimeBridge.AppDelegate, LanCas
         val voice = currentState().voiceDir
         val requireVoice = !currentSettings.ttsDisabled
         if (asr == null || (requireVoice && voice == null)) {
-            updateStatus(if (requireVoice) "请先导入 ASR 模型和 voicepack" else "请先导入 ASR 模型")
+            updateStatus(if (requireVoice) "请先安装语音识别资源并导入语音包" else "请先安装语音识别资源")
             return false
         }
         if (currentState().running) return true

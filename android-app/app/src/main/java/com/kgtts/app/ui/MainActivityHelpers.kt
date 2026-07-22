@@ -559,7 +559,7 @@ internal fun drawingRelativePathFromTreeUri(uri: android.net.Uri): String? {
 
 internal const val QUICK_SUBTITLE_CLEARED_HINT = "我不太方便说话，请等我一下……"
 
-internal const val SYSTEM_TTS_DEFAULT_LABEL = "系统 TTS"
+internal const val SYSTEM_TTS_DEFAULT_LABEL = "系统语音合成"
 internal const val SYSTEM_TTS_DEFAULT_REMARK = "使用 Android 系统语音服务"
 
 internal fun sortVoicePacks(items: List<VoicePackInfo>): List<VoicePackInfo> {
@@ -569,5 +569,4 @@ internal fun sortVoicePacks(items: List<VoicePackInfo>): List<VoicePackInfo> {
             .thenBy { it.meta.name }
     )
 }
-
 

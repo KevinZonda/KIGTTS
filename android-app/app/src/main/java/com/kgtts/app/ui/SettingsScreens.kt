@@ -2562,7 +2562,8 @@ internal fun LegalDocumentScreen(assetPath: String) {
                 context.assets.open(assetPath).bufferedReader(Charsets.UTF_8).use { it.readText() }
                     .removePrefix("\uFEFF")
             }.getOrElse {
-                "文档加载失败：${it.message ?: "未知错误"}"
+                AppLogger.e("load legal document failed: $assetPath", it)
+                "无法加载文档，请稍后重试"
             }
         }
         var emittedAny = false

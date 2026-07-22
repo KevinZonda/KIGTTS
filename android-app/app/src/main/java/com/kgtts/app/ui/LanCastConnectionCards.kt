@@ -59,7 +59,7 @@ internal fun LanCastServiceCard(viewModel: MainViewModel, status: LanCastStatus)
                     if (enabled) viewModel.startLanCast() else viewModel.stopLanCast()
                 },
                 supportingText = if (status.running) {
-                    "服务仅在本次手动开启后运行；切换网络时会自动刷新可访问地址。"
+                    "服务仅在本次手动开启后运行；切换网络时会自动刷新连接地址。"
                 } else {
                     "默认关闭。开启后，同一局域网内的浏览器可以显示字幕并遥控主软件。"
                 }
@@ -82,9 +82,9 @@ internal fun LanCastServiceCard(viewModel: MainViewModel, status: LanCastStatus)
 @Composable
 internal fun LanCastAddressCard(viewModel: MainViewModel, status: LanCastStatus) {
     Md2StaggeredFloatIn(index = 1) {
-        Md2SettingsCard(title = "访问地址") {
+        Md2SettingsCard(title = "连接地址") {
             if (status.addresses.isEmpty()) {
-                Text("当前没有可用的局域网 IPv4 地址。")
+                Text("未检测到局域网地址，请确认手机已连接 Wi-Fi 或局域网。")
             } else {
                 status.addresses.forEachIndexed { index, address ->
                     Row(
@@ -118,7 +118,7 @@ internal fun LanCastAddressCard(viewModel: MainViewModel, status: LanCastStatus)
             Md2TextButton(onClick = viewModel::refreshLanCastAddresses) {
                 MsIcon("refresh", contentDescription = null)
                 Spacer(Modifier.size(6.dp))
-                Text("刷新地址")
+                Text("重新检测")
             }
         }
     }
@@ -194,7 +194,7 @@ internal fun LanCastQrCard(status: LanCastStatus) {
                             .clickable {
                                 selectedUrl?.let {
                                     clipboard.setText(AnnotatedString(it))
-                                    toast(context, "地址已复制")
+                                    toast(context, "连接地址已复制")
                                 }
                             }
                             .padding(8.dp),

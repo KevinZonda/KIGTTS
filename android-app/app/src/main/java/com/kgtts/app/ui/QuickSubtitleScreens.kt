@@ -3953,7 +3953,7 @@ internal fun QuickSubtitleEditorScreen(
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Md2SettingSwitchRow(
-                    title = "使用更紧凑的快捷文本控件",
+                    title = "紧凑快捷文本布局",
                     checked = compactControls,
                     onCheckedChange = { viewModel.setQuickSubtitleCompactControls(it) },
                     supportingText = "影响主界面竖屏和横屏便捷字幕。开启后会压缩快捷文本区，并把编辑入口移到顶栏。"
@@ -4221,7 +4221,7 @@ internal fun QuickSubtitleEditorScreen(
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         Md2SettingSwitchRow(
-                            title = "使用更紧凑的快捷文本控件",
+                            title = "紧凑快捷文本布局",
                             checked = compactControls,
                             onCheckedChange = { viewModel.setQuickSubtitleCompactControls(it) },
                             supportingText = "影响主界面竖屏和横屏便捷字幕。开启后会压缩快捷文本区，并把编辑入口移到顶栏。"
@@ -4453,7 +4453,7 @@ internal fun QuickSubtitleEditorScreen(
     if (showBatchMoveDialog) {
         KigttsAlertDialog(
             onDismissRequest = { showBatchMoveDialog = false },
-            title = { Text("移动到其它分组") },
+            title = { Text("移动快捷文本") },
             text = {
                 LazyColumn(
                     modifier = Modifier
@@ -4461,6 +4461,7 @@ internal fun QuickSubtitleEditorScreen(
                         .heightIn(max = 320.dp),
                     verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
+                    item { Text("选择目标分组") }
                     itemsIndexed(groups) { idx, group ->
                         if (idx != selectedGroupIndex) {
                             Row(

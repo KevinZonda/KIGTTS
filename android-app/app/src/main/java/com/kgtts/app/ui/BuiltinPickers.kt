@@ -406,7 +406,7 @@ fun BuiltinFilePickerDialog(
             if (readPermission != null && !hasReadPermission) {
                 readPermissionPurpose?.let { PermissionPurposeDetails(it) }
                 Button(onClick = { permissionLauncher.launch(readPermission) }) {
-                    Text("授予读取权限")
+                    Text("允许访问文件")
                 }
             } else if (allFilesAccess.supported && allFilesAccess.granted) {
                 Text(
@@ -421,7 +421,7 @@ fun BuiltinFilePickerDialog(
                 )
             } else if ((usesSharedNonMediaFallback || Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) && systemPickerAction != null) {
                 Text(
-                    "若共享目录中的语音包、预设包、模型或音频文件没有显示，请点击“授权目录”授予目录访问，或直接使用系统文件选择器。",
+                    "没有找到文件？可添加可访问目录，或改用系统文件选择器。",
                     style = MaterialTheme.typography.body2
                 )
             }
@@ -447,14 +447,14 @@ fun BuiltinFilePickerDialog(
                         onClick = { treePermissionLauncher.launch(null) },
                         modifier = Modifier.weight(1f)
                     ) {
-                        Text("授权目录")
+                        Text("添加可访问目录")
                     }
                     if (systemPickerAction != null) {
                         Md2OutlinedButton(
                             onClick = systemPickerAction,
                             modifier = Modifier.weight(1f)
                         ) {
-                            Text("系统选择", maxLines = 1)
+                            Text("系统文件选择器", maxLines = 1)
                         }
                     }
                 }
@@ -586,7 +586,7 @@ fun BuiltinFilePickerDialog(
                         },
                         enabled = selectedUris.isNotEmpty()
                     ) {
-                        Text("确认选择")
+                        Text("选择这些文件")
                     }
                 }
                 Md2TextButton(onClick = onDismiss) {
@@ -804,7 +804,7 @@ private fun BuiltinGalleryGridItem(
                 contentScale = ContentScale.Crop
             )
         } else {
-            Text("加载中", style = MaterialTheme.typography.caption)
+            Text("正在加载…", style = MaterialTheme.typography.caption)
         }
     }
 }
@@ -946,7 +946,7 @@ private fun builtinReadPermissionPurpose(permission: String): PermissionPurposeI
             privacyNote = "只在你打开内置文件浏览器并选择文件时读取本机图片文件，不会自动上传。"
         )
         else -> PermissionPurposeInfo(
-            title = "需要读取本机文件",
+            title = "需要访问本机文件",
             iconName = "folder_open",
             summary = "用于在内置文件浏览器中显示并选择可导入的本机文件。",
             permissionName = "存储读取权限",

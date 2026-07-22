@@ -11,6 +11,7 @@ import com.lhtstudio.kigtts.app.data.AppFontRepository
 import com.lhtstudio.kigtts.app.data.InstalledAppFont
 import com.lhtstudio.kigtts.app.data.RemoteAppFont
 import com.lhtstudio.kigtts.app.data.UserPrefs
+import com.lhtstudio.kigtts.app.util.AppLogger
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -171,7 +172,7 @@ internal class FontSettingsViewModel(application: Application) : AndroidViewMode
                 }
                 .onFailure { error ->
                     if (requestId == catalogRequestId) {
-                        notify(error.userMessage("字体清单加载失败"))
+                        notify(error.userMessage("字体列表加载失败"))
                     }
                 }
             if (requestId == catalogRequestId) {
@@ -251,8 +252,10 @@ internal class FontSettingsViewModel(application: Application) : AndroidViewMode
         _events.tryEmit(message)
     }
 
-    private fun Throwable.userMessage(fallback: String): String =
-        message?.takeIf { it.isNotBlank() } ?: fallback
+    private fun Throwable.userMessage(fallback: String): String {
+        AppLogger.e(fallback, this)
+        return fallback
+    }
 }
 
 private fun FontSettingsUiState.repositoryBaseUrl(source: AppFontRemoteSource): String =

@@ -448,7 +448,8 @@ internal fun shareLogFile(context: Context, file: File) {
         }
         context.startActivity(Intent.createChooser(intent, "分享日志"))
     } catch (e: Exception) {
-        toast(context, "分享失败: ${e.message}")
+        AppLogger.e("share log file failed", e)
+        toast(context, "分享失败，请稍后重试")
     }
 }
 
@@ -460,7 +461,7 @@ internal fun sharePlainText(context: Context, content: String, chooserTitle: Str
         }
         context.startActivity(Intent.createChooser(intent, chooserTitle))
     } catch (e: Exception) {
-        toast(context, "分享失败: ${e.message}")
+        AppLogger.e("share plain text failed", e)
+        toast(context, "分享失败，请稍后重试")
     }
 }
-

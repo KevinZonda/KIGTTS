@@ -1827,7 +1827,7 @@ fun AppScaffold(viewModel: MainViewModel) {
                                         onClick = quickSubtitleBatchActions.onMove,
                                         enabled = showQuickSubtitleEditorActions && quickSubtitleBatchActions.canMove
                                     ) {
-                                        MsIcon("drive_file_move", contentDescription = "移动到其它分组")
+                                        MsIcon("drive_file_move", contentDescription = "移动快捷文本")
                                     }
                                     KigttsIconButton(
                                         onClick = quickSubtitleBatchActions.onDelete,
@@ -1880,7 +1880,7 @@ fun AppScaffold(viewModel: MainViewModel) {
                                         onClick = soundboardBatchActions.onMove,
                                         enabled = showSoundboardEditorActions && soundboardBatchActions.canMove
                                     ) {
-                                        MsIcon("drive_file_move", contentDescription = "移动到其它分组")
+                                        MsIcon("drive_file_move", contentDescription = "移动音效")
                                     }
                                     KigttsIconButton(
                                         onClick = soundboardBatchActions.onDelete,

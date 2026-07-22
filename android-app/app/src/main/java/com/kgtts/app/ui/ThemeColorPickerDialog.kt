@@ -221,7 +221,7 @@ internal fun ThemeColorPickerDialog(
                 onClick = {
                     val normalized = normalizeHexColorOrNull(hexInput)
                     if (normalized == null) {
-                        toast(context, "HEX 格式错误")
+                        toast(context, "请输入 6 位十六进制色号，例如 #038387")
                     } else {
                         onColorSelected(parseHexColor(normalized))
                     }

@@ -1252,7 +1252,7 @@ internal fun SoundboardEditorScreen(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text("关键词触发音效板", modifier = Modifier.weight(1f), fontWeight = FontWeight.SemiBold)
+                    Text("使用触发词播放音效", modifier = Modifier.weight(1f), fontWeight = FontWeight.SemiBold)
                     Md2Switch(
                         checked = state.soundboardKeywordTriggerEnabled,
                         onCheckedChange = { viewModel.setSoundboardKeywordTriggerEnabled(it) }
@@ -1262,7 +1262,7 @@ internal fun SoundboardEditorScreen(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text("触发关键词时不进行朗读", modifier = Modifier.weight(1f), fontWeight = FontWeight.SemiBold)
+                    Text("触发音效时不朗读文字", modifier = Modifier.weight(1f), fontWeight = FontWeight.SemiBold)
                     Md2Switch(
                         checked = state.soundboardSuppressTtsOnKeyword,
                         onCheckedChange = { viewModel.setSoundboardSuppressTtsOnKeyword(it) }
@@ -1393,8 +1393,8 @@ internal fun SoundboardEditorScreen(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
-                            MsIcon("hearing", contentDescription = "参与关键词唤醒")
-                            Text("参与关键词唤醒", style = MaterialTheme.typography.bodySmall)
+                            MsIcon("hearing", contentDescription = "启用触发词")
+                            Text("启用触发词", style = MaterialTheme.typography.bodySmall)
                         }
                         Md2Switch(
                             checked = selectedGroup.keywordWakeEnabled,
@@ -1482,7 +1482,7 @@ internal fun SoundboardEditorScreen(
                         },
                         onAdd = {
                             viewModel.addSoundboardItem(targetIndex, it)
-                            toast(context, "已新增音效条目")
+                            toast(context, "已添加音效")
                         },
                         onItemsChanged = { reordered -> viewModel.setSoundboardItems(targetIndex, reordered) },
                         onItemChanged = { itemIndex, updated ->
@@ -1560,7 +1560,7 @@ internal fun SoundboardEditorScreen(
                             modifier = Modifier.fillMaxWidth(),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text("关键词触发音效板", modifier = Modifier.weight(1f), fontWeight = FontWeight.SemiBold)
+                            Text("使用触发词播放音效", modifier = Modifier.weight(1f), fontWeight = FontWeight.SemiBold)
                             Md2Switch(
                                 checked = state.soundboardKeywordTriggerEnabled,
                                 onCheckedChange = { viewModel.setSoundboardKeywordTriggerEnabled(it) }
@@ -1570,7 +1570,7 @@ internal fun SoundboardEditorScreen(
                             modifier = Modifier.fillMaxWidth(),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text("触发关键词时不进行朗读", modifier = Modifier.weight(1f), fontWeight = FontWeight.SemiBold)
+                            Text("触发音效时不朗读文字", modifier = Modifier.weight(1f), fontWeight = FontWeight.SemiBold)
                             Md2Switch(
                                 checked = state.soundboardSuppressTtsOnKeyword,
                                 onCheckedChange = { viewModel.setSoundboardSuppressTtsOnKeyword(it) }
@@ -1701,8 +1701,8 @@ internal fun SoundboardEditorScreen(
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                                 ) {
-                                    MsIcon("hearing", contentDescription = "参与关键词唤醒")
-                                    Text("参与关键词唤醒", style = MaterialTheme.typography.bodySmall)
+                                    MsIcon("hearing", contentDescription = "启用触发词")
+                                    Text("启用触发词", style = MaterialTheme.typography.bodySmall)
                                 }
                                 Md2Switch(
                                     checked = selectedGroup.keywordWakeEnabled,
@@ -1788,7 +1788,7 @@ internal fun SoundboardEditorScreen(
                                 },
                                 onAdd = {
                                     viewModel.addSoundboardItem(targetIndex, it)
-                                    toast(context, "已新增音效条目")
+                                    toast(context, "已添加音效")
                                 },
                                 onItemsChanged = { reordered -> viewModel.setSoundboardItems(targetIndex, reordered) },
                                 onItemChanged = { itemIndex, updated ->
@@ -1809,8 +1809,8 @@ internal fun SoundboardEditorScreen(
         val count = selectedItemIds.size
         KigttsAlertDialog(
             onDismissRequest = { showBatchDeleteConfirm = false },
-            title = { Text("删除音效条目") },
-            text = { Text("确定删除已选择的 $count 个音效条目吗？") },
+            title = { Text("删除音效") },
+            text = { Text("确定删除已选择的 $count 个音效吗？") },
             confirmButton = {
                 Md2TextButton(onClick = {
                     val removed = viewModel.removeSoundboardItemsByIds(selectedGroupIndex, selectedItemIds)
@@ -1832,7 +1832,7 @@ internal fun SoundboardEditorScreen(
     if (showBatchMoveDialog) {
         KigttsAlertDialog(
             onDismissRequest = { showBatchMoveDialog = false },
-            title = { Text("移动到其它分组") },
+            title = { Text("移动音效") },
             text = {
                 LazyColumn(
                     modifier = Modifier
@@ -1840,6 +1840,7 @@ internal fun SoundboardEditorScreen(
                         .heightIn(max = 320.dp),
                     verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
+                    item { Text("选择目标分组") }
                     itemsIndexed(groups) { idx, group ->
                         if (idx != selectedGroupIndex) {
                             Row(
@@ -1945,7 +1946,7 @@ internal fun SoundboardItemsRecyclerCard(
                     .padding(12.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Md2CardTitleText("音效条目", modifier = Modifier.weight(1f))
+                Md2CardTitleText("音效", modifier = Modifier.weight(1f))
                 Md2TextButton(onClick = {
                     openFileManagerAfterPermission(SoundboardAudioFileExtensions) {
                         if (state.useBuiltinFileManager) {
@@ -2014,12 +2015,12 @@ internal fun SoundboardItemsRecyclerCard(
     if (showAddDialog) {
         KigttsAlertDialog(
             onDismissRequest = { showAddDialog = false },
-            title = { Text("新增音效条目") },
+            title = { Text("添加音效") },
             text = {
                 Md2DialogOutlinedField(
                     value = addTitle,
                     onValueChange = { addTitle = it },
-                    label = "条目名",
+                    label = "音效名称",
                     modifier = Modifier.onFocusChanged { addTitleFocused = it.isFocused },
                     singleLine = true,
                     trailingIcon = if (addTitleFocused && addTitle.isNotEmpty()) {
@@ -2055,7 +2056,7 @@ internal fun SoundboardItemsRecyclerCard(
     deleteTargetItem?.let { target ->
         KigttsAlertDialog(
             onDismissRequest = { deleteTargetItem = null },
-            title = { Text("删除音效条目") },
+            title = { Text("删除音效") },
             text = { Text("确定删除“${target.title.ifBlank { "未命名音效" }}”吗？") },
             confirmButton = {
                 Md2TextButton(onClick = {
@@ -2095,7 +2096,7 @@ internal fun SoundboardItemsRecyclerCard(
 
     if (showBuiltinBatchAudioPicker) {
         BuiltinFilePickerDialog(
-            title = "批量导入音效音频",
+            title = "批量添加音效",
             allowedExtensions = SoundboardAudioFileExtensions,
             multiSelect = true,
             onDismiss = { showBuiltinBatchAudioPicker = false },
@@ -2136,7 +2137,7 @@ internal fun SoundboardItemsRecyclerCard(
     if (editingIndex != null && editingIndex in items.indices) {
         KigttsAlertDialog(
             onDismissRequest = { editTargetIndex = null },
-            title = { Text("编辑音效条目") },
+            title = { Text("编辑音效") },
             text = {
                 Column(
                     modifier = Modifier.padding(top = 12.dp),
@@ -2145,7 +2146,7 @@ internal fun SoundboardItemsRecyclerCard(
                     Md2DialogOutlinedField(
                         value = editTitle,
                         onValueChange = { editTitle = it },
-                        label = "条目名",
+                        label = "音效名称",
                         modifier = Modifier.onFocusChanged { editTitleFocused = it.isFocused },
                         singleLine = true,
                         topPadding = 0.dp,
@@ -2158,7 +2159,7 @@ internal fun SoundboardItemsRecyclerCard(
                     Md2DialogOutlinedField(
                         value = editWakeWord,
                         onValueChange = { editWakeWord = it },
-                        label = "唤醒词",
+                        label = "触发词",
                         modifier = Modifier.onFocusChanged { editWakeWordFocused = it.isFocused },
                         singleLine = true,
                         topPadding = 0.dp,
@@ -2290,9 +2291,9 @@ internal fun SoundboardAudioClipDialog(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Column {
-                        Text("起始：${formatDurationMs(startMs)}", style = MaterialTheme.typography.bodySmall)
-                        Text("结束：${formatDurationMs(endMs)}", style = MaterialTheme.typography.bodySmall)
-                        Text("长度：${formatDurationMs(durationMs)}", style = MaterialTheme.typography.bodySmall)
+                        Text("开始时间：${formatDurationMs(startMs)}", style = MaterialTheme.typography.bodySmall)
+                        Text("结束时间：${formatDurationMs(endMs)}", style = MaterialTheme.typography.bodySmall)
+                        Text("片段时长：${formatDurationMs(durationMs)}", style = MaterialTheme.typography.bodySmall)
                     }
                     Md2TextButton(onClick = { if (playing) stopPreview() else startPreview() }) {
                         MsIcon(if (playing) "pause" else "play_arrow", contentDescription = "预览范围")
@@ -2307,7 +2308,7 @@ internal fun SoundboardAudioClipDialog(
                 stopPreview()
                 onImport(startMs, endMs)
             }) {
-                Text("导入")
+                Text("使用此片段")
             }
         },
         dismissButton = {
@@ -2675,7 +2676,7 @@ internal fun SoundboardEditableRow(
                     fontWeight = FontWeight.SemiBold
                 )
                 val subtitle = buildList {
-                    if (item.wakeWord.isNotBlank()) add("唤醒词：${item.wakeWord}")
+                    if (item.wakeWord.isNotBlank()) add("触发词：${item.wakeWord}")
                     if (item.audioPath.isNotBlank()) add(File(item.audioPath).name)
                 }.joinToString(" · ").ifBlank { "未选择音频" }
                 Text(

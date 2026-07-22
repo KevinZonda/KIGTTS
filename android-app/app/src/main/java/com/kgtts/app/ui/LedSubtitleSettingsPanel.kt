@@ -99,7 +99,7 @@ internal fun LedSubtitleSettingsPanel(
             ) {
                 LedSettingsSectionTitle("外观")
                 LedSwitchSetting(
-                    label = "使用正常字形",
+                    label = "使用普通字体",
                     checked = !settings.dotMatrixEnabled,
                     accent = accent,
                     onCheckedChange = {
@@ -160,7 +160,7 @@ internal fun LedSubtitleSettingsPanel(
 
                 LedSettingsSectionTitle("排版")
                 LedSwitchSetting(
-                    label = "自适应多行",
+                    label = "内容较多时自动换行",
                     checked = settings.adaptiveMultiLine,
                     accent = accent,
                     onCheckedChange = {
@@ -173,7 +173,7 @@ internal fun LedSubtitleSettingsPanel(
                         value = settings.scrollSpeedDpPerSecond,
                         valueRange = LedSubtitleSettings.MIN_SCROLL_SPEED_DP_PER_SECOND..
                             LedSubtitleSettings.MAX_SCROLL_SPEED_DP_PER_SECOND,
-                        valueLabel = "${settings.scrollSpeedDpPerSecond.roundToInt()} dp/s",
+                        valueLabel = settings.scrollSpeedDpPerSecond.roundToInt().toString(),
                         accent = accent,
                         onValueChange = {
                             onSettingsChange(settings.copy(scrollSpeedDpPerSecond = it))
@@ -187,16 +187,16 @@ internal fun LedSubtitleSettingsPanel(
                         onSelected = { onSettingsChange(settings.copy(scrollDirection = it)) }
                     )
                     LedSettingsSlider(
-                        label = "循环间距",
+                        label = "字幕间距",
                         value = settings.loopGapDp,
                         valueRange = LedSubtitleSettings.MIN_LOOP_GAP_DP..LedSubtitleSettings.MAX_LOOP_GAP_DP,
-                        valueLabel = "${settings.loopGapDp.roundToInt()} dp",
+                        valueLabel = settings.loopGapDp.roundToInt().toString(),
                         accent = accent,
                         onValueChange = { onSettingsChange(settings.copy(loopGapDp = it)) }
                     )
                 }
                 LedSwitchSetting(
-                    label = "快速左滑打开快捷文本",
+                    label = "快速左滑打开快捷文本面板",
                     checked = settings.quickSwipeOpensQuickText,
                     accent = accent,
                     onCheckedChange = {
@@ -246,7 +246,7 @@ internal fun LedSubtitleSettingsPanel(
                 ) {
                     MsIcon("settings_backup_restore", contentDescription = null, tint = LedSettingsContent)
                     Spacer(Modifier.width(8.dp))
-                    Text("恢复 LED 默认设置")
+                    Text("恢复默认显示设置")
                 }
             }
         }
@@ -270,7 +270,7 @@ internal fun LedSubtitleSettingsPanel(
                 }.normalized()
                 onSettingsChange(next)
                 if (ColorUtils.calculateContrast(next.ledColorArgb, next.backgroundColorArgb) < 2.0) {
-                    toast(context, "字幕与背景颜色对比度较低")
+                    toast(context, "字幕与背景颜色太接近，可能看不清")
                 }
                 colorTarget = null
             }
@@ -280,8 +280,8 @@ internal fun LedSubtitleSettingsPanel(
     if (resetConfirmationVisible) {
         KigttsAlertDialog(
             onDismissRequest = { resetConfirmationVisible = false },
-            title = { Text("恢复 LED 默认设置") },
-            text = { Text("确定恢复全部 LED 显示设置？") },
+            title = { Text("恢复默认显示设置") },
+            text = { Text("将所有 LED 显示选项恢复为默认值？") },
             confirmButton = {
                 Md2TextButton(
                     onClick = {

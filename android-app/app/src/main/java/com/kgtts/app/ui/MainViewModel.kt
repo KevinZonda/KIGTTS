@@ -1269,7 +1269,8 @@ class MainViewModel(
                 uiState = uiState.copy(status = "便捷字幕预设已导出：${file.absolutePath}")
                 sharePresetFile(file, "application/x-kigtts-quicktext-preset", "分享便捷字幕预设")
             }.onFailure { e ->
-                uiState = uiState.copy(status = "便捷字幕预设导出失败：${e.message ?: "未知错误"}")
+                AppLogger.e("export quick subtitle preset failed", e)
+                uiState = uiState.copy(status = "导出快捷文本预设失败，请稍后重试")
             }
         }
     }
@@ -1291,7 +1292,8 @@ class MainViewModel(
                     requestPresetInstallNavigation(PresetInstallTarget.QuickSubtitle, message)
                 }
             }.onFailure { e ->
-                uiState = uiState.copy(status = "便捷字幕预设导入失败：${e.message ?: "未知错误"}")
+                AppLogger.e("import quick subtitle preset failed", e)
+                uiState = uiState.copy(status = "无法导入快捷文本预设，请检查文件后重试")
             }
         }
     }
@@ -1707,7 +1709,8 @@ class MainViewModel(
                 uiState = uiState.copy(status = "音效板预设已导出：${file.absolutePath}")
                 sharePresetFile(file, "application/x-kigtts-soundboard-preset", "分享音效板预设")
             }.onFailure { e ->
-                uiState = uiState.copy(status = "音效板预设导出失败：${e.message ?: "未知错误"}")
+                AppLogger.e("export soundboard preset failed", e)
+                uiState = uiState.copy(status = "导出音效板预设失败，请稍后重试")
             }
         }
     }
@@ -1733,7 +1736,8 @@ class MainViewModel(
                     requestPresetInstallNavigation(PresetInstallTarget.Soundboard, message)
                 }
             }.onFailure { e ->
-                uiState = uiState.copy(status = "音效板预设导入失败：${e.message ?: "未知错误"}")
+                AppLogger.e("import soundboard preset failed", e)
+                uiState = uiState.copy(status = "无法导入音效板预设，请检查文件后重试")
             }
         }
     }
@@ -1966,7 +1970,8 @@ class MainViewModel(
                 }
                 uiState = uiState.copy(status = "音效已导入")
             }.onFailure { e ->
-                uiState = uiState.copy(status = "音效导入失败：${e.message ?: "未知错误"}")
+                AppLogger.e("import soundboard audio failed", e)
+                uiState = uiState.copy(status = "音效导入失败，请检查音频文件后重试")
             }
         }
     }
@@ -2008,7 +2013,8 @@ class MainViewModel(
                 saveSoundboardConfig()
                 uiState = uiState.copy(status = "已批量导入 ${newItems.size} 个音效")
             }.onFailure { e ->
-                uiState = uiState.copy(status = "批量导入音效失败：${e.message ?: "未知错误"}")
+                AppLogger.e("batch import soundboard audio failed", e)
+                uiState = uiState.copy(status = "批量添加音效失败，请检查音频文件后重试")
             }
         }
     }
@@ -2156,7 +2162,8 @@ class MainViewModel(
                 quickCardPackageImportCandidates = candidates
                 quickCardPackageImportVisible = true
             }.onFailure { error ->
-                uiState = uiState.copy(status = "名片包读取失败：${error.message ?: "未知错误"}")
+                AppLogger.e("inspect quick card package failed", error)
+                uiState = uiState.copy(status = "无法读取名片包，请确认文件完整且格式正确")
             }
         }
     }
@@ -2211,7 +2218,8 @@ class MainViewModel(
                 saveQuickCardConfig()
                 uiState = uiState.copy(status = "已导入 ${cards.size} 张快捷名片")
             }.onFailure { error ->
-                uiState = uiState.copy(status = "名片包导入失败：${error.message ?: "未知错误"}")
+                AppLogger.e("import quick card package failed", error)
+                uiState = uiState.copy(status = "无法导入名片包，请检查文件后重试")
             }
         }
     }
@@ -2242,7 +2250,8 @@ class MainViewModel(
                 uiState = uiState.copy(status = "快捷名片已导出：${file.absolutePath}")
                 sharePresetFile(file, "application/x-kigtts-quickcard", "分享快捷名片")
             }.onFailure { error ->
-                uiState = uiState.copy(status = "名片包导出失败：${error.message ?: "未知错误"}")
+                AppLogger.e("export quick card package failed", error)
+                uiState = uiState.copy(status = "导出名片包失败，请稍后重试")
             }
         }
     }
@@ -2250,17 +2259,18 @@ class MainViewModel(
     fun exportAppConfigBackup(options: AppConfigBackupOptions) {
         if (appConfigBackupBusy) return
         appConfigBackupBusy = true
-        uiState = uiState.copy(status = "正在备份软件配置…")
+        uiState = uiState.copy(status = "正在备份应用数据…")
         viewModelScope.launch {
             val result = withContext(Dispatchers.IO) {
                 runCatching { AppConfigBackupIo.exportPackage(appContext, options) }
             }
             appConfigBackupBusy = false
             result.onSuccess { file ->
-                uiState = uiState.copy(status = "软件配置已备份：${file.absolutePath}")
-                sharePresetFile(file, "application/x-kigtts-config", "分享软件配置备份")
+                uiState = uiState.copy(status = "应用数据已备份：${file.absolutePath}")
+                sharePresetFile(file, "application/x-kigtts-config", "分享应用数据备份")
             }.onFailure { error ->
-                uiState = uiState.copy(status = "配置备份失败：${error.message ?: "未知错误"}")
+                AppLogger.e("export app data backup failed", error)
+                uiState = uiState.copy(status = "备份失败，请检查存储空间后重试")
             }
         }
     }
@@ -2268,7 +2278,7 @@ class MainViewModel(
     fun importAppConfigBackup(uri: Uri) {
         if (appConfigBackupBusy) return
         appConfigBackupBusy = true
-        uiState = uiState.copy(status = "正在还原软件配置…")
+        uiState = uiState.copy(status = "正在恢复应用数据…")
         viewModelScope.launch {
             val result = withContext(Dispatchers.IO) {
                 runCatching { AppConfigBackupIo.importPackage(appContext, uri) }
@@ -2284,10 +2294,11 @@ class MainViewModel(
                     FloatingOverlayService.refresh(appContext)
                 }
                 uiState = uiState.copy(
-                    status = "配置已还原：${restored.restoredPreferenceCount} 项设置，${restored.restoredFileCount} 个资源文件"
+                    status = "应用数据已恢复：${restored.restoredPreferenceCount} 项设置，${restored.restoredFileCount} 个资源文件"
                 )
             }.onFailure { error ->
-                uiState = uiState.copy(status = "配置还原失败：${error.message ?: "未知错误"}")
+                AppLogger.e("restore app data backup failed", error)
+                uiState = uiState.copy(status = "恢复失败，请确认备份文件完整且版本兼容")
             }
         }
     }
@@ -2694,7 +2705,7 @@ class MainViewModel(
 
     private fun fallbackVoiceStatus(dir: File): String {
         return when {
-            isSystemTtsVoiceDir(dir) -> "已切换到系统 TTS"
+            isSystemTtsVoiceDir(dir) -> "已切换到系统语音合成"
             isKokoroVoiceDir(dir) -> "已切换备用语音包：Kokoro"
             else -> "已切换备用语音包：${dir.name}"
         }
@@ -2825,7 +2836,7 @@ class MainViewModel(
                     recognitionResourceBusy = false,
                     recognitionResourceProgressStage = "",
                     recognitionResourceProgress = -1f,
-                    recognitionResourceStatus = "语音识别资源包安装失败：${e.message ?: "未知错误"}",
+                    recognitionResourceStatus = "安装失败，请检查网络或下载源后重试",
                     status = "语音识别资源包安装失败"
                 )
             }
@@ -2854,7 +2865,7 @@ class MainViewModel(
                     recognitionResourceBusy = false,
                     recognitionResourceProgressStage = "",
                     recognitionResourceProgress = -1f,
-                    recognitionResourceStatus = "语音识别资源包安装失败：${e.message ?: "未知错误"}",
+                    recognitionResourceStatus = "安装失败，请确认资源包文件完整且格式正确",
                     status = "语音识别资源包安装失败"
                 )
             }
@@ -2924,7 +2935,7 @@ class MainViewModel(
                     kokoroBusy = false,
                     kokoroProgressStage = "",
                     kokoroProgress = -1f,
-                    kokoroStatus = "Kokoro 离线语音安装失败：${e.message ?: "未知错误"}",
+                    kokoroStatus = "安装失败，请检查网络或下载源后重试",
                     status = "Kokoro 离线语音安装失败"
                 )
             }
@@ -2951,7 +2962,7 @@ class MainViewModel(
                     kokoroBusy = false,
                     kokoroProgressStage = "",
                     kokoroProgress = -1f,
-                    kokoroStatus = "Kokoro 离线语音安装失败：${e.message ?: "未知错误"}",
+                    kokoroStatus = "安装失败，请确认资源文件完整且格式正确",
                     status = "Kokoro 离线语音安装失败"
                 )
             }
@@ -3037,7 +3048,7 @@ class MainViewModel(
     private fun recognitionResourceStatusText(status: RecognitionResourceStatus): String {
         if (!status.installed) return "未安装语音识别资源包，请先从下载源或本地文件安装。"
         val version = status.version.takeIf { it.isNotBlank() }?.let { "，版本 $it" }.orEmpty()
-        val asr = if (status.asrDir != null) "，ASR 可用" else "，ASR 未找到"
+        val asr = if (status.asrDir != null) "，语音识别可用" else "，未找到语音识别资源"
         return "${status.name}$version 已安装$asr"
     }
 
@@ -3077,7 +3088,7 @@ class MainViewModel(
             val lastDir = resolvePreferredVoiceDir(lastName)
             if (lastDir != null) {
                 val voiceStatus = when {
-                    isSystemTtsVoiceDir(lastDir) -> "已加载系统 TTS"
+                    isSystemTtsVoiceDir(lastDir) -> "已加载系统语音合成"
                     isKokoroVoiceDir(lastDir) -> "已加载 Kokoro"
                     else -> "已加载音色包"
                 }
@@ -3117,9 +3128,9 @@ class MainViewModel(
             val dir = withContext(Dispatchers.IO) { repo.importAsr(uri, appContext.contentResolver) }
             val host = realtimeHost
             if (host != null) {
-                host.updateSelectedAsrDir(dir, status = "ASR 模型导入完成", preload = true)
+                host.updateSelectedAsrDir(dir, status = "语音识别模型导入完成", preload = true)
             } else {
-                uiState = uiState.copy(asrDir = dir, status = "ASR 模型导入完成")
+                uiState = uiState.copy(asrDir = dir, status = "语音识别模型导入完成")
                 preloadAsr(dir)
             }
         }
@@ -3148,7 +3159,7 @@ class MainViewModel(
                     requestVoicePackInstallNavigation("语音包安装完成")
                 }
             } catch (e: Exception) {
-                uiState = uiState.copy(status = e.message ?: "音色包导入失败")
+                uiState = uiState.copy(status = "音色包导入失败，请确认文件完整且格式正确")
                 AppLogger.e("importVoice failed", e)
             }
         }
@@ -3165,7 +3176,7 @@ class MainViewModel(
                 }
             )
             val status = when {
-                isSystemTtsVoiceDir(dir) -> "已选择系统 TTS"
+                isSystemTtsVoiceDir(dir) -> "已选择系统语音合成"
                 isKokoroVoiceDir(dir) -> "已选择 Kokoro"
                 else -> "已选择音色包"
             }
@@ -3282,7 +3293,7 @@ class MainViewModel(
 
     fun deleteVoice(pack: VoicePackInfo) {
         if (isSystemTtsVoicePack(pack)) {
-            uiState = uiState.copy(status = "系统 TTS 不能删除")
+            uiState = uiState.copy(status = "系统语音合成不能删除")
             return
         }
         val current = uiState.voiceDir?.absolutePath == pack.dir.absolutePath
@@ -3339,7 +3350,7 @@ class MainViewModel(
                     }
                 }
             } catch (e: SecurityException) {
-                uiState = uiState.copy(status = e.message ?: "语音包删除失败")
+                uiState = uiState.copy(status = "语音包删除失败，请稍后重试")
                 AppLogger.e("deleteVoice failed", e)
                 return@launch
             }
@@ -3360,7 +3371,7 @@ class MainViewModel(
 
     fun shareVoice(pack: VoicePackInfo) {
         if (isSystemTtsVoicePack(pack)) {
-            uiState = uiState.copy(status = "系统 TTS 不能分享")
+            uiState = uiState.copy(status = "系统语音合成不能分享")
             return
         }
         if (isKokoroVoicePack(pack)) {
@@ -3403,7 +3414,8 @@ class MainViewModel(
             }
             appContext.startActivity(Intent.createChooser(intent, chooserTitle))
         }.onFailure { e ->
-            uiState = uiState.copy(status = "分享失败：${e.message ?: "未知错误"}")
+            AppLogger.e("share preset file failed", e)
+            uiState = uiState.copy(status = "分享失败，请稍后重试")
         }
     }
 
@@ -4504,7 +4516,7 @@ class MainViewModel(
             }.onFailure { e ->
                 AppLogger.e("drawing save failed", e)
                 withContext(Dispatchers.Main) {
-                    uiState = uiState.copy(status = "画板保存失败：${e.message ?: "未知错误"}")
+                    uiState = uiState.copy(status = "图片保存失败，请检查存储权限和剩余空间")
                     Toast.makeText(appContext, "画板保存失败", Toast.LENGTH_SHORT).show()
                 }
             }

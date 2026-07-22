@@ -77,9 +77,9 @@ internal fun AppConfigBackupSettingsCard(
     pendingRestoreUri?.let { uri ->
         KigttsAlertDialog(
             onDismissRequest = { pendingRestoreUri = null },
-            title = { Text("还原软件配置") },
+            title = { Text("恢复应用数据") },
             text = {
-                Text("备份中的设置和同名资源会替换当前内容，备份未包含的本机数据会保留。还原完成后，部分正在运行的功能可能需要重新打开页面或重启软件才能完全生效。")
+                Text("恢复后，同名设置和资源会被备份内容替换，其他本机数据不会删除。部分功能可能需要重新打开应用后生效。")
             },
             confirmButton = {
                 Md2TextButton(
@@ -88,7 +88,7 @@ internal fun AppConfigBackupSettingsCard(
                         viewModel.importAppConfigBackup(uri)
                     }
                 ) {
-                    Text("还原")
+                    Text("恢复")
                 }
             },
             dismissButton = {
@@ -99,17 +99,17 @@ internal fun AppConfigBackupSettingsCard(
         )
     }
 
-    Md2SettingsCard(title = "备份与还原") {
+    Md2SettingsCard(title = "备份与恢复") {
         AppConfigCommandRow(
             iconName = "backup",
-            title = "备份软件配置",
-            supportingText = "保存软件设置和快捷名片，可按需包含快捷文本、字体、音效与语音包。",
+            title = "备份应用数据",
+            supportingText = "保存应用设置和快捷名片，可按需包含快捷文本、字体、音效与语音包。",
             enabled = !viewModel.appConfigBackupBusy,
             onClick = { backupDialogVisible = true }
         )
         AppConfigCommandRow(
             iconName = "settings_backup_restore",
-            title = "还原软件配置",
+            title = "恢复应用数据",
             supportingText = "从备份文件恢复设置与资源，不会删除备份中未包含的本机数据。",
             enabled = !viewModel.appConfigBackupBusy,
             onClick = ::openRestorePicker
@@ -130,11 +130,11 @@ private fun AppConfigBackupOptionsDialog(
     var voicePacks by remember { mutableStateOf(false) }
     KigttsAlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("备份软件配置") },
+        title = { Text("备份应用数据") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(
-                    "软件设置和快捷名片信息会自动备份。以下内容可能明显增加文件大小，请按需选择：",
+                    "应用设置和快捷名片信息会自动备份。以下内容可能明显增加文件大小，请按需选择：",
                     style = MaterialTheme.typography.body2
                 )
                 BackupOptionRow("快捷文本预设", quickSubtitle) { quickSubtitle = it }

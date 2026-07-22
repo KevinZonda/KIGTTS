@@ -620,7 +620,7 @@ private fun OnboardingDonePage() {
             textAlign = TextAlign.Center
         )
         Text(
-            text = "你已经完成基础准备。接下来可以先从便捷字幕开始，也可以继续配置语音识别、TTS、悬浮窗、音效板和快捷名片。",
+            text = "你已经完成基础准备。接下来可以先从便捷字幕开始，也可以继续配置语音识别、语音朗读、悬浮窗、音效板和快捷名片。",
             style = MaterialTheme.typography.body1,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center

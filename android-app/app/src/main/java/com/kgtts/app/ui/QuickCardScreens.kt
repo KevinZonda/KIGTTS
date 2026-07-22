@@ -623,7 +623,7 @@ internal fun QuickCardMainScreen(
         if (granted) {
             onOpenScannerState.value()
         } else {
-            toast(context, "未授予相机权限")
+            toast(context, "需要相机权限才能扫码")
         }
     }
 
@@ -1512,7 +1512,7 @@ internal fun QuickCardScannerScreen(
     val cameraPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         cameraPermissionGranted = granted
         if (!granted) {
-            toast(context, "未授予相机权限")
+            toast(context, "需要相机权限才能扫码")
             onOpenFailed()
         }
     }
@@ -1603,7 +1603,7 @@ internal fun QuickCardScannerScreen(
             val provider = runCatching { providerFuture.get() }.getOrNull()
             if (provider == null) {
                 if (!disposed.get()) {
-                    toast(context, "相机初始化失败")
+                    toast(context, "无法启动相机，请检查是否被其他应用占用后重试")
                     onOpenFailed()
                 }
                 return@Runnable
@@ -1686,7 +1686,7 @@ internal fun QuickCardScannerScreen(
             }.onFailure {
                 if (!disposed.get()) {
                     AppLogger.e("quickCard scanner bind failed", it)
-                    toast(context, "无法打开相机")
+                    toast(context, "无法打开相机，请检查权限后重试")
                     onOpenFailed()
                 }
             }
@@ -2040,7 +2040,7 @@ internal fun QuickCardWebViewScreen(
         QuickCardWebErrorPage(
             error = QuickCardWebError(
                 url = url,
-                detail = "内置 WebView 仅允许打开 http/https 页面。"
+                detail = "只能打开有效的网页链接。"
             ),
             onRetry = {},
             onOpenExternal = {
@@ -2164,7 +2164,8 @@ internal fun QuickCardWebViewScreen(
                                 loading = false
                                 webError = QuickCardWebError(
                                     url = request.url?.toString().orEmpty().ifBlank { url },
-                                    detail = buildString {
+                                    detail = "网页加载失败，请检查网络连接后重试。",
+                                    technicalDetail = buildString {
                                         append("错误代码：")
                                         append(error?.errorCode ?: 0)
                                         val description = error?.description?.toString().orEmpty()
@@ -2189,7 +2190,8 @@ internal fun QuickCardWebViewScreen(
                                 val reason = errorResponse?.reasonPhrase.orEmpty()
                                 webError = QuickCardWebError(
                                     url = request.url?.toString().orEmpty().ifBlank { url },
-                                    detail = "HTTP $statusCode${if (reason.isBlank()) "" else " $reason"}"
+                                    detail = "网页加载失败，请稍后重试。",
+                                    technicalDetail = "HTTP $statusCode${if (reason.isBlank()) "" else " $reason"}"
                                 )
                                 publishWebActions()
                             }
@@ -2210,9 +2212,9 @@ internal fun QuickCardWebViewScreen(
                         webError = QuickCardWebError(
                             url = url,
                             detail = if (isHttpWebUrl(url)) {
-                                "该网址不在内置 WebView 白名单中，请使用外部浏览器打开。"
+                                "该网址无法在应用内打开，请使用浏览器继续访问。"
                             } else {
-                                "内置 WebView 仅允许打开 http/https 页面。"
+                                "只能打开有效的网页链接。"
                             }
                         )
                     }
@@ -2266,7 +2268,8 @@ internal fun isHttpWebUrl(url: String): Boolean {
 
 internal data class QuickCardWebError(
     val url: String,
-    val detail: String
+    val detail: String,
+    val technicalDetail: String = ""
 )
 
 @Composable
@@ -2305,13 +2308,13 @@ internal fun QuickCardExternalLinkPage(url: String) {
                     )
                 }
                 Text(
-                    text = "第三方外部链接",
+                    text = "即将打开外部网站",
                     style = MaterialTheme.typography.h6,
                     fontWeight = FontWeight.Bold,
                     textAlign = TextAlign.Center
                 )
                 Text(
-                    text = "您正在访问的是第三方外部链接，并非本软件提供的内容。\n继续访问后，您的一切操作与后果均与本软件无关。",
+                    text = "此链接将由外部网站提供服务，请确认网址可信后继续。",
                     style = MaterialTheme.typography.body1,
                     textAlign = TextAlign.Start,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.78f)
@@ -2350,6 +2353,7 @@ internal fun QuickCardWebErrorPage(
     onOpenExternal: (Context) -> Unit
 ) {
     val context = LocalContext.current
+    var showTechnicalDetails by remember(error) { mutableStateOf(false) }
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -2393,14 +2397,23 @@ internal fun QuickCardWebErrorPage(
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Text(
-                        text = "浏览器报错详细信息",
-                        style = MaterialTheme.typography.subtitle2,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                    Text(
-                        text = error.detail.ifBlank { "未知错误" },
+                        text = error.detail.ifBlank { "网页加载失败，请稍后重试。" },
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.76f)
                     )
+                    if (error.technicalDetail.isNotBlank()) {
+                        Md2TextButton(onClick = { showTechnicalDetails = !showTechnicalDetails }) {
+                            Text(if (showTechnicalDetails) "隐藏技术详情" else "查看技术详情")
+                        }
+                        AnimatedVisibility(visible = showTechnicalDetails) {
+                            SelectionContainer {
+                                Text(
+                                    text = error.technicalDetail,
+                                    style = MaterialTheme.typography.body2,
+                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.68f)
+                                )
+                            }
+                        }
+                    }
                     Text(
                         text = "网址",
                         style = MaterialTheme.typography.subtitle2,
@@ -3508,10 +3521,10 @@ internal fun QuickCardEditorScreen(
             val uri = result.uriContent
             if (uri != null) {
                 if (!viewModel.setQuickCardDraftImage(uri, landscape = activeCropLandscape)) {
-                    toast(context, "设置图片失败")
+                    toast(context, "无法使用这张图片，请重新选择")
                 }
             } else {
-                toast(context, "裁剪失败：无输出")
+                toast(context, "没有生成裁剪后的图片，请重试")
             }
         } else {
             toast(context, "裁剪失败")
@@ -3575,7 +3588,7 @@ internal fun QuickCardEditorScreen(
                 toast(context, "已自动保存名片")
                 onBack()
             } else {
-                toast(context, "自动保存失败")
+                toast(context, "未能自动保存名片，请手动保存")
             }
             return
         }
@@ -3802,10 +3815,10 @@ internal fun QuickCardEditorScreen(
     if (showExitConfirm) {
         KigttsAlertDialog(
             onDismissRequest = { showExitConfirm = false },
-            title = { Text("名片已编辑") },
+            title = { Text("保存本次修改？") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("是否保存名片后再退出编辑？")
+                    Text("名片内容已修改，退出前是否保存？")
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -3814,7 +3827,7 @@ internal fun QuickCardEditorScreen(
                             checked = exitConfirmAutoSaveChecked,
                             onCheckedChange = { exitConfirmAutoSaveChecked = it }
                         )
-                        Text("下次退出编辑时自动保存")
+                        Text("以后退出时自动保存")
                     }
                 }
             },
@@ -3992,14 +4005,15 @@ internal fun buildQuickCardShareText(card: QuickCard): String {
 internal fun openQuickCardLink(context: Context, rawLink: String) {
     val normalized = normalizeQrTextToWebUrl(rawLink)
     if (normalized.isNullOrBlank()) {
-        toast(context, "链接无效")
+        toast(context, "链接无效，请检查地址")
         return
     }
     try {
         val intent = Intent(Intent.ACTION_VIEW, Uri.parse(normalized))
         context.startActivity(intent)
     } catch (e: Exception) {
-        toast(context, "打开链接失败: ${e.message}")
+        AppLogger.e("open quick card link failed", e)
+        toast(context, "无法打开链接，请检查地址后重试")
     }
 }
 
@@ -4036,7 +4050,8 @@ internal fun shareQuickCard(context: Context, card: QuickCard, landscape: Boolea
         }
         context.startActivity(Intent.createChooser(textIntent, "分享名片"))
     } catch (e: Exception) {
-        toast(context, "分享失败: ${e.message}")
+        AppLogger.e("share quick card failed", e)
+        toast(context, "分享失败，请稍后重试")
     }
 }
 
