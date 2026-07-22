@@ -914,17 +914,9 @@ fun SettingsScreen(
                 context.packageManager.getPackageInfo(context.packageName, 0)
             }.getOrNull()
         }
-        @Suppress("DEPRECATION")
         val versionLabel = remember(packageInfo) {
             val versionName = packageInfo?.versionName ?: "未知版本"
-            val versionCode = packageInfo?.let {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                    it.longVersionCode
-                } else {
-                    it.versionCode.toLong()
-                }
-            } ?: 0L
-            "版本 $versionName ($versionCode)"
+            "版本 $versionName"
         }
         val openOfficialWebsite = rememberKigttsHapticClick {
             if (

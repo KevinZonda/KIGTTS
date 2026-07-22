@@ -445,4 +445,5 @@
 - 关于页官网：KIGTTS Logo 增加可点击波纹，点击后优先以 Custom Tab 打开 `https://kigtts.lhtstudio.com`，不可用或启动失败时回退系统外部浏览器。
 - 验证：`:app:testDebugUnitTest`、`:app:assembleDebug` 与 `:app:assembleRelease` 通过，23 个测试套件共 75 项，0 失败、0 错误、0 跳过；Debug 与 Release 包元数据均确认是 `0.1.2 (3)`，Release APK 通过 v2 签名校验。
 - Debug APK：`D:\KGTTS_GradleOut\codex-build\app\outputs\apk\debug\app-debug.apk`，102531778 字节，SHA-256 `c48111fc75b029d7e9db315459cc72470c4c9236fd7248ff065bb2285c2b4182`。
-- Release APK：`D:\KGTTS_GradleOut\codex-build\app\outputs\apk\release\app-release.apk`，95714243 字节，SHA-256 `279a2ffd0fc837fb0d2bd8d99d3ce046c8f710a8ccfd87f547a82e8621eecd54`。
+- Release APK：`D:\KGTTS_GradleOut\codex-build\app\outputs\apk\release\app-release.apk`，95714243 字节，SHA-256 `83436ad6898af1fc9943fff05d2ebd7eda70b865e52149af95f1c6a5ae2d431d`。
+- 关于页版本文案：界面只显示版本名“版本 0.1.2”，不再显示括号内的 `versionCode`；内部版本代码仍保留用于 Android 升级判断。
