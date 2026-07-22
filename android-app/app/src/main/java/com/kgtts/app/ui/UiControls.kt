@@ -492,7 +492,7 @@ internal fun RecognitionResourceSourceDialog(
         contentSpacing = 12.dp,
         content = {
                 Text(
-                    "下载的资源包会安装到软件内部目录；安装完成后会自动清理下载得到的 7z 包。本地安装不会删除原文件。",
+                    "下载完成后会自动安装并清理临时文件；从本地安装时不会删除你选择的原文件。",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -760,7 +760,7 @@ internal fun RecognitionResourceRequiredDialog(
                     text = if (installed) {
                         "资源包安装完成，可以继续开启语音识别。"
                     } else {
-                        "当前未安装语音识别资源包。语音识别、Silero VAD 和 AI 语音增强模型已经从 APK 解耦，需要先下载或从本地安装资源包。"
+                        "当前尚未安装语音识别资源包。请先下载或从本地安装，随后即可使用语音识别、智能断句和语音降噪增强。"
                     },
                     style = MaterialTheme.typography.bodyMedium
                 )

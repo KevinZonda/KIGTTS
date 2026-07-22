@@ -447,3 +447,15 @@
 - Debug APK：`D:\KGTTS_GradleOut\codex-build\app\outputs\apk\debug\app-debug.apk`，102531778 字节，SHA-256 `c48111fc75b029d7e9db315459cc72470c4c9236fd7248ff065bb2285c2b4182`。
 - Release APK：`D:\KGTTS_GradleOut\codex-build\app\outputs\apk\release\app-release.apk`，95714243 字节，SHA-256 `83436ad6898af1fc9943fff05d2ebd7eda70b865e52149af95f1c6a5ae2d431d`。
 - 关于页版本文案：界面只显示版本名“版本 0.1.2”，不再显示括号内的 `versionCode`；内部版本代码仍保留用于 Android 升级判断。
+
+## 2026-07-22 Android 设置文案用户化
+
+- 表达原则：设置标题改为描述用户目的，说明文字直接描述实际效果；`FAB`、`TTS`、`VAD`、`Tab`、`sp`、音频焦点和模型拆分等实现术语不再直接面向普通用户展示。
+- 识别设置：将自动上屏、按住说话、快捷文本联动、播放时暂停识别、语音降噪、智能断句、触发前声音、数字读法和指定说话人等条目改为行为导向文案；技术模型名称仅在具体降噪方案括号中保留。
+- 音频设置：使用“当前语音合成引擎”“打开系统语音合成设置”“关闭语音朗读”“朗读与音效音量”等一致术语；回声、降噪和音频设备选择改为用户可判断的标题与结果说明，移除设置页中的原始 AEC3 诊断文本。
+- 系统设置：字体缩放、主题色、触感、横屏侧栏、分组名称、字幕字号、应用内文件选择和快捷操作补全均改为面向结果的文案；已经始终启用的内置 WebView 设置卡从界面移除，网页打开及白名单逻辑保持不变。
+- 悬浮窗与音效板：移除 `FAB` 和 `TTS` 等缩写，统一使用“悬浮按钮”“语音朗读”“两次按键最长间隔”等名称；锁屏显示、自动贴边和无障碍热键说明压缩为必要的行为与权限信息。
+- 验证：版本保持 `0.1.2 (3)` 不变；`:app:testDebugUnitTest`、`:app:assembleDebug` 与 `:app:assembleRelease` 通过，23 个测试套件共 75 项，0 失败、0 错误、0 跳过。
+- 真机：Release APK 已保留数据覆盖安装到设备 `cfc8ef16`，冷启动 `TotalTime=766 ms`；应用启动日志无 `AndroidRuntime` 致命异常，设备包仍为非调试版 `0.1.2 (3)`。
+- Debug APK：`D:\KGTTS_GradleOut\codex-build\app\outputs\apk\debug\app-debug.apk`，102530450 字节，SHA-256 `085e47b372cf7fdc3bc6bc80e9516afa2ee116996d968b4a01dde8405494e36b`。
+- Release APK：`D:\KGTTS_GradleOut\codex-build\app\outputs\apk\release\app-release.apk`，95714243 字节，SHA-256 `47f63cf620da69da3aaa83d54ea7c2c66c788a60024111d214e4f46c84eb2962`。

@@ -2585,7 +2585,7 @@ class MainViewModel(
             if (!loaded && uiState.voiceDir?.absolutePath == voiceDir.absolutePath) {
                 uiState = uiState.copy(
                     status = if (isSystemTtsVoiceDir(voiceDir)) {
-                        "系统 TTS 初始化失败，请先完成系统 TTS 设置"
+                        "系统语音合成初始化失败，请先完成系统语音合成设置"
                     } else {
                         "音色包加载失败"
                     }
@@ -2613,7 +2613,7 @@ class MainViewModel(
                 }
             }
         }
-        toast(context, "无法打开系统 TTS 设置")
+        toast(context, "无法打开系统语音合成设置")
     }
 
     private fun systemTtsVoiceDir(): File = repo.systemTtsVirtualDir()

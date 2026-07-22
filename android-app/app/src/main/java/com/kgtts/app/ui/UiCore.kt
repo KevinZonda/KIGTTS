@@ -991,5 +991,5 @@ internal val SoundboardAudioFileExtensions = setOf(
     "webm"
 )
 
-internal const val TTS_DISABLED_MESSAGE = "TTS已禁用，如需打开，请打开顶部音频状态菜单将“禁用TTS”选项关闭"
+internal const val TTS_DISABLED_MESSAGE = "语音朗读已关闭，可在顶部音频设置菜单中重新开启"
 internal var quickCardSortHintShownThisProcess = false

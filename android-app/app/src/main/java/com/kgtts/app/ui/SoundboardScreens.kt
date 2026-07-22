@@ -1269,7 +1269,7 @@ internal fun SoundboardEditorScreen(
                     )
                 }
                 Text(
-                    "命中音效板唤醒词时只上屏并播放音效，跳过本句 TTS。",
+                    "识别到音效触发词时只显示文字并播放音效，不再朗读这句话。",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.66f)
                 )
@@ -1277,7 +1277,7 @@ internal fun SoundboardEditorScreen(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text("禁用TTS", modifier = Modifier.weight(1f), fontWeight = FontWeight.SemiBold)
+                    Text("关闭语音朗读", modifier = Modifier.weight(1f), fontWeight = FontWeight.SemiBold)
                     Md2Switch(
                         checked = state.ttsDisabled,
                         onCheckedChange = { viewModel.setTtsDisabled(it) }
@@ -1577,7 +1577,7 @@ internal fun SoundboardEditorScreen(
                             )
                         }
                         Text(
-                            "命中音效板唤醒词时只上屏并播放音效，跳过本句 TTS。",
+                            "识别到音效触发词时只显示文字并播放音效，不再朗读这句话。",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.66f)
                         )
@@ -1585,7 +1585,7 @@ internal fun SoundboardEditorScreen(
                             modifier = Modifier.fillMaxWidth(),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text("禁用TTS", modifier = Modifier.weight(1f), fontWeight = FontWeight.SemiBold)
+                            Text("关闭语音朗读", modifier = Modifier.weight(1f), fontWeight = FontWeight.SemiBold)
                             Md2Switch(
                                 checked = state.ttsDisabled,
                                 onCheckedChange = { viewModel.setTtsDisabled(it) }

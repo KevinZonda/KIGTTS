@@ -4727,7 +4727,7 @@ class FloatingOverlayService : Service() {
                 false
             } else {
                 if (settings.ttsDisabled) {
-                    overlayHintText = "TTS已禁用，如需打开，请打开顶部音频状态菜单将“禁用TTS”选项关闭"
+                    overlayHintText = "语音朗读已关闭，可在顶部音频设置菜单中重新开启"
                     Toast.makeText(this@FloatingOverlayService, overlayHintText, Toast.LENGTH_SHORT).show()
                     updateFabUi()
                 }
@@ -11060,7 +11060,7 @@ class FloatingOverlayService : Service() {
             refs.ttsIcon.setTextColor(
                 if (settings.ttsDisabled) overlayAccentTextColor() else overlayOnSurfaceVariantColor()
             )
-            refs.volumeLabel.text = "音量倍率：${settings.playbackGainPercent}%"
+            refs.volumeLabel.text = "朗读与音效音量：${settings.playbackGainPercent}%"
             refs.volumeSeekBar.progress = settings.playbackGainPercent.coerceIn(0, 1000)
             refs.recognitionOnlyViews.forEach { view ->
                 view.visibility = if (recognitionResourceInstalled) View.VISIBLE else View.GONE
@@ -11199,7 +11199,7 @@ class FloatingOverlayService : Service() {
                 TextView(this@FloatingOverlayService).apply {
                     setTextColor(overlayOnSurfaceColor())
                     setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
-                    text = "禁用TTS"
+                    text = "关闭语音朗读"
                 },
                 LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
             )
