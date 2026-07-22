@@ -137,11 +137,15 @@ body.remote-page .remote-view { display: block; }
   height: 64px;
   display: flex;
   align-items: center;
-  gap: 14px;
   padding: 0 16px;
-  color: var(--accent);
-  font-size: 18px;
-  font-weight: 600;
+}
+.drawer-brand img {
+  display: block;
+  width: min(204px, 100%);
+  height: auto;
+}
+:root[data-remote-theme="dark"] .drawer-brand img {
+  filter: invert(1);
 }
 .drawer-item {
   width: 100%;

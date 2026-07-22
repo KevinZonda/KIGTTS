@@ -243,6 +243,8 @@ import com.lhtstudio.kigtts.app.audio.SpeechEnhancementMode
 import com.lhtstudio.kigtts.app.audio.SpeakerEnrollResult
 import com.lhtstudio.kigtts.app.audio.VadMode
 import com.lhtstudio.kigtts.app.data.ModelRepository
+import com.lhtstudio.kigtts.app.data.QuickTextGestureBinding
+import com.lhtstudio.kigtts.app.data.QuickTextGestures
 import com.lhtstudio.kigtts.app.data.RecognitionResourceProgress
 import com.lhtstudio.kigtts.app.data.RecognitionResourceStatus
 import com.lhtstudio.kigtts.app.data.KokoroVoiceStatus
@@ -1362,6 +1364,12 @@ fun QuickSubtitleScreen(
             toast(context, "已复制")
         }
     }
+    val triggerQuickTextGesture: (QuickTextGestureBinding) -> Unit = { binding ->
+        performKeyHaptic()
+        viewModel.triggerQuickTextGesture(binding.gestureId)
+        val gestureName = QuickTextGestures.template(binding.gestureId)?.title ?: "手势"
+        toast(context, "已触发：$gestureName")
+    }
     val addCurrentTextToQuickItems: (Int) -> Unit = { groupIndex ->
         viewModel.addQuickSubtitleItem(groupIndex = groupIndex, value = subtitleText)
         toast(context, "已新增快捷文本")
@@ -1653,17 +1661,17 @@ fun QuickSubtitleScreen(
                                     .padding(12.dp),
                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                Box(
+                                QuickSubtitleGestureSurface(
+                                    settings = state.quickTextGestureSettings,
+                                    onClick = {
+                                        performKeyHaptic()
+                                        viewModel.openQuickSubtitlePreview()
+                                    },
+                                    onLongClick = copySubtitleText,
+                                    onGesture = triggerQuickTextGesture,
                                     modifier = Modifier
                                         .weight(1f)
                                         .fillMaxHeight()
-                                        .combinedClickable(
-                                            onClick = {
-                                                performKeyHaptic()
-                                                viewModel.openQuickSubtitlePreview()
-                                            },
-                                            onLongClick = copySubtitleText
-                                        )
                                 ) {
                                     Box(
                                         modifier = Modifier.fillMaxSize()
@@ -2211,17 +2219,17 @@ fun QuickSubtitleScreen(
                                 .fillMaxSize()
                                 .padding(12.dp)
                         ) {
-                            Box(
+                            QuickSubtitleGestureSurface(
+                                settings = state.quickTextGestureSettings,
+                                onClick = {
+                                    performKeyHaptic()
+                                    viewModel.openQuickSubtitlePreview()
+                                },
+                                onLongClick = copySubtitleText,
+                                onGesture = triggerQuickTextGesture,
                                 modifier = Modifier
                                     .weight(1f)
                                     .fillMaxWidth()
-                                    .combinedClickable(
-                                        onClick = {
-                                            performKeyHaptic()
-                                            viewModel.openQuickSubtitlePreview()
-                                        },
-                                        onLongClick = copySubtitleText
-                                    )
                             ) {
                                 Box(
                                     modifier = Modifier.fillMaxSize()

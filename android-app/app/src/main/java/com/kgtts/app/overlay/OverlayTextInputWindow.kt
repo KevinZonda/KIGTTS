@@ -25,6 +25,7 @@ internal class OverlayTextInputWindow(
     private val context: Context,
     private val windowManager: WindowManager,
     private val styleProvider: () -> OverlayInteractionStyle,
+    private val windowFlagsProvider: () -> Int,
     private val createPreviewCard: () -> OverlaySubtitlePreviewCard,
     private val updatePreviewCard: (OverlaySubtitlePreviewCard, String) -> Unit,
     private val onDraftChanged: (String) -> Unit,
@@ -463,7 +464,7 @@ internal class OverlayTextInputWindow(
             @Suppress("DEPRECATION")
             WindowManager.LayoutParams.TYPE_PHONE
         },
-        WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+        windowFlagsProvider(),
         PixelFormat.TRANSLUCENT
     ).apply {
         gravity = Gravity.FILL

@@ -14,6 +14,7 @@ internal class OverlayFabModeGuideWindow(
     private val context: Context,
     private val windowManager: WindowManager,
     private val styleProvider: () -> OverlayInteractionStyle,
+    private val windowFlagsProvider: () -> Int,
     private val onModeSelected: (keyboardFirst: Boolean) -> Unit
 ) {
     private var root: FrameLayout? = null
@@ -134,7 +135,7 @@ internal class OverlayFabModeGuideWindow(
             @Suppress("DEPRECATION")
             WindowManager.LayoutParams.TYPE_PHONE
         },
-        WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+        windowFlagsProvider(),
         PixelFormat.TRANSLUCENT
     ).apply {
         gravity = Gravity.FILL

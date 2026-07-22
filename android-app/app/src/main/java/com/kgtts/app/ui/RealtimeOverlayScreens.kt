@@ -384,7 +384,8 @@ fun RealtimeScreen(viewModel: MainViewModel) {
 fun FloatingOverlayScreen(
     viewModel: MainViewModel,
     state: UiState,
-    onOpenMainSettings: () -> Unit
+    onOpenMainSettings: () -> Unit,
+    onOpenQuickTextGestureSettings: () -> Unit
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -647,6 +648,14 @@ fun FloatingOverlayScreen(
         }
 
         Md2StaggeredFloatIn(index = 1) {
+            QuickTextGestureEntryCard(
+                settings = state.quickTextGestureSettings,
+                onMasterEnabledChange = viewModel::setQuickTextGestureMasterEnabled,
+                onOpen = onOpenQuickTextGestureSettings
+            )
+        }
+
+        Md2StaggeredFloatIn(index = 2) {
             Md2SettingsCard(title = "音量热键") {
                 Text(
                     "序列监听由独立服务处理，不挂在现有悬浮窗服务上。开启后可能在后台或锁屏状态读取系统音量变化；开启无障碍稳定监听后，会优先读取音量键事件。读取范围仅用于判断你配置的音量键序列。",

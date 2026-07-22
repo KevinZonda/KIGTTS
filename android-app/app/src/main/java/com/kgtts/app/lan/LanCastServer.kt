@@ -95,6 +95,10 @@ internal class LanCastServer(
                 "application/javascript; charset=utf-8"
             )
             session.uri == "/assets/material-symbols.ttf" -> rawFontResponse()
+            session.uri == "/assets/kigtts-logo-horizontal.svg" -> assetResponse(
+                "lan_cast/kigtts-logo-horizontal.svg",
+                "image/svg+xml"
+            )
             session.uri == "/font/current" -> currentFontResponse()
             session.uri.startsWith("/media/") -> mediaResponse(session.uri)
             session.uri == "/health" -> textResponse(Response.Status.OK, "ok")

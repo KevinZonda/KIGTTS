@@ -254,6 +254,7 @@ import com.lhtstudio.kigtts.app.data.SoundboardConfig
 import com.lhtstudio.kigtts.app.data.SoundboardPresetIo
 import com.lhtstudio.kigtts.app.data.KOKORO_VOICE_NAME
 import com.lhtstudio.kigtts.app.data.LedSubtitleSettings
+import com.lhtstudio.kigtts.app.data.QuickTextGestureSettings
 import com.lhtstudio.kigtts.app.data.SYSTEM_TTS_VOICE_NAME
 import com.lhtstudio.kigtts.app.data.VoicePackInfo
 import com.lhtstudio.kigtts.app.data.UserPrefs
@@ -426,6 +427,7 @@ data class UiState(
     val floatingOverlayShowOnLockScreen: Boolean = false,
     val floatingOverlayFabPrefersKeyboard: Boolean = false,
     val floatingOverlayHardcodedShortcutSupplement: Boolean = false,
+    val quickTextGestureSettings: QuickTextGestureSettings = QuickTextGestureSettings(),
     val volumeHotkeyUpDownEnabled: Boolean = false,
     val volumeHotkeyDownUpEnabled: Boolean = false,
     val volumeHotkeyWindowMs: Int = UserPrefs.VOLUME_HOTKEY_DEFAULT_WINDOW_MS,

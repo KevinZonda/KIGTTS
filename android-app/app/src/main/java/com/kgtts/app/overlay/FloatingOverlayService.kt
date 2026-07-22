@@ -163,18 +163,30 @@ class FloatingOverlayService : Service() {
     private var settingsJob: Job? = null
     private var fontChangeJob: Job? = null
     private var screenStateReceiverRegistered = false
+    private var lockScreenRefreshGeneration = 0
     private val screenStateReceiver =
         object : BroadcastReceiver() {
             override fun onReceive(context: Context?, intent: Intent?) {
                 when (intent?.action) {
                     Intent.ACTION_SCREEN_OFF -> {
+                        LockScreenOverlayHostActivity.dismiss(this@FloatingOverlayService)
+                        if (settings.floatingOverlayShowOnLockScreen) {
+                            refreshOverlayForLockScreen("screen_off", delayMs = 180L)
+                        }
                         healFabInteractionState("screen_off")
                     }
                     Intent.ACTION_SCREEN_ON -> {
-                        if (settings.floatingOverlayShowOnLockScreen) refreshOverlayForLockScreen()
+                        if (settings.floatingOverlayShowOnLockScreen) {
+                            LockScreenOverlayHostActivity.showIfLocked(
+                                this@FloatingOverlayService,
+                                "screen_on"
+                            )
+                            refreshOverlayForLockScreen("screen_on", delayMs = 220L)
+                        }
                         healFabInteractionState("screen_on")
                     }
                     Intent.ACTION_USER_PRESENT -> {
+                        LockScreenOverlayHostActivity.dismiss(this@FloatingOverlayService)
                         applyOverlayWindowFlags()
                         healFabInteractionState("user_present")
                     }
@@ -1932,6 +1944,7 @@ class FloatingOverlayService : Service() {
         observeSoundboardPlayback()
         scope.launch {
             settings = UserPrefs.getSettings(this@FloatingOverlayService)
+            syncLockScreenOverlayHost("settings_loaded")
             refreshRecognitionResourceAvailability()
             val typefaceChanged = refreshOverlayTypefaces(settings)
             applyOverlayWindowFlags()
@@ -1996,6 +2009,7 @@ class FloatingOverlayService : Service() {
     }
 
     override fun onDestroy() {
+        LockScreenOverlayHostActivity.dismiss(this)
         settingsJob?.cancel()
         settingsJob = null
         fontChangeJob?.cancel()
@@ -2097,6 +2111,7 @@ class FloatingOverlayService : Service() {
                     return@collectLatest
                 }
                 if (next.floatingOverlayShowOnLockScreen != previousShowOnLockScreen) {
+                    syncLockScreenOverlayHost("setting_changed")
                     rebuildWindowsPreservingState()
                     return@collectLatest
                 }
@@ -2233,14 +2248,28 @@ class FloatingOverlayService : Service() {
         screenStateReceiverRegistered = false
     }
 
-    private fun refreshOverlayForLockScreen() {
+    private fun refreshOverlayForLockScreen(reason: String, delayMs: Long) {
         applyOverlayWindowFlags()
+        val generation = ++lockScreenRefreshGeneration
         fabRoot?.postDelayed({
-            if (settings.floatingOverlayShowOnLockScreen && fabRoot != null) {
+            if (
+                generation == lockScreenRefreshGeneration &&
+                settings.floatingOverlayShowOnLockScreen &&
+                fabRoot != null
+            ) {
                 rebuildWindowsPreservingState()
-                healFabInteractionState("lock_screen_rebuild")
+                healFabInteractionState("lock_screen_rebuild_$reason")
+                AppLogger.i("FloatingOverlayService refreshed for lock screen: $reason")
             }
-        }, 80L)
+        }, delayMs)
+    }
+
+    private fun syncLockScreenOverlayHost(reason: String) {
+        if (settings.floatingOverlayShowOnLockScreen) {
+            LockScreenOverlayHostActivity.showIfLocked(this, reason)
+        } else {
+            LockScreenOverlayHostActivity.dismiss(this)
+        }
     }
 
     @Suppress("DEPRECATION")
@@ -2252,8 +2281,7 @@ class FloatingOverlayService : Service() {
         if (notFocusable) flags = flags or WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
         if (notTouchable) flags = flags or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
         if (settings.floatingOverlayShowOnLockScreen) {
-            flags = flags or WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
-                WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
+            flags = flags or WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED
         }
         return flags
     }
@@ -4306,6 +4334,7 @@ class FloatingOverlayService : Service() {
             context = this,
             windowManager = windowManager,
             styleProvider = ::overlayInteractionStyle,
+            windowFlagsProvider = { overlayWindowFlags(notFocusable = false) },
             createPreviewCard = ::createOverlayTextInputPreviewCard,
             updatePreviewCard = ::updateOverlayTextInputPreviewCard,
             onDraftChanged = { quickSubtitleInputText = it },
@@ -4337,6 +4366,7 @@ class FloatingOverlayService : Service() {
             context = this,
             windowManager = windowManager,
             styleProvider = ::overlayInteractionStyle,
+            windowFlagsProvider = { overlayWindowFlags(notFocusable = false) },
             onModeSelected = { keyboardFirst ->
                 settings = settings.copy(
                     floatingOverlayFabPrefersKeyboard = keyboardFirst,

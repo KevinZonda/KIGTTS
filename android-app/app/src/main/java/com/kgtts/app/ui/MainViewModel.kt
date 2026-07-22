@@ -256,6 +256,7 @@ import com.lhtstudio.kigtts.app.data.SoundboardConfig
 import com.lhtstudio.kigtts.app.data.SoundboardPresetIo
 import com.lhtstudio.kigtts.app.data.KOKORO_VOICE_NAME
 import com.lhtstudio.kigtts.app.data.LedSubtitleSettings
+import com.lhtstudio.kigtts.app.data.QuickTextGestureSettings
 import com.lhtstudio.kigtts.app.data.SYSTEM_TTS_VOICE_NAME
 import com.lhtstudio.kigtts.app.data.VoicePackInfo
 import com.lhtstudio.kigtts.app.data.UserPrefs
@@ -899,6 +900,7 @@ class MainViewModel(
             floatingOverlayFabPrefersKeyboard = settings.floatingOverlayFabPrefersKeyboard,
             floatingOverlayHardcodedShortcutSupplement =
                 settings.floatingOverlayHardcodedShortcutSupplement,
+            quickTextGestureSettings = settings.quickTextGestureSettings,
             volumeHotkeyUpDownEnabled = settings.volumeHotkeyUpDownEnabled,
             volumeHotkeyDownUpEnabled = settings.volumeHotkeyDownUpEnabled,
             volumeHotkeyWindowMs = settings.volumeHotkeyWindowMs,
@@ -3493,6 +3495,45 @@ class MainViewModel(
         uiState = uiState.copy(floatingOverlayHardcodedShortcutSupplement = enabled)
         viewModelScope.launch {
             UserPrefs.setFloatingOverlayHardcodedShortcutSupplement(appContext, enabled)
+        }
+    }
+
+    fun setQuickTextGestureMasterEnabled(enabled: Boolean) {
+        updateQuickTextGestureSettings { settings -> settings.copy(enabled = enabled) }
+    }
+
+    fun setQuickTextGestureBindingEnabled(gestureId: String, enabled: Boolean) {
+        updateQuickTextGestureSettings { settings ->
+            settings.updateBinding(gestureId) { binding -> binding.copy(enabled = enabled) }
+        }
+    }
+
+    fun updateQuickTextGestureBinding(gestureId: String, enabled: Boolean, text: String) {
+        updateQuickTextGestureSettings { settings ->
+            settings.updateBinding(gestureId) { binding ->
+                binding.copy(enabled = enabled, text = text)
+            }
+        }
+    }
+
+    fun triggerQuickTextGesture(gestureId: String) {
+        val settings = uiState.quickTextGestureSettings
+        val binding = settings.binding(gestureId) ?: return
+        if (!settings.enabled || !binding.enabled || binding.text.isBlank()) return
+        submitQuickSubtitlePreset(
+            text = binding.text,
+            hasVoice = uiState.voiceDir != null,
+            interruptCurrent = uiState.quickSubtitleInterruptQueue
+        )
+    }
+
+    private fun updateQuickTextGestureSettings(
+        transform: (QuickTextGestureSettings) -> QuickTextGestureSettings
+    ) {
+        val updated = transform(uiState.quickTextGestureSettings).normalized()
+        uiState = uiState.copy(quickTextGestureSettings = updated)
+        viewModelScope.launch {
+            UserPrefs.setQuickTextGestureSettings(appContext, updated)
         }
     }
 

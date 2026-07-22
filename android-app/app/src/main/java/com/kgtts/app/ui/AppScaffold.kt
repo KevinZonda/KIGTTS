@@ -365,6 +365,7 @@ fun AppScaffold(viewModel: MainViewModel) {
     var page by rememberSaveable { mutableStateOf(pageQuickSubtitle) }
     var drawingFullscreen by rememberSaveable { mutableStateOf(false) }
     var quickSubtitleFullscreen by rememberSaveable { mutableStateOf(false) }
+    var overlayGestureSettingsOpen by rememberSaveable { mutableStateOf(false) }
     var runningStripCollapsed by rememberSaveable { mutableStateOf(true) }
     var logTopBarActions by remember { mutableStateOf<LogTopBarActions?>(null) }
     var fontTopBarActions by remember { mutableStateOf<FontTopBarActions?>(null) }
@@ -652,6 +653,7 @@ fun AppScaffold(viewModel: MainViewModel) {
         basePage == pageQuickSubtitle && quickSubtitleRoute == QuickSubtitleRoutes.Led
     val quickSubtitleSubPageOpen =
         basePage == pageQuickSubtitle && quickSubtitleRoute != QuickSubtitleRoutes.Main
+    val overlayGestureSubPageOpen = basePage == pageOverlay && overlayGestureSettingsOpen
     val soundboardEditorOpen =
         basePage == pageSoundboard && soundboardRoute == SoundboardRoutes.Editor
     val soundboardSubPageOpen =
@@ -680,6 +682,9 @@ fun AppScaffold(viewModel: MainViewModel) {
         basePage == pageSettings && settingsRoute == SettingsRoutes.Privacy
     val settingsAgreementOpen =
         basePage == pageSettings && settingsRoute == SettingsRoutes.Agreement
+    LaunchedEffect(basePage) {
+        if (basePage != pageOverlay) overlayGestureSettingsOpen = false
+    }
     var lastTopBarBackClickAtMs by remember { mutableLongStateOf(0L) }
     var drawerExpanded by rememberSaveable { mutableStateOf(false) }
     val runningStripEligible = !(drawingFullscreen && basePage == pageDrawing) && !quickSubtitleLedOpen
@@ -935,6 +940,9 @@ fun AppScaffold(viewModel: MainViewModel) {
         if (now - lastTopBarBackClickAtMs < 280L) return
         lastTopBarBackClickAtMs = now
         when {
+            overlayGestureSubPageOpen -> {
+                overlayGestureSettingsOpen = false
+            }
             quickSubtitleSubPageOpen -> {
                 quickSubtitleNavController.popBackStack(QuickSubtitleRoutes.Main, inclusive = false)
             }
@@ -1413,7 +1421,9 @@ fun AppScaffold(viewModel: MainViewModel) {
     }
 
     val topBar: @Composable ((() -> Unit)) -> Unit = { onNavClick ->
-        val currentTitle = if (quickSubtitleEditorOpen) {
+        val currentTitle = if (overlayGestureSubPageOpen) {
+            "手势触发快捷文本"
+        } else if (quickSubtitleEditorOpen) {
             "编辑便捷字幕"
         } else if (soundboardEditorOpen) {
             "编辑音效板"
@@ -1518,6 +1528,7 @@ fun AppScaffold(viewModel: MainViewModel) {
                 navigationIcon = {
                     AnimatedContent(
                         targetState = when {
+                            overlayGestureSubPageOpen -> 5
                             quickSubtitleSubPageOpen -> 1
                             soundboardSubPageOpen -> 2
                             settingsFontsOpen || settingsLogOpen || settingsLicensesOpen || settingsPrivacyOpen || settingsAgreementOpen -> 3
@@ -1536,7 +1547,7 @@ fun AppScaffold(viewModel: MainViewModel) {
                         },
                         label = "topbar_nav_switch"
                     ) { navMode ->
-                        if (navMode == 1 || navMode == 2 || navMode == 3 || navMode == 4) {
+                        if (navMode in 1..5) {
                             KigttsIconButton(onClick = {
                                 popSecondaryPageSafely()
                             }) {
@@ -2204,16 +2215,42 @@ fun AppScaffold(viewModel: MainViewModel) {
                 label = "page_switch"
             ) { current ->
                 when (current) {
-                    pageOverlay -> FloatingOverlayScreen(
-                        viewModel = viewModel,
-                        state = state,
-                        onOpenMainSettings = {
-                            page = pageSettings
-                            if (settingsRoute != SettingsRoutes.Main) {
-                                settingsNavController.popBackStack(SettingsRoutes.Main, inclusive = false)
-                            }
+                    pageOverlay -> AnimatedContent(
+                        targetState = overlayGestureSettingsOpen,
+                        transitionSpec = {
+                            ContentTransform(
+                                targetContentEnter = fadeIn(animationSpec = tween(180)) +
+                                    slideInHorizontally(
+                                        initialOffsetX = { width -> if (targetState) width / 5 else -width / 5 },
+                                        animationSpec = tween(220, easing = FastOutSlowInEasing)
+                                    ),
+                                initialContentExit = fadeOut(animationSpec = tween(120)) +
+                                    slideOutHorizontally(
+                                        targetOffsetX = { width -> if (targetState) -width / 5 else width / 5 },
+                                        animationSpec = tween(180, easing = FastOutSlowInEasing)
+                                    )
+                            )
+                        },
+                        label = "overlay_gesture_settings"
+                    ) { gestureSettingsOpen ->
+                        if (gestureSettingsOpen) {
+                            QuickTextGestureSettingsScreen(viewModel = viewModel, state = state)
+                        } else {
+                            FloatingOverlayScreen(
+                                viewModel = viewModel,
+                                state = state,
+                                onOpenMainSettings = {
+                                    page = pageSettings
+                                    if (settingsRoute != SettingsRoutes.Main) {
+                                        settingsNavController.popBackStack(SettingsRoutes.Main, inclusive = false)
+                                    }
+                                },
+                                onOpenQuickTextGestureSettings = {
+                                    overlayGestureSettingsOpen = true
+                                }
+                            )
                         }
-                    )
+                    }
                     pageLanCast -> LanCastScreen(
                         viewModel = viewModel,
                         state = state
@@ -2417,6 +2454,9 @@ fun AppScaffold(viewModel: MainViewModel) {
     BackHandler(enabled = quickSubtitleImmersive) {
         quickSubtitleFullscreen = false
     }
+    BackHandler(enabled = overlayGestureSubPageOpen) {
+        overlayGestureSettingsOpen = false
+    }
     LaunchedEffect(fullScreenImmersive) {
         if (fullScreenImmersive) {
             drawerExpanded = false
@@ -2588,7 +2628,10 @@ fun AppScaffold(viewModel: MainViewModel) {
                 gesturesEnabled = basePage != pageDrawing &&
                         !state.pushToTalkPressed &&
                         !quickCardMainOpen &&
-                        !quickSubtitleLedOpen,
+                        !quickSubtitleLedOpen &&
+                        !(basePage == pageQuickSubtitle &&
+                            quickSubtitleRoute == QuickSubtitleRoutes.Main &&
+                            state.quickTextGestureSettings.enabled),
                 drawerShape = RectangleShape,
                 drawerBackgroundColor = Color.Transparent,
                 drawerElevation = 0.dp,

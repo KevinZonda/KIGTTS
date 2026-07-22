@@ -158,6 +158,8 @@ object UserPrefs {
         booleanPreferencesKey("floating_overlay_fab_input_guide_shown")
     private val KEY_FLOATING_OVERLAY_HARDCODED_SHORTCUT_SUPPLEMENT =
         booleanPreferencesKey("floating_overlay_hardcoded_shortcut_supplement")
+    private val KEY_QUICK_TEXT_GESTURE_SETTINGS =
+        stringPreferencesKey("quick_text_gesture_settings")
     private val KEY_VOLUME_HOTKEY_UP_DOWN_ENABLED = booleanPreferencesKey("volume_hotkey_up_down_enabled")
     private val KEY_VOLUME_HOTKEY_DOWN_UP_ENABLED = booleanPreferencesKey("volume_hotkey_down_up_enabled")
     private val KEY_VOLUME_HOTKEY_UP_DOWN_ACTION = stringPreferencesKey("volume_hotkey_up_down_action")
@@ -277,6 +279,7 @@ object UserPrefs {
         val floatingOverlayFabPrefersKeyboard: Boolean = false,
         val floatingOverlayFabInputGuideShown: Boolean = false,
         val floatingOverlayHardcodedShortcutSupplement: Boolean = false,
+        val quickTextGestureSettings: QuickTextGestureSettings = QuickTextGestureSettings(),
         val volumeHotkeyUpDownEnabled: Boolean = false,
         val volumeHotkeyDownUpEnabled: Boolean = false,
         val volumeHotkeyWindowMs: Int = VOLUME_HOTKEY_DEFAULT_WINDOW_MS,
@@ -528,6 +531,9 @@ object UserPrefs {
                 this[KEY_FLOATING_OVERLAY_FAB_INPUT_GUIDE_SHOWN] ?: false,
             floatingOverlayHardcodedShortcutSupplement =
                 this[KEY_FLOATING_OVERLAY_HARDCODED_SHORTCUT_SUPPLEMENT] ?: false,
+            quickTextGestureSettings = decodeQuickTextGestureSettings(
+                this[KEY_QUICK_TEXT_GESTURE_SETTINGS]
+            ),
             volumeHotkeyUpDownEnabled = this[KEY_VOLUME_HOTKEY_UP_DOWN_ENABLED] ?: false,
             volumeHotkeyDownUpEnabled = this[KEY_VOLUME_HOTKEY_DOWN_UP_ENABLED] ?: false,
             volumeHotkeyWindowMs = (this[KEY_VOLUME_HOTKEY_WINDOW_MS] ?: VOLUME_HOTKEY_DEFAULT_WINDOW_MS)
@@ -988,6 +994,15 @@ object UserPrefs {
     suspend fun setFloatingOverlayHardcodedShortcutSupplement(context: Context, enabled: Boolean) {
         context.dataStore.edit { prefs ->
             prefs[KEY_FLOATING_OVERLAY_HARDCODED_SHORTCUT_SUPPLEMENT] = enabled
+        }
+    }
+
+    suspend fun setQuickTextGestureSettings(
+        context: Context,
+        settings: QuickTextGestureSettings
+    ) {
+        context.dataStore.edit { prefs ->
+            prefs[KEY_QUICK_TEXT_GESTURE_SETTINGS] = encodeQuickTextGestureSettings(settings)
         }
     }
 
