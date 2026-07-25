@@ -449,7 +449,10 @@ internal fun SettingsNavHost(
             LogScreen(onTopBarActionsChange = onTopBarActionsChange)
         }
         composable(SettingsRoutes.Fonts) {
-            FontSettingsScreen(onTopBarActionsChange = onFontTopBarActionsChange)
+            FontSettingsScreen(
+                onTopBarActionsChange = onFontTopBarActionsChange,
+                useBuiltinFileManager = state.useBuiltinFileManager
+            )
         }
         composable(SettingsRoutes.Licenses) {
             LegalDocumentScreen(

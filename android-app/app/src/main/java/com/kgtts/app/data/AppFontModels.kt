@@ -10,6 +10,9 @@ internal object AppFontDefaults {
     const val MaxWeight = 1000
     const val ManifestFileName = "font_manifest.json"
     const val MetadataFileName = "font.json"
+    const val ClockFontIdPrefix = "clock-"
+
+    fun isClockFontId(id: String): Boolean = id.startsWith(ClockFontIdPrefix)
 }
 
 internal enum class AppFontOrigin(val wireName: String) {
@@ -155,6 +158,14 @@ internal enum class AppFontRemoteSource(
     fun resolvedRepositoryBaseUrl(value: String): String =
         normalizeRepositoryBaseUrl(value).takeIf(::isValidRepositoryBaseUrl)
             ?: defaultRepositoryBaseUrl
+
+    val clockRepositoryBaseUrl: String
+        get() = when (this) {
+            ModelScope ->
+                "https://modelscope.cn/models/LHTSTUDIO/KIGTTS_CLOCK_FONTS_Resource/resolve/master"
+            HuggingFace ->
+                "https://huggingface.co/LHT02/KIGTTS_CLOCK_FONTS_Resource/resolve/main"
+        }
 
     companion object {
         fun fromPreferenceValue(value: Int): AppFontRemoteSource =

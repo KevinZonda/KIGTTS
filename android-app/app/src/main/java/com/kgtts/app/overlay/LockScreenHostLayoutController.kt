@@ -13,6 +13,7 @@ import android.widget.TextView
 internal class LockScreenHostLayoutController(
     private val context: Context,
     private val root: FrameLayout,
+    private val backgroundView: View,
     private val timeView: TextClock,
     private val dateView: TextView,
     private val unlockHint: LinearLayout,
@@ -21,6 +22,7 @@ internal class LockScreenHostLayoutController(
     private var currentMode = LockScreenLayoutMode.PhonePortrait
     private var currentTimeGroup: LinearLayout? = null
     private var miniOverlayVisible = false
+    private var timeAndDateAlignedStart = false
 
     fun apply() {
         val metrics = context.resources.displayMetrics
@@ -34,6 +36,13 @@ internal class LockScreenHostLayoutController(
         currentMode = mode
         detachReusableViews()
         root.removeAllViews()
+        root.addView(
+            backgroundView,
+            FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+        )
         val timeGroup = createTimeGroup()
         currentTimeGroup = timeGroup
         if (mode == LockScreenLayoutMode.PhonePortrait) {
@@ -50,15 +59,27 @@ internal class LockScreenHostLayoutController(
         updateClockVisibility(animate = true)
     }
 
+    fun setTimeAndDateAlignedStart(alignedStart: Boolean) {
+        if (timeAndDateAlignedStart == alignedStart) return
+        timeAndDateAlignedStart = alignedStart
+        apply()
+    }
+
     private fun detachReusableViews() {
         (timeView.parent as? ViewGroup)?.removeView(timeView)
         (dateView.parent as? ViewGroup)?.removeView(dateView)
         (unlockHint.parent as? ViewGroup)?.removeView(unlockHint)
+        (backgroundView.parent as? ViewGroup)?.removeView(backgroundView)
     }
 
     private fun createTimeGroup(): LinearLayout = LinearLayout(context).apply {
         orientation = LinearLayout.VERTICAL
-        gravity = Gravity.CENTER
+        val horizontalGravity = if (timeAndDateAlignedStart) Gravity.START else Gravity.CENTER
+        gravity = horizontalGravity
+        timeView.gravity = horizontalGravity
+        dateView.gravity = horizontalGravity
+        val horizontalPadding = if (timeAndDateAlignedStart) dp(28) else 0
+        setPadding(horizontalPadding, 0, horizontalPadding, 0)
         addView(timeView, wrapContentParams())
         addView(dateView, wrapContentParams().apply { topMargin = dp(8) })
     }

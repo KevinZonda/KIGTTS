@@ -366,7 +366,7 @@ fun AppScaffold(viewModel: MainViewModel) {
     var drawingFullscreen by rememberSaveable { mutableStateOf(false) }
     var drawingPaletteEditorOpen by rememberSaveable { mutableStateOf(false) }
     var quickSubtitleFullscreen by rememberSaveable { mutableStateOf(false) }
-    var overlayGestureSettingsOpen by rememberSaveable { mutableStateOf(false) }
+    var overlaySettingsPage by rememberSaveable { mutableStateOf(OverlaySettingsPage.Main) }
     var runningStripCollapsed by rememberSaveable { mutableStateOf(true) }
     var logTopBarActions by remember { mutableStateOf<LogTopBarActions?>(null) }
     var fontTopBarActions by remember { mutableStateOf<FontTopBarActions?>(null) }
@@ -657,7 +657,7 @@ fun AppScaffold(viewModel: MainViewModel) {
         basePage == pageQuickSubtitle && quickSubtitleRoute == QuickSubtitleRoutes.Led
     val quickSubtitleSubPageOpen =
         basePage == pageQuickSubtitle && quickSubtitleRoute != QuickSubtitleRoutes.Main
-    val overlayGestureSubPageOpen = basePage == pageOverlay && overlayGestureSettingsOpen
+    val overlaySubPageOpen = basePage == pageOverlay && overlaySettingsPage != OverlaySettingsPage.Main
     val drawingPaletteSubPageOpen = basePage == pageDrawing && drawingPaletteEditorOpen
     val soundboardEditorOpen =
         basePage == pageSoundboard && soundboardRoute == SoundboardRoutes.Editor
@@ -688,7 +688,7 @@ fun AppScaffold(viewModel: MainViewModel) {
     val settingsAgreementOpen =
         basePage == pageSettings && settingsRoute == SettingsRoutes.Agreement
     LaunchedEffect(basePage) {
-        if (basePage != pageOverlay) overlayGestureSettingsOpen = false
+        if (basePage != pageOverlay) overlaySettingsPage = OverlaySettingsPage.Main
     }
     var lastTopBarBackClickAtMs by remember { mutableLongStateOf(0L) }
     var drawerExpanded by rememberSaveable { mutableStateOf(false) }
@@ -954,8 +954,11 @@ fun AppScaffold(viewModel: MainViewModel) {
                 drawingPaletteTopBarActions?.onBackRequest?.invoke()
                 if (!handledByEditor) drawingPaletteEditorOpen = false
             }
-            overlayGestureSubPageOpen -> {
-                overlayGestureSettingsOpen = false
+            overlaySubPageOpen -> {
+                overlaySettingsPage = when (overlaySettingsPage) {
+                    OverlaySettingsPage.ClockFont -> OverlaySettingsPage.LockScreen
+                    else -> OverlaySettingsPage.Main
+                }
             }
             quickSubtitleSubPageOpen -> {
                 quickSubtitleNavController.popBackStack(QuickSubtitleRoutes.Main, inclusive = false)
@@ -1477,8 +1480,13 @@ fun AppScaffold(viewModel: MainViewModel) {
     }
 
     val topBar: @Composable ((() -> Unit)) -> Unit = { onNavClick ->
-        val currentTitle = if (overlayGestureSubPageOpen) {
-            "手势触发快捷文本"
+        val currentTitle = if (overlaySubPageOpen) {
+            when (overlaySettingsPage) {
+                OverlaySettingsPage.QuickTextGestures -> "手势触发快捷文本"
+                OverlaySettingsPage.LockScreen -> "锁屏设置"
+                OverlaySettingsPage.ClockFont -> "选择时钟字体"
+                OverlaySettingsPage.Main -> "悬浮窗与热键"
+            }
         } else if (drawingPaletteSubPageOpen) {
             "编辑调色板"
         } else if (quickSubtitleEditorOpen) {
@@ -1587,7 +1595,7 @@ fun AppScaffold(viewModel: MainViewModel) {
                     AnimatedContent(
                         targetState = when {
                             drawingPaletteSubPageOpen -> 6
-                            overlayGestureSubPageOpen -> 5
+                            overlaySubPageOpen -> 5
                             quickSubtitleSubPageOpen -> 1
                             soundboardSubPageOpen -> 2
                             settingsFontsOpen || settingsLogOpen || settingsLicensesOpen || settingsPrivacyOpen || settingsAgreementOpen -> 3
@@ -1668,7 +1676,10 @@ fun AppScaffold(viewModel: MainViewModel) {
                     val showVoicePackActions = basePage == pageVoicePack
                     val showSettingsEntryActions =
                         basePage == pageSettings && settingsRoute == SettingsRoutes.Main
-                    val showSettingsFontActions = basePage == pageSettings && settingsFontsOpen
+                    val showSettingsFontActions =
+                        (basePage == pageSettings && settingsFontsOpen) ||
+                            (basePage == pageOverlay &&
+                                overlaySettingsPage == OverlaySettingsPage.ClockFont)
                     val showSettingsLogActions = basePage == pageSettings && settingsLogOpen
                     val settingsActions = logTopBarActions
                     val fontActions = fontTopBarActions
@@ -2329,27 +2340,51 @@ fun AppScaffold(viewModel: MainViewModel) {
             ) { current ->
                 when (current) {
                     pageOverlay -> AnimatedContent(
-                        targetState = overlayGestureSettingsOpen,
+                        targetState = overlaySettingsPage,
                         transitionSpec = {
+                            val forward = targetState.ordinal > initialState.ordinal
                             ContentTransform(
                                 targetContentEnter = fadeIn(animationSpec = tween(180)) +
                                     slideInHorizontally(
-                                        initialOffsetX = { width -> if (targetState) width / 5 else -width / 5 },
+                                        initialOffsetX = { width -> if (forward) width / 5 else -width / 5 },
                                         animationSpec = tween(220, easing = FastOutSlowInEasing)
                                     ),
                                 initialContentExit = fadeOut(animationSpec = tween(120)) +
                                     slideOutHorizontally(
-                                        targetOffsetX = { width -> if (targetState) -width / 5 else width / 5 },
+                                        targetOffsetX = { width -> if (forward) -width / 5 else width / 5 },
                                         animationSpec = tween(180, easing = FastOutSlowInEasing)
                                     )
                             )
                         },
                         label = "overlay_gesture_settings"
-                    ) { gestureSettingsOpen ->
-                        if (gestureSettingsOpen) {
-                            QuickTextGestureSettingsScreen(viewModel = viewModel, state = state)
-                        } else {
-                            FloatingOverlayScreen(
+                    ) { overlayPage ->
+                        when (overlayPage) {
+                            OverlaySettingsPage.QuickTextGestures ->
+                                QuickTextGestureSettingsScreen(viewModel = viewModel, state = state)
+                            OverlaySettingsPage.LockScreen ->
+                                LockScreenSettingsScreen(
+                                    viewModel = viewModel,
+                                    state = state,
+                                    onOpenClockFontSettings = {
+                                        overlaySettingsPage = OverlaySettingsPage.ClockFont
+                                    }
+                                )
+                            OverlaySettingsPage.ClockFont ->
+                                ClockFontSettingsScreen(
+                                    selectedFontId = state.lockScreenSettings.clockFontId,
+                                    selectedWeight = state.lockScreenSettings.clockFontWeight,
+                                    onSelect = { font, weight ->
+                                        viewModel.updateLockScreenSettings {
+                                            it.copy(
+                                                clockFontId = font.id,
+                                                clockFontWeight = weight
+                                            )
+                                        }
+                                    },
+                                    onTopBarActionsChange = { fontTopBarActions = it },
+                                    useBuiltinFileManager = state.useBuiltinFileManager
+                                )
+                            OverlaySettingsPage.Main -> FloatingOverlayScreen(
                                 viewModel = viewModel,
                                 state = state,
                                 onOpenMainSettings = {
@@ -2359,7 +2394,10 @@ fun AppScaffold(viewModel: MainViewModel) {
                                     }
                                 },
                                 onOpenQuickTextGestureSettings = {
-                                    overlayGestureSettingsOpen = true
+                                    overlaySettingsPage = OverlaySettingsPage.QuickTextGestures
+                                },
+                                onOpenLockScreenSettings = {
+                                    overlaySettingsPage = OverlaySettingsPage.LockScreen
                                 }
                             )
                         }
@@ -2597,8 +2635,8 @@ fun AppScaffold(viewModel: MainViewModel) {
     BackHandler(enabled = quickSubtitleImmersive) {
         quickSubtitleFullscreen = false
     }
-    BackHandler(enabled = overlayGestureSubPageOpen) {
-        overlayGestureSettingsOpen = false
+    BackHandler(enabled = overlaySubPageOpen) {
+        popSecondaryPageSafely()
     }
     BackHandler(enabled = drawingPaletteSubPageOpen) {
         popSecondaryPageSafely()

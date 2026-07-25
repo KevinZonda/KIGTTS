@@ -18,6 +18,8 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -26,6 +28,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
@@ -278,7 +281,12 @@ private fun BuiltinAnimatedDropdownMenu(
                     backgroundColor = MaterialTheme.colors.surface,
                     elevation = 8.dp
                 ) {
-                    Column(content = content)
+                    Column(
+                        modifier = Modifier
+                            .heightIn(max = 360.dp)
+                            .verticalScroll(rememberScrollState()),
+                        content = content
+                    )
                 }
             }
         }
@@ -408,17 +416,13 @@ fun BuiltinFilePickerDialog(
                 Button(onClick = { permissionLauncher.launch(readPermission) }) {
                     Text("允许访问文件")
                 }
-            } else if (allFilesAccess.supported && allFilesAccess.granted) {
-                Text(
-                    "全部文件访问已开启，可直接浏览共享存储。",
-                    style = MaterialTheme.typography.body2,
-                    color = MaterialTheme.colors.primary
-                )
-            } else if (allFilesAccess.supported && !allFilesAccess.granted) {
-                Text(
-                    "若共享目录中的资源没有显示，可选择“全部文件”一次开启共享存储访问；也可以继续按目录授权或使用系统文件选择器。",
-                    style = MaterialTheme.typography.body2
-                )
+            } else if (allFilesAccess.supported) {
+                if (!allFilesAccess.granted) {
+                    Text(
+                        "若共享目录中的资源没有显示，可选择“全部文件”一次开启共享存储访问；也可以继续按目录授权或使用系统文件选择器。",
+                        style = MaterialTheme.typography.body2
+                    )
+                }
             } else if ((usesSharedNonMediaFallback || Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) && systemPickerAction != null) {
                 Text(
                     "没有找到文件？可添加可访问目录，或改用系统文件选择器。",
@@ -430,40 +434,46 @@ fun BuiltinFilePickerDialog(
                 modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    if (allFilesAccess.supported) {
-                        Md2OutlinedButton(
-                            onClick = allFilesAccess.openSettings,
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Text(if (allFilesAccess.granted) "管理权限" else "全部文件", maxLines = 1)
-                        }
-                    }
-                    Md2OutlinedButton(
-                        onClick = { treePermissionLauncher.launch(null) },
-                        modifier = Modifier.weight(1f)
+                if (allFilesAccess.supported || systemPickerAction != null) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text("添加可访问目录")
-                    }
-                    if (systemPickerAction != null) {
-                        Md2OutlinedButton(
-                            onClick = systemPickerAction,
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Text("系统文件选择器", maxLines = 1)
+                        if (allFilesAccess.supported) {
+                            Md2OutlinedButton(
+                                onClick = allFilesAccess.openSettings,
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text(
+                                    if (allFilesAccess.granted) "管理权限" else "全部文件",
+                                    maxLines = 1
+                                )
+                            }
+                        }
+                        if (systemPickerAction != null) {
+                            Md2OutlinedButton(
+                                onClick = systemPickerAction,
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text("系统文件选择器", maxLines = 1)
+                            }
                         }
                     }
                 }
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.Start,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
+                    Md2OutlinedButton(
+                        onClick = { treePermissionLauncher.launch(null) },
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text("添加可访问目录", maxLines = 1)
+                    }
+
                     BuiltinFlatIconButton(
                         onClick = {
                             if (navigationStack.size > 1) {
@@ -902,6 +912,8 @@ private val BuiltinImageFileExtensions = setOf(
     "heif"
 )
 
+internal val BuiltinFontFileExtensions = setOf("ttf", "otf")
+
 private val BuiltinArchiveFileExtensions = setOf(
     "7z",
     "zip",
@@ -965,6 +977,7 @@ private fun builtinItemIconName(name: String, isDirectory: Boolean): String {
         "kigcard" -> "badge"
         "kigtpk" -> "subtitles"
         "kigconfig" -> "settings_backup_restore"
+        in BuiltinFontFileExtensions -> "font_download"
         in BuiltinAudioFileExtensions -> "audio_file"
         in BuiltinImageFileExtensions -> "image"
         in BuiltinArchiveFileExtensions -> "folder_zip"

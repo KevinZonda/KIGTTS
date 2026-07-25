@@ -36,6 +36,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
@@ -44,6 +45,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.lhtstudio.kigtts.app.data.AppFontDefaults
 import com.lhtstudio.kigtts.app.data.AppFontOrigin
 import com.lhtstudio.kigtts.app.data.InstalledAppFont
 import kotlinx.coroutines.Dispatchers
@@ -56,15 +58,26 @@ internal data class FontTopBarActions(
     val onDownload: () -> Unit
 )
 
+internal fun fontPickerMimeTypes(): Array<String> = arrayOf(
+    "font/ttf",
+    "font/otf",
+    "application/x-font-ttf",
+    "application/x-font-opentype",
+    "application/octet-stream"
+)
+
 @Composable
 internal fun FontSettingsScreen(
     onTopBarActionsChange: (FontTopBarActions?) -> Unit,
+    useBuiltinFileManager: Boolean,
     fontViewModel: FontSettingsViewModel = viewModel()
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val state by fontViewModel.state.collectAsState()
     var showDownloadDialog by remember { mutableStateOf(false) }
     var showDownloadSourceDialog by remember { mutableStateOf(false) }
+    var showBuiltinFontPicker by rememberSaveable { mutableStateOf(false) }
+    var showInstalledClockFonts by rememberSaveable { mutableStateOf(false) }
     var weightFont by remember { mutableStateOf<InstalledAppFont?>(null) }
     var deleteFont by remember { mutableStateOf<InstalledAppFont?>(null) }
     val importLauncher = rememberLauncherForActivityResult(
@@ -73,19 +86,19 @@ internal fun FontSettingsScreen(
         if (uri != null) fontViewModel.importFont(uri)
     }
 
-    DisposableEffect(importLauncher, fontViewModel) {
+    fun openSystemFontPicker() {
+        importLauncher.launch(fontPickerMimeTypes())
+    }
+
+    DisposableEffect(importLauncher, fontViewModel, useBuiltinFileManager) {
         onTopBarActionsChange(
             FontTopBarActions(
                 onImport = {
-                    importLauncher.launch(
-                        arrayOf(
-                            "font/ttf",
-                            "font/otf",
-                            "application/x-font-ttf",
-                            "application/x-font-opentype",
-                            "application/octet-stream"
-                        )
-                    )
+                    if (useBuiltinFileManager) {
+                        showBuiltinFontPicker = true
+                    } else {
+                        openSystemFontPicker()
+                    }
                 },
                 onDownload = { showDownloadDialog = true }
             )
@@ -114,7 +127,10 @@ internal fun FontSettingsScreen(
                     LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
                 }
             }
-            items(state.fonts, key = { it.id }) { font ->
+            val visibleFonts = state.fonts.filter { font ->
+                showInstalledClockFonts || !AppFontDefaults.isClockFontId(font.id)
+            }
+            items(visibleFonts, key = { it.id }) { font ->
                 FontListItem(
                     font = font,
                     selected = state.selectedFontId == font.id,
@@ -157,12 +173,14 @@ internal fun FontSettingsScreen(
     }
     if (showDownloadDialog) {
         LaunchedEffect(showDownloadDialog) {
-            if (state.catalog.isEmpty()) fontViewModel.loadCatalog(state.catalogSource)
+            fontViewModel.loadCatalog(state.catalogSource)
         }
         FontDownloadDialog(
             state = state,
             installedFonts = state.fonts.associateBy { it.id },
             onOpenSources = { showDownloadSourceDialog = true },
+            showInstalledClockFonts = showInstalledClockFonts,
+            onShowInstalledClockFontsChange = { showInstalledClockFonts = it },
             onInstall = { fontViewModel.installRemoteFont(it) },
             onDismiss = {
                 showDownloadSourceDialog = false
@@ -198,6 +216,21 @@ internal fun FontSettingsScreen(
             },
             confirmButton = {
                 Md2TextButton(onClick = fontViewModel::dismissLicense) { Text("关闭") }
+            }
+        )
+    }
+    if (showBuiltinFontPicker) {
+        BuiltinFilePickerDialog(
+            title = "导入字体",
+            allowedExtensions = BuiltinFontFileExtensions,
+            onDismiss = { showBuiltinFontPicker = false },
+            onPicked = { uri ->
+                showBuiltinFontPicker = false
+                fontViewModel.importFont(uri)
+            },
+            onOpenSystemPicker = {
+                showBuiltinFontPicker = false
+                openSystemFontPicker()
             }
         )
     }
@@ -293,7 +326,12 @@ private fun FontListItem(
 }
 
 @Composable
-private fun ProgressiveFontName(font: InstalledAppFont, weight: Int) {
+internal fun ProgressiveFontName(
+    font: InstalledAppFont,
+    weight: Int,
+    text: String = font.displayName,
+    fontSizeSp: Int = 30
+) {
     val source = font.familySource().takeIf { it.files.isNotEmpty() }
     val lastModified = font.weightFiles.sumOf { it.file.lastModified() }
     val previewFamily by produceState<FontFamily?>(null, source, lastModified, weight) {
@@ -309,11 +347,11 @@ private fun ProgressiveFontName(font: InstalledAppFont, weight: Int) {
         label = "font_preview_${font.id}"
     ) { family ->
         Text(
-            text = font.displayName,
+            text = text,
             fontFamily = family ?: FontFamily.Default,
             fontWeight = FontWeight.Normal,
-            fontSize = 30.sp,
-            lineHeight = 38.sp,
+            fontSize = fontSizeSp.sp,
+            lineHeight = (fontSizeSp + 8).sp,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis
         )
@@ -321,7 +359,7 @@ private fun ProgressiveFontName(font: InstalledAppFont, weight: Int) {
 }
 
 @Composable
-private fun FontWeightDialog(
+internal fun FontWeightDialog(
     font: InstalledAppFont,
     onDismiss: () -> Unit,
     onConfirm: (Int) -> Unit

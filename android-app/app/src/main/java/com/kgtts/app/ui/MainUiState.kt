@@ -244,6 +244,7 @@ import com.lhtstudio.kigtts.app.audio.SpeakerEnrollResult
 import com.lhtstudio.kigtts.app.audio.VadMode
 import com.lhtstudio.kigtts.app.data.ModelRepository
 import com.lhtstudio.kigtts.app.data.AppFontFamilySource
+import com.lhtstudio.kigtts.app.data.LockScreenSettings
 import com.lhtstudio.kigtts.app.data.RecognitionResourceProgress
 import com.lhtstudio.kigtts.app.data.RecognitionResourceStatus
 import com.lhtstudio.kigtts.app.data.KokoroVoiceStatus
@@ -419,8 +420,8 @@ data class UiState(
     val internalWebViewEnabled: Boolean = true,
     val drawingSaveRelativePath: String = UserPrefs.DEFAULT_DRAWING_SAVE_RELATIVE_PATH,
     val quickCardAutoSaveOnExit: Boolean = false,
-    val useBuiltinFileManager: Boolean = true,
-    val useBuiltinGallery: Boolean = true,
+    val useBuiltinFileManager: Boolean = false,
+    val useBuiltinGallery: Boolean = false,
     val asrSendToQuickSubtitle: Boolean = true,
     val pushToTalkMode: Boolean = false,
     val pushToTalkConfirmInputMode: Boolean = false,
@@ -428,6 +429,7 @@ data class UiState(
     val floatingOverlayAutoDock: Boolean = true,
     val floatingOverlayShowOnLockScreen: Boolean = false,
     val lockScreenBackgroundPermissionGuideShown: Boolean = false,
+    val lockScreenSettings: LockScreenSettings = LockScreenSettings(),
     val floatingOverlayFabPrefersKeyboard: Boolean = false,
     val floatingOverlayHardcodedShortcutSupplement: Boolean = false,
     val quickTextGestureSettings: QuickTextGestureSettings = QuickTextGestureSettings(),

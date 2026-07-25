@@ -157,6 +157,7 @@ object UserPrefs {
         booleanPreferencesKey("floating_overlay_show_on_lock_screen")
     private val KEY_LOCK_SCREEN_BACKGROUND_PERMISSION_GUIDE_SHOWN =
         booleanPreferencesKey("lock_screen_background_permission_guide_shown")
+    private val KEY_LOCK_SCREEN_SETTINGS = stringPreferencesKey("lock_screen_settings")
     private val KEY_FLOATING_OVERLAY_FAB_PREFERS_KEYBOARD =
         booleanPreferencesKey("floating_overlay_fab_prefers_keyboard")
     private val KEY_FLOATING_OVERLAY_FAB_INPUT_GUIDE_SHOWN =
@@ -275,8 +276,8 @@ object UserPrefs {
         val internalWebViewEnabled: Boolean = true,
         val drawingSaveRelativePath: String = DEFAULT_DRAWING_SAVE_RELATIVE_PATH,
         val quickCardAutoSaveOnExit: Boolean = false,
-        val useBuiltinFileManager: Boolean = true,
-        val useBuiltinGallery: Boolean = true,
+        val useBuiltinFileManager: Boolean = false,
+        val useBuiltinGallery: Boolean = false,
         val asrSendToQuickSubtitle: Boolean = true,
         val pushToTalkMode: Boolean = false,
         val pushToTalkConfirmInput: Boolean = false,
@@ -284,6 +285,7 @@ object UserPrefs {
         val floatingOverlayAutoDock: Boolean = true,
         val floatingOverlayShowOnLockScreen: Boolean = false,
         val lockScreenBackgroundPermissionGuideShown: Boolean = false,
+        val lockScreenSettings: LockScreenSettings = LockScreenSettings(),
         val floatingOverlayFabPrefersKeyboard: Boolean = false,
         val floatingOverlayFabInputGuideShown: Boolean = false,
         val floatingOverlayHardcodedShortcutSupplement: Boolean = false,
@@ -596,8 +598,8 @@ object UserPrefs {
             drawingSaveRelativePath = (this[KEY_DRAWING_SAVE_RELATIVE_PATH]
                 ?: DEFAULT_DRAWING_SAVE_RELATIVE_PATH).ifBlank { DEFAULT_DRAWING_SAVE_RELATIVE_PATH },
             quickCardAutoSaveOnExit = this[KEY_QUICK_CARD_AUTO_SAVE_ON_EXIT] ?: false,
-            useBuiltinFileManager = this[KEY_USE_BUILTIN_FILE_MANAGER] ?: true,
-            useBuiltinGallery = this[KEY_USE_BUILTIN_GALLERY] ?: true,
+            useBuiltinFileManager = this[KEY_USE_BUILTIN_FILE_MANAGER] ?: false,
+            useBuiltinGallery = this[KEY_USE_BUILTIN_GALLERY] ?: false,
             asrSendToQuickSubtitle = this[KEY_ASR_SEND_TO_QUICK_SUBTITLE] ?: true,
             pushToTalkMode = this[KEY_PUSH_TO_TALK_MODE] ?: false,
             pushToTalkConfirmInput = this[KEY_PUSH_TO_TALK_CONFIRM_INPUT] ?: false,
@@ -606,6 +608,7 @@ object UserPrefs {
             floatingOverlayShowOnLockScreen = this[KEY_FLOATING_OVERLAY_SHOW_ON_LOCK_SCREEN] ?: false,
             lockScreenBackgroundPermissionGuideShown =
                 this[KEY_LOCK_SCREEN_BACKGROUND_PERMISSION_GUIDE_SHOWN] ?: false,
+            lockScreenSettings = decodeLockScreenSettings(this[KEY_LOCK_SCREEN_SETTINGS]),
             floatingOverlayFabPrefersKeyboard =
                 this[KEY_FLOATING_OVERLAY_FAB_PREFERS_KEYBOARD] ?: false,
             floatingOverlayFabInputGuideShown =
@@ -1063,6 +1066,12 @@ object UserPrefs {
     suspend fun setLockScreenBackgroundPermissionGuideShown(context: Context, shown: Boolean) {
         context.dataStore.edit { prefs ->
             prefs[KEY_LOCK_SCREEN_BACKGROUND_PERMISSION_GUIDE_SHOWN] = shown
+        }
+    }
+
+    suspend fun setLockScreenSettings(context: Context, settings: LockScreenSettings) {
+        context.dataStore.edit { prefs ->
+            prefs[KEY_LOCK_SCREEN_SETTINGS] = encodeLockScreenSettings(settings)
         }
     }
 

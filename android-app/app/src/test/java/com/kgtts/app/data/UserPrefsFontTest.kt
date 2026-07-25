@@ -69,4 +69,35 @@ class UserPrefsFontTest {
             source.resolvedRepositoryBaseUrl("not a repository URL")
         )
     }
+
+    @Test
+    fun clockFontRepositoriesAreSeparateFromTheChineseFontCatalog() {
+        assertEquals(
+            "https://modelscope.cn/models/LHTSTUDIO/KIGTTS_CLOCK_FONTS_Resource/resolve/master",
+            AppFontRemoteSource.ModelScope.clockRepositoryBaseUrl
+        )
+        assertEquals(
+            "https://huggingface.co/LHT02/KIGTTS_CLOCK_FONTS_Resource/resolve/main",
+            AppFontRemoteSource.HuggingFace.clockRepositoryBaseUrl
+        )
+        assertTrue(
+            AppFontRemoteSource.entries.all {
+                it.clockRepositoryBaseUrl != it.defaultRepositoryBaseUrl
+            }
+        )
+    }
+
+    @Test
+    fun clockFontIdsCanBeHiddenFromTheGeneralFontList() {
+        assertTrue(AppFontDefaults.isClockFontId("clock-google-sans-flex"))
+        assertFalse(AppFontDefaults.isClockFontId("source-han-sans-cn-regular"))
+    }
+
+    @Test
+    fun builtinFileAndGalleryPickersDefaultToSystemComponents() {
+        val settings = UserPrefs.AppSettings()
+
+        assertFalse(settings.useBuiltinFileManager)
+        assertFalse(settings.useBuiltinGallery)
+    }
 }

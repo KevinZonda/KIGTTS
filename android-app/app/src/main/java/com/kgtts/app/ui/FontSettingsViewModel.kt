@@ -49,6 +49,7 @@ internal class FontSettingsViewModel(application: Application) : AndroidViewMode
 
     private val _events = MutableSharedFlow<String>(extraBufferCapacity = 8)
     val events: SharedFlow<String> = _events.asSharedFlow()
+    private var catalogRepositoryOverride: String? = null
 
     init {
         viewModelScope.launch {
@@ -153,15 +154,26 @@ internal class FontSettingsViewModel(application: Application) : AndroidViewMode
         }
     }
 
-    fun loadCatalog(source: AppFontRemoteSource = _state.value.catalogSource) {
-        val repositoryBaseUrl = _state.value.repositoryBaseUrl(source)
+    fun loadCatalog(
+        source: AppFontRemoteSource = _state.value.catalogSource,
+        repositoryBaseUrlOverride: String? = null
+    ) {
+        val repositoryBaseUrl = repositoryBaseUrlOverride
+            ?.let(source::resolvedRepositoryBaseUrl)
+            ?: _state.value.repositoryBaseUrl(source)
+        val repositoryChanged = catalogRepositoryOverride != repositoryBaseUrl
+        catalogRepositoryOverride = repositoryBaseUrlOverride?.let(source::resolvedRepositoryBaseUrl)
         val requestId = ++catalogRequestId
         viewModelScope.launch {
             _state.update {
                 it.copy(
                     catalogSource = source,
                     catalogLoading = true,
-                    catalog = if (source == it.catalogSource) it.catalog else emptyList()
+                    catalog = if (source == it.catalogSource && !repositoryChanged) {
+                        it.catalog
+                    } else {
+                        emptyList()
+                    }
                 )
             }
             runCatching { repository.fetchCatalog(repositoryBaseUrl) }
@@ -210,7 +222,7 @@ internal class FontSettingsViewModel(application: Application) : AndroidViewMode
         }
     }
 
-    fun installRemoteFont(font: RemoteAppFont) {
+    fun installRemoteFont(font: RemoteAppFont, repositoryBaseUrlOverride: String? = null) {
         if (_state.value.installingFontId != null) return
         viewModelScope.launch {
             _state.update {
@@ -221,9 +233,12 @@ internal class FontSettingsViewModel(application: Application) : AndroidViewMode
             }
             runCatching {
                 val currentState = _state.value
+                val repositoryBaseUrl = repositoryBaseUrlOverride
+                    ?.let(currentState.catalogSource::resolvedRepositoryBaseUrl)
+                    ?: currentState.repositoryBaseUrl(currentState.catalogSource)
                 repository.installRemoteFont(
                     font,
-                    currentState.repositoryBaseUrl(currentState.catalogSource)
+                    repositoryBaseUrl
                 ) { progress ->
                     _state.update { it.copy(installProgress = progress) }
                 }

@@ -247,6 +247,8 @@ import com.lhtstudio.kigtts.app.data.AppFontRepository
 import com.lhtstudio.kigtts.app.data.AppFontChangeBus
 import com.lhtstudio.kigtts.app.data.AppConfigBackupIo
 import com.lhtstudio.kigtts.app.data.AppConfigBackupOptions
+import com.lhtstudio.kigtts.app.data.LockScreenSettings
+import com.lhtstudio.kigtts.app.data.LockScreenWallpaperStore
 import com.lhtstudio.kigtts.app.data.RecognitionResourceProgress
 import com.lhtstudio.kigtts.app.data.RecognitionResourceStatus
 import com.lhtstudio.kigtts.app.data.ResourceStorageCleaner
@@ -914,6 +916,7 @@ class MainViewModel(
             floatingOverlayShowOnLockScreen = settings.floatingOverlayShowOnLockScreen,
             lockScreenBackgroundPermissionGuideShown =
                 settings.lockScreenBackgroundPermissionGuideShown,
+            lockScreenSettings = settings.lockScreenSettings,
             floatingOverlayFabPrefersKeyboard = settings.floatingOverlayFabPrefersKeyboard,
             floatingOverlayHardcodedShortcutSupplement =
                 settings.floatingOverlayHardcodedShortcutSupplement,
@@ -3667,6 +3670,36 @@ class MainViewModel(
         uiState = uiState.copy(lockScreenBackgroundPermissionGuideShown = shown)
         viewModelScope.launch {
             UserPrefs.setLockScreenBackgroundPermissionGuideShown(appContext, shown)
+        }
+    }
+
+    fun updateLockScreenSettings(transform: (LockScreenSettings) -> LockScreenSettings) {
+        val next = transform(uiState.lockScreenSettings)
+        uiState = uiState.copy(lockScreenSettings = next)
+        viewModelScope.launch {
+            UserPrefs.setLockScreenSettings(appContext, next)
+        }
+    }
+
+    fun importLockScreenWallpaper(uri: Uri, onResult: (Boolean) -> Unit = {}) {
+        viewModelScope.launch {
+            runCatching { LockScreenWallpaperStore.import(appContext, uri) }
+                .onSuccess { path ->
+                    updateLockScreenSettings { it.copy(wallpaperPath = path) }
+                    onResult(true)
+                }
+                .onFailure { error ->
+                    AppLogger.e("Lock screen wallpaper import failed", error)
+                    onResult(false)
+                }
+        }
+    }
+
+    fun clearLockScreenWallpaper() {
+        updateLockScreenSettings { it.copy(wallpaperPath = "") }
+        viewModelScope.launch {
+            runCatching { LockScreenWallpaperStore.clear(appContext) }
+                .onFailure { AppLogger.e("Lock screen wallpaper clear failed", it) }
         }
     }
 
