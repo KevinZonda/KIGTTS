@@ -401,7 +401,7 @@ data class UiState(
     val keepAlive: Boolean = true,
     val numberReplaceMode: Int = 0,
     val landscapeDrawerMode: Int = UserPrefs.DRAWER_MODE_PERMANENT,
-    val solidTopBar: Boolean = true,
+    val solidTopBar: Boolean = false,
     val themeMode: Int = UserPrefs.THEME_MODE_FOLLOW_SYSTEM,
     val overlayThemeMode: Int = UserPrefs.THEME_MODE_FOLLOW_SYSTEM,
     val themeColorArgb: Int = UserPrefs.DEFAULT_THEME_COLOR_ARGB,

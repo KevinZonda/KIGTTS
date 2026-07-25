@@ -67,6 +67,11 @@ internal class LockScreenOverlayHostActivity : Activity() {
             clockHandler.postDelayed(this, delayMs)
         }
     }
+    private val keyguardStateCheckTask = object : Runnable {
+        override fun run() {
+            checkKeyguardState()
+        }
+    }
 
     private lateinit var root: FrameLayout
     private lateinit var timeView: TextClock
@@ -108,14 +113,12 @@ internal class LockScreenOverlayHostActivity : Activity() {
         clockHandler.post(dateRefreshTask)
         loadHostPalette()
         bindLockOverlayInstance()
-        if (!isKeyguardLocked()) finishWithoutAnimation()
+        checkKeyguardState()
     }
 
     override fun onResume() {
         super.onResume()
-        if (!isKeyguardLocked()) {
-            finishWithoutAnimation()
-        }
+        checkKeyguardState()
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {
@@ -375,8 +378,22 @@ internal class LockScreenOverlayHostActivity : Activity() {
     private fun isKeyguardLocked(): Boolean =
         getSystemService(KeyguardManager::class.java)?.isKeyguardLocked == true
 
+    private fun checkKeyguardState() {
+        clockHandler.removeCallbacks(keyguardStateCheckTask)
+        if (!isKeyguardLocked()) {
+            finishWithoutAnimation()
+        } else if (!isFinishing && !isDestroyed) {
+            clockHandler.postDelayed(
+                keyguardStateCheckTask,
+                KEYGUARD_STATE_CHECK_INTERVAL_MS
+            )
+        }
+    }
+
     @Suppress("DEPRECATION")
     private fun finishWithoutAnimation() {
+        if (isFinishing || isDestroyed) return
+        clockHandler.removeCallbacks(keyguardStateCheckTask)
         if (::root.isInitialized) {
             root.animate().cancel()
             root.alpha = 0f
@@ -391,6 +408,7 @@ internal class LockScreenOverlayHostActivity : Activity() {
         (resources.displayMetrics.density * value).roundToInt()
 
     companion object {
+        private const val KEYGUARD_STATE_CHECK_INTERVAL_MS = 400L
         private const val ACTION_DISMISS =
             "com.lhtstudio.kigtts.app.action.DISMISS_LOCK_SCREEN_OVERLAY_HOST"
         fun showIfLocked(context: Context, reason: String) {

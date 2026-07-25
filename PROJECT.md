@@ -502,3 +502,17 @@
 - 验证：`:app:testDebugUnitTest` 与 `:app:assembleDebug` 通过，24 个测试套件共 83 项，0 失败、0 错误、0 跳过；新增迷你页面不预留时钟高度的布局测试。实机已验证小米权限引导和应用权限页、退到桌面后熄屏/亮屏后台启动、横屏时间区避让、竖屏迷你快捷字幕时钟淡出与居中布局，刘海区域均正常显示锁屏壁纸。最终包连续完成两轮熄屏/亮屏，日志无 `WindowLeaked`、`BadTokenException`、致命异常或 ANR。
 - 设备：最终 Debug APK 已通过 `adb install -r` 保留数据覆盖安装到设备 `cfc8ef16`，版本保持 `0.1.2 (3)`。
 - Debug APK：`D:\KGTTS\android-app\app\build\outputs\apk\debug\app-debug.apk`，104581200 字节，SHA-256 `eca10ecc4dd6dd2b09ba76b14e73aeeaa02cfcda5a5d2ed06f9e09aae34d32ba`。
+
+## 2026-07-26 Android vivo 后台显示授权与顶栏默认值
+
+- vivo 识别：后台显示授权引导新增 vivo/iQOO 厂商识别；首次开启锁屏悬浮窗时会像小米设备一样显示对应说明，设置卡固定保留“锁屏显示权限”入口。
+- vivo 跳转：OriginOS 优先打开 `com.vivo.permissionmanager/.activity.SoftPermissionDetailActivity` 并传入当前包名，旧 iQOO 系统保留 `com.iqoo.secure` 兼容入口，均不可用时回退系统应用详情页。
+- 引导文案：vivo/iQOO 明确提示在“设备管理”中同时开启“锁屏显示”和“后台弹出界面”；小米继续只提示“后台弹出界面”，不会混用厂商术语。
+- 厂商策略：设备识别与引导文案拆为无 Android 依赖的策略文件，单元测试覆盖 Xiaomi/Redmi/POCO、vivo/iQOO、其他厂商以及 vivo 双权限文案。
+- 顶栏默认值：“使用主题色顶栏”的新用户默认值改为关闭，首次启动使用普通卡片色顶栏；已有用户已经保存的开关值不受影响。
+- 构建验证：`:app:testDebugUnitTest`、`:app:assembleDebug` 与 `:app:assembleRelease` 通过，26 个测试套件共 88 项，0 失败、0 错误、0 跳过；新增顶栏默认关闭回归测试，Release 的 `lintVitalRelease` 同步通过。
+- vivo 真机：Debug APK 已覆盖安装到远程设备 `V2072A`（Android 13、OriginOS 属性 13.5）。应用内“锁屏显示权限”可直达 KIGTTS 的 vivo 权限详情页，首屏包含“悬浮窗”“锁屏显示”和“后台弹出界面”。
+- 后台锁屏：悬浮窗与锁屏显示开启后，应用退到桌面再熄屏/亮屏，窗口焦点正常进入 `LockScreenOverlayHostActivity`，`LockScreenFloatingOverlayService` 已绑定并显示完整锁屏悬浮窗；日志无 `FATAL EXCEPTION`、`WindowLeaked` 或 `BadTokenException`。
+- 无密码退出：滑动解锁现在处理 `requestDismissKeyguard()` 的成功回调并立即关闭宿主；宿主显示期间每 400ms 检查一次 Keyguard 状态，覆盖无密码设备自动解锁但未发送 `USER_PRESENT` 的厂商时序，防止锁屏层异常驻留。vivo 实机分别通过自绘横向滑动和外部解除 Keyguard 复测，两种路径都在 1 秒内回到桌面且不再保留宿主 Activity。
+- Debug APK：`D:\KGTTS\android-app\app\build\outputs\apk\debug\app-debug.apk`，104584580 字节，SHA-256 `c73e16cac6cd10f4cea5da7f3dd9939fcb54dc50c0744d66ce06b6ca52eba1fc`。
+- Release APK：`D:\KGTTS\android-app\app\build\outputs\apk\release\app-release.apk`，95732483 字节，SHA-256 `0246c32810cb5994f3090bd4b136af00579ef41049ecbca85b52321d704fd419`；包元数据为 `0.1.2 (3)`，APK Signature Scheme v2 验证通过，签名证书 SHA-256 为 `3193af87840d767843e42770c92823b20df10b5edf03a7d618ce9f4da0f5e197`。

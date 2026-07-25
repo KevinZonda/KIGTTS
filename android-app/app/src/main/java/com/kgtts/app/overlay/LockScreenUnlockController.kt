@@ -74,9 +74,14 @@ internal class LockScreenUnlockController(
 
     private fun requestSystemUnlock() {
         val keyguard = activity.getSystemService(KeyguardManager::class.java)
-        keyguard?.requestDismissKeyguard(
+        if (keyguard?.isKeyguardLocked != true) {
+            onUnlocked()
+            return
+        }
+        keyguard.requestDismissKeyguard(
             activity,
             object : KeyguardManager.KeyguardDismissCallback() {
+                override fun onDismissSucceeded() = onUnlocked()
                 override fun onDismissCancelled() = resetHint()
                 override fun onDismissError() = resetHint()
             }

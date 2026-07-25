@@ -255,7 +255,7 @@ object UserPrefs {
         val keepAlive: Boolean = true,
         val numberReplaceMode: Int = 0,
         val landscapeDrawerMode: Int = DRAWER_MODE_PERMANENT,
-        val solidTopBar: Boolean = true,
+        val solidTopBar: Boolean = false,
         val themeMode: Int = THEME_MODE_FOLLOW_SYSTEM,
         val overlayThemeMode: Int = THEME_MODE_FOLLOW_SYSTEM,
         val themeColorArgb: Int = DEFAULT_THEME_COLOR_ARGB,
@@ -565,7 +565,7 @@ object UserPrefs {
             numberReplaceMode = this[KEY_NUMBER_REPLACE_MODE] ?: 0,
             landscapeDrawerMode = (this[KEY_LANDSCAPE_DRAWER_MODE] ?: DRAWER_MODE_PERMANENT)
                 .coerceIn(DRAWER_MODE_HIDDEN, DRAWER_MODE_PERMANENT),
-            solidTopBar = this[KEY_SOLID_TOP_BAR] ?: true,
+            solidTopBar = this[KEY_SOLID_TOP_BAR] ?: false,
             themeMode = normalizeThemeMode(this[KEY_THEME_MODE] ?: THEME_MODE_FOLLOW_SYSTEM),
             overlayThemeMode = normalizeThemeMode(this[KEY_OVERLAY_THEME_MODE] ?: THEME_MODE_FOLLOW_SYSTEM),
             themeColorArgb = normalizeThemeColorArgb(this[KEY_THEME_COLOR_ARGB] ?: DEFAULT_THEME_COLOR_ARGB),

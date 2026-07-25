@@ -404,8 +404,13 @@ fun FloatingOverlayScreen(
     var accessibilityExplainDialogOpen by remember { mutableStateOf(false) }
     var pendingVolumeHotkeyEnableSequence by remember { mutableStateOf<VolumeHotkeySequence?>(null) }
     var dismissVolumeHotkeyEnableWarning by remember { mutableStateOf(false) }
-    val requiresBackgroundPopupPermission = remember {
-        LockScreenBackgroundPermissionGuide.isRequiredForDevice()
+    val backgroundPermissionVendor = remember {
+        LockScreenBackgroundPermissionGuide.vendorForDevice()
+    }
+    val requiresBackgroundPopupPermission =
+        backgroundPermissionVendor != LockScreenBackgroundPermissionVendor.NONE
+    val backgroundPermissionEntryLabel = remember(backgroundPermissionVendor) {
+        LockScreenBackgroundPermissionPolicy.copyFor(backgroundPermissionVendor).settingsEntryLabel
     }
     var backgroundPopupPermissionGuideOpen by rememberSaveable { mutableStateOf(false) }
     val overlayPermissionLauncher =
@@ -652,7 +657,7 @@ fun FloatingOverlayScreen(
                     Md2OutlinedButton(
                         onClick = { backgroundPopupPermissionGuideOpen = true }
                     ) {
-                        Text("后台弹出权限")
+                        Text(backgroundPermissionEntryLabel)
                     }
                 }
                 Spacer(Modifier.height(8.dp))
@@ -828,6 +833,7 @@ fun FloatingOverlayScreen(
             backgroundPopupPermissionGuideOpen = false
         }
         LockScreenBackgroundPermissionGuideDialog(
+            vendor = backgroundPermissionVendor,
             onOpenSettings = {
                 closeBackgroundPopupPermissionGuide()
                 if (!LockScreenBackgroundPermissionGuide.openSettings(context)) {
