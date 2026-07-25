@@ -248,8 +248,9 @@ internal fun LedSubtitleQuickTextPanel(
                         .fillMaxHeight(),
                     label = "led_quick_text_group_content"
                 ) { groupIndex ->
+                    val group = groups.getOrNull(groupIndex)
                     LazyColumn(modifier = Modifier.fillMaxSize()) {
-                        itemsIndexed(groups.getOrNull(groupIndex)?.items.orEmpty()) { _, text ->
+                        itemsIndexed(group?.items.orEmpty()) { itemIndex, text ->
                             Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -262,6 +263,10 @@ internal fun LedSubtitleQuickTextPanel(
                                             interruptCurrent = state.quickSubtitleInterruptQueue
                                         )
                                     }
+                                    .quickSubtitleItemColorMarker(
+                                        group?.itemColorArgb(itemIndex),
+                                        QuickSubtitleItemColorEdge.Left
+                                    )
                                     .padding(horizontal = 12.dp, vertical = 8.dp),
                                 contentAlignment = Alignment.CenterStart
                             ) {

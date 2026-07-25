@@ -1,6 +1,7 @@
 package com.lhtstudio.kigtts.app.ui
 
 import android.app.Activity
+import android.content.pm.ActivityInfo
 import android.graphics.Typeface
 import android.os.Build
 import android.view.WindowManager
@@ -128,6 +129,28 @@ internal fun LedSubtitleWindowSettingsEffect(settings: LedSubtitleSettings) {
                 window.attributes = attributes
                 originalStatusBarColor?.let { window.statusBarColor = it }
                 originalNavigationBarColor?.let { window.navigationBarColor = it }
+            }
+        }
+    }
+}
+
+@Composable
+internal fun LedSubtitleOrientationLockEffect(locked: Boolean) {
+    val activity = LocalContext.current as? Activity
+    val originalOrientation = remember(activity) {
+        activity?.requestedOrientation ?: ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+    }
+    DisposableEffect(activity, locked) {
+        if (activity != null) {
+            activity.requestedOrientation = if (locked) {
+                ActivityInfo.SCREEN_ORIENTATION_LOCKED
+            } else {
+                originalOrientation
+            }
+        }
+        onDispose {
+            if (locked && activity != null) {
+                activity.requestedOrientation = originalOrientation
             }
         }
     }

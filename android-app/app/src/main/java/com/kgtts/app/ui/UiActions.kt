@@ -261,8 +261,10 @@ import com.lhtstudio.kigtts.app.data.defaultSoundboardGroups
 import com.lhtstudio.kigtts.app.data.isKokoroVoiceDir
 import com.lhtstudio.kigtts.app.data.isSystemTtsVoiceDir
 import com.lhtstudio.kigtts.app.data.parseSoundboardConfig
+import com.lhtstudio.kigtts.app.data.readQuickSubtitleItems
 import com.lhtstudio.kigtts.app.data.serializeSoundboardConfig
 import com.lhtstudio.kigtts.app.data.uniqueImportedGroupTitle
+import com.lhtstudio.kigtts.app.data.writeQuickSubtitleItems
 import com.lhtstudio.kigtts.app.overlay.FloatingOverlayService
 import com.lhtstudio.kigtts.app.overlay.OverlayBridge
 import com.lhtstudio.kigtts.app.overlay.RealtimeOwnerGate
@@ -367,7 +369,7 @@ internal fun writeQuickSubtitlePresetPackage(context: Context, groups: List<Quic
                             put("id", group.id)
                             put("title", group.title)
                             put("icon", group.icon)
-                            put("items", JSONArray().apply { group.items.forEach { put(it) } })
+                            writeQuickSubtitleItems(this, group.items, group.itemColors)
                         }
                     )
                 }
@@ -407,17 +409,13 @@ internal fun readQuickSubtitlePresetPackage(context: Context, uri: Uri): List<Qu
     val groupArray = root.optJSONArray("groups") ?: JSONArray()
     for (i in 0 until groupArray.length()) {
         val obj = groupArray.optJSONObject(i) ?: continue
-        val itemsArray = obj.optJSONArray("items") ?: JSONArray()
-        val items = mutableListOf<String>()
-        for (j in 0 until itemsArray.length()) {
-            val text = itemsArray.optString(j, "").trim()
-            if (text.isNotEmpty()) items += text
-        }
+        val itemPayload = readQuickSubtitleItems(obj)
         groups += QuickSubtitleGroup(
             id = obj.optLong("id", i + 1L),
             title = obj.optString("title", "未命名分组").trim().ifBlank { "未命名分组" },
             icon = obj.optString("icon", "sentiment_neutral").ifBlank { "sentiment_neutral" },
-            items = items.ifEmpty { listOf("请输入常用短句") }
+            items = itemPayload.items,
+            itemColors = itemPayload.colors
         )
     }
     return groups

@@ -3,11 +3,15 @@ package com.lhtstudio.kigtts.app.ui
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.material.Divider
 import androidx.compose.material.LinearProgressIndicator
 import androidx.compose.material.MaterialTheme
+import androidx.compose.material.Tab
+import androidx.compose.material.TabRow
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -17,11 +21,19 @@ import androidx.compose.ui.unit.dp
 import com.lhtstudio.kigtts.app.data.InstalledAppFont
 import com.lhtstudio.kigtts.app.data.RemoteAppFont
 
+internal data class FontDownloadCatalogTab(val label: String, val icon: String)
+
 @Composable
 internal fun FontDownloadDialog(
     state: FontSettingsUiState,
     installedFonts: Map<String, InstalledAppFont>,
     onOpenSources: () -> Unit,
+    sourceActionLabel: String = "管理下载源",
+    catalogTabs: List<FontDownloadCatalogTab> = emptyList(),
+    selectedCatalogTab: Int = 0,
+    onCatalogTabSelected: (Int) -> Unit = {},
+    showInstalledClockFonts: Boolean? = null,
+    onShowInstalledClockFontsChange: (Boolean) -> Unit = {},
     onInstall: (RemoteAppFont) -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -31,10 +43,44 @@ internal fun FontDownloadDialog(
         contentSpacing = 10.dp,
         content = {
             Text(
-                "字体文件会保存在软件私有目录，并同时保存许可证。",
+                "下载完成后即可在字体列表中使用，相关授权信息会一并保留。",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
+            if (showInstalledClockFonts != null) {
+                Md2SettingSwitchRow(
+                    title = "显示已安装的时钟字体",
+                    checked = showInstalledClockFonts,
+                    onCheckedChange = onShowInstalledClockFontsChange
+                )
+                Text(
+                    "时钟字体不包含中文字体，中文字体将保持系统默认字体。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            if (catalogTabs.isNotEmpty()) {
+                TabRow(
+                    selectedTabIndex = selectedCatalogTab.coerceIn(catalogTabs.indices),
+                    backgroundColor = MaterialTheme.colorScheme.surface,
+                    contentColor = MaterialTheme.colorScheme.primary
+                ) {
+                    catalogTabs.forEachIndexed { index, tab ->
+                        Tab(
+                            selected = selectedCatalogTab == index,
+                            onClick = { onCatalogTabSelected(index) },
+                            enabled = state.installingFontId == null,
+                            text = {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    MsIcon(tab.icon, contentDescription = null, iconSize = 18.dp)
+                                    Spacer(Modifier.size(6.dp))
+                                    Text(tab.label)
+                                }
+                            }
+                        )
+                    }
+                }
+            }
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -49,7 +95,7 @@ internal fun FontDownloadDialog(
                     enabled = state.installingFontId == null
                 ) {
                     MsIcon("settings", contentDescription = null, iconSize = 18.dp)
-                    Text("管理下载源")
+                    Text(sourceActionLabel)
                 }
             }
             if (state.catalogLoading) {

@@ -15,6 +15,9 @@ internal class LockScreenFloatingOverlayService : FloatingOverlayService() {
     private var hostToken: IBinder? = null
     private var hostUnlockRequester: (((() -> Unit) -> Unit))? = null
     private var hostMiniVisibilityListener: ((Boolean) -> Unit)? = null
+    private var hostEntryRevealListener: (() -> Unit)? = null
+    private var hostEntryRevealDispatched = false
+    private var lastReportedPanelVisible = false
     private var lastReportedMiniVisible = false
     private val binder = LocalBinder()
 
@@ -22,12 +25,16 @@ internal class LockScreenFloatingOverlayService : FloatingOverlayService() {
         fun attachHost(
             token: IBinder,
             unlockRequester: ((() -> Unit) -> Unit),
-            miniVisibilityListener: (Boolean) -> Unit
+            miniVisibilityListener: (Boolean) -> Unit,
+            entryRevealListener: () -> Unit
         ) {
             hostToken = token
             hostUnlockRequester = unlockRequester
             hostMiniVisibilityListener = miniVisibilityListener
+            hostEntryRevealListener = entryRevealListener
+            hostEntryRevealDispatched = false
             miniVisibilityListener(lastReportedMiniVisible)
+            dispatchHostEntryRevealIfNeeded()
             if (!hostReady.isCompleted) hostReady.complete(Unit)
         }
 
@@ -35,6 +42,10 @@ internal class LockScreenFloatingOverlayService : FloatingOverlayService() {
             removeAttachedHostWindowsImmediately()
             hostUnlockRequester = null
             hostMiniVisibilityListener = null
+            hostEntryRevealListener = null
+            hostEntryRevealDispatched = false
+            lastReportedPanelVisible = false
+            lastReportedMiniVisible = false
             hostToken = null
         }
     }
@@ -43,7 +54,11 @@ internal class LockScreenFloatingOverlayService : FloatingOverlayService() {
 
     override fun requiresOverlayPermission(): Boolean = false
 
+    override fun requiresFloatingOverlayEnabled(): Boolean = false
+
     override fun managesLockScreenHost(): Boolean = false
+
+    override fun observesScreenState(): Boolean = false
 
     override fun runsAsForegroundService(): Boolean = false
 
@@ -66,9 +81,19 @@ internal class LockScreenFloatingOverlayService : FloatingOverlayService() {
     }
 
     override fun onOverlayVisibilityChanged(panelVisible: Boolean, miniVisible: Boolean) {
-        if (lastReportedMiniVisible == miniVisible) return
-        lastReportedMiniVisible = miniVisible
-        hostMiniVisibilityListener?.invoke(miniVisible)
+        lastReportedPanelVisible = panelVisible
+        if (lastReportedMiniVisible != miniVisible) {
+            lastReportedMiniVisible = miniVisible
+            hostMiniVisibilityListener?.invoke(miniVisible)
+        }
+        dispatchHostEntryRevealIfNeeded()
+    }
+
+    private fun dispatchHostEntryRevealIfNeeded() {
+        if (hostEntryRevealDispatched || (!lastReportedPanelVisible && !lastReportedMiniVisible)) return
+        val listener = hostEntryRevealListener ?: return
+        hostEntryRevealDispatched = true
+        listener()
     }
 
     override suspend fun awaitOverlayHostReady() {

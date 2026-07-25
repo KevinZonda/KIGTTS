@@ -20,9 +20,12 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
@@ -117,6 +120,7 @@ internal fun LedSubtitleScreenContent(
     }
 
     LedSubtitleWindowSettingsEffect(settings)
+    LedSubtitleOrientationLockEffect(locked)
 
     LaunchedEffect(interactionSerial, locked) {
         delay(3_000)
@@ -171,7 +175,7 @@ internal fun LedSubtitleScreenContent(
     val imeBottomInset = WindowInsets.ime.asPaddingValues().calculateBottomPadding()
     val inputBarHeight = with(density) { inputBarHeightPx.toDp() }
     val floatingPreviewTopPadding =
-        WindowInsets.safeDrawing.asPaddingValues().calculateTopPadding() + 12.dp
+        WindowInsets.displayCutout.asPaddingValues().calculateTopPadding() + 12.dp
     val controlAlpha by animateFloatAsState(
         targetValue = if (controlsDimmed) 0.38f else 1f,
         animationSpec = tween(240),
@@ -276,6 +280,9 @@ internal fun LedSubtitleScreenContent(
             visible = activePanel == LedSubtitlePanel.Input && !locked,
             modifier = Modifier
                 .align(Alignment.BottomCenter)
+                .windowInsetsPadding(
+                    WindowInsets.displayCutout.only(WindowInsetsSides.Horizontal)
+                )
                 .zIndex(3f),
             enter = fadeIn(tween(150)) + slideInVertically(
                 initialOffsetY = { it },
@@ -316,6 +323,7 @@ internal fun LedSubtitleScreenContent(
             visible = activePanel == LedSubtitlePanel.QuickText && !locked,
             modifier = Modifier
                 .align(Alignment.CenterEnd)
+                .windowInsetsPadding(WindowInsets.displayCutout)
                 .zIndex(3f),
             enter = fadeIn(tween(150)) + slideInHorizontally(
                 initialOffsetX = { it },
@@ -339,6 +347,7 @@ internal fun LedSubtitleScreenContent(
             visible = activePanel == LedSubtitlePanel.Settings && !locked,
             modifier = Modifier
                 .align(Alignment.CenterEnd)
+                .windowInsetsPadding(WindowInsets.displayCutout)
                 .zIndex(3f),
             enter = fadeIn(tween(150)) + slideInHorizontally(
                 initialOffsetX = { it },

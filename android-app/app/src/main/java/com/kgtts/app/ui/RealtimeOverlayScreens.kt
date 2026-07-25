@@ -385,7 +385,8 @@ fun FloatingOverlayScreen(
     viewModel: MainViewModel,
     state: UiState,
     onOpenMainSettings: () -> Unit,
-    onOpenQuickTextGestureSettings: () -> Unit
+    onOpenQuickTextGestureSettings: () -> Unit,
+    onOpenLockScreenSettings: () -> Unit
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -404,8 +405,13 @@ fun FloatingOverlayScreen(
     var accessibilityExplainDialogOpen by remember { mutableStateOf(false) }
     var pendingVolumeHotkeyEnableSequence by remember { mutableStateOf<VolumeHotkeySequence?>(null) }
     var dismissVolumeHotkeyEnableWarning by remember { mutableStateOf(false) }
-    val requiresBackgroundPopupPermission = remember {
-        LockScreenBackgroundPermissionGuide.isRequiredForDevice()
+    val backgroundPermissionVendor = remember {
+        LockScreenBackgroundPermissionGuide.vendorForDevice()
+    }
+    val requiresBackgroundPopupPermission =
+        backgroundPermissionVendor != LockScreenBackgroundPermissionVendor.NONE
+    val backgroundPermissionEntryLabel = remember(backgroundPermissionVendor) {
+        LockScreenBackgroundPermissionPolicy.copyFor(backgroundPermissionVendor).settingsEntryLabel
     }
     var backgroundPopupPermissionGuideOpen by rememberSaveable { mutableStateOf(false) }
     val overlayPermissionLauncher =
@@ -634,33 +640,6 @@ fun FloatingOverlayScreen(
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Md2Switch(
-                        checked = state.floatingOverlayShowOnLockScreen,
-                        onCheckedChange = { enabled ->
-                            viewModel.setFloatingOverlayShowOnLockScreen(enabled)
-                            if (enabled && requiresBackgroundPopupPermission) {
-                                backgroundPopupPermissionGuideOpen = true
-                            }
-                        }
-                    )
-                    Text("锁屏时显示悬浮窗")
-                }
-                Text(
-                    "锁屏时仍可查看和操作悬浮窗；部分设备需要额外允许锁屏显示或后台弹出界面。",
-                    style = MaterialTheme.typography.bodySmall
-                )
-                if (requiresBackgroundPopupPermission) {
-                    Md2OutlinedButton(
-                        onClick = { backgroundPopupPermissionGuideOpen = true }
-                    ) {
-                        Text("后台弹出权限")
-                    }
-                }
-                Spacer(Modifier.height(8.dp))
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Md2Switch(
                         checked = state.floatingOverlayFabPrefersKeyboard,
                         onCheckedChange = { viewModel.setFloatingOverlayFabPrefersKeyboard(it) }
                     )
@@ -678,6 +657,23 @@ fun FloatingOverlayScreen(
         }
 
         Md2StaggeredFloatIn(index = 1) {
+            LockScreenSettingsEntryCard(
+                enabled = state.floatingOverlayShowOnLockScreen,
+                hasWallpaper = state.lockScreenSettings.wallpaperPath.isNotBlank(),
+                onEnabledChange = { enabled ->
+                    viewModel.setFloatingOverlayShowOnLockScreen(enabled)
+                    if (enabled && requiresBackgroundPopupPermission) {
+                        backgroundPopupPermissionGuideOpen = true
+                    }
+                },
+                onOpen = onOpenLockScreenSettings,
+                permissionEntryLabel = backgroundPermissionEntryLabel
+                    .takeIf { requiresBackgroundPopupPermission },
+                onOpenPermissionGuide = { backgroundPopupPermissionGuideOpen = true }
+            )
+        }
+
+        Md2StaggeredFloatIn(index = 2) {
             QuickTextGestureEntryCard(
                 settings = state.quickTextGestureSettings,
                 onMasterEnabledChange = viewModel::setQuickTextGestureMasterEnabled,
@@ -685,7 +681,7 @@ fun FloatingOverlayScreen(
             )
         }
 
-        Md2StaggeredFloatIn(index = 2) {
+        Md2StaggeredFloatIn(index = 3) {
             Md2SettingsCard(title = "音量热键") {
                 Text(
                     "开启后，可在应用外通过设定的音量键顺序触发快捷功能；按键状态只用于判断你配置的热键。",
@@ -828,6 +824,7 @@ fun FloatingOverlayScreen(
             backgroundPopupPermissionGuideOpen = false
         }
         LockScreenBackgroundPermissionGuideDialog(
+            vendor = backgroundPermissionVendor,
             onOpenSettings = {
                 closeBackgroundPopupPermissionGuide()
                 if (!LockScreenBackgroundPermissionGuide.openSettings(context)) {

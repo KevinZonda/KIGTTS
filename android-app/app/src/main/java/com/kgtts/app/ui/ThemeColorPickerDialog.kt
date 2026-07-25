@@ -42,10 +42,11 @@ import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.core.graphics.ColorUtils
+import com.lhtstudio.kigtts.app.data.WindowsColorNamesZhCn
 import java.util.Locale
 
 private val ThemeColorPresets = listOf(
-    "#f44336", "#e91e63", "#9c27b0", "#673ab7", "#3f51b5",
+    "#000000", "#ffffff", "#f44336", "#e91e63", "#9c27b0", "#673ab7", "#3f51b5",
     "#2196f3", "#03a9f4", "#00bcd4", "#009688", "#4caf50",
     "#8bc34a", "#cddc39", "#ffeb3b", "#ffc107", "#ff9800",
     "#ff5722", "#795548", "#9e9e9e", "#607d8b", "#038387"
@@ -57,6 +58,8 @@ internal fun ThemeColorPickerDialog(
     initialColor: Color,
     colorLabel: String = "候选主题色",
     onEditPalette: (() -> Unit)? = null,
+    clearOptionLabel: String? = null,
+    onClear: (() -> Unit)? = null,
     onDismissRequest: () -> Unit,
     onColorSelected: (Color) -> Unit
 ) {
@@ -165,7 +168,19 @@ internal fun ThemeColorPickerDialog(
                     .fillMaxWidth()
                     .height(48.dp)
                     .background(preview, RoundedCornerShape(UiTokens.Radius))
-            )
+                    .padding(horizontal = 14.dp),
+                contentAlignment = Alignment.CenterStart
+            ) {
+                Text(
+                    text = WindowsColorNamesZhCn.displayName(preview.toArgb()),
+                    color = if (ColorUtils.calculateLuminance(preview.toArgb()) >= 0.5) {
+                        Color.Black.copy(alpha = 0.82f)
+                    } else {
+                        Color.White.copy(alpha = 0.92f)
+                    },
+                    style = MaterialTheme.typography.body1
+                )
+            }
             OutlinedTextField(
                 value = hexInput,
                 onValueChange = {
@@ -196,6 +211,24 @@ internal fun ThemeColorPickerDialog(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
+            if (onClear != null) {
+                Divider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.55f))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable(onClick = onClear)
+                        .padding(vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    MsIcon("format_color_reset", contentDescription = null)
+                    androidx.compose.foundation.layout.Spacer(Modifier.width(12.dp))
+                    Text(
+                        text = clearOptionLabel ?: "清除颜色",
+                        modifier = Modifier.weight(1f),
+                        style = MaterialTheme.typography.body1
+                    )
+                }
+            }
             if (onEditPalette != null) {
                 Divider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.55f))
                 Row(

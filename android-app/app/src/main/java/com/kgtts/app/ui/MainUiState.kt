@@ -244,6 +244,7 @@ import com.lhtstudio.kigtts.app.audio.SpeakerEnrollResult
 import com.lhtstudio.kigtts.app.audio.VadMode
 import com.lhtstudio.kigtts.app.data.ModelRepository
 import com.lhtstudio.kigtts.app.data.AppFontFamilySource
+import com.lhtstudio.kigtts.app.data.LockScreenSettings
 import com.lhtstudio.kigtts.app.data.RecognitionResourceProgress
 import com.lhtstudio.kigtts.app.data.RecognitionResourceStatus
 import com.lhtstudio.kigtts.app.data.KokoroVoiceStatus
@@ -401,7 +402,7 @@ data class UiState(
     val keepAlive: Boolean = true,
     val numberReplaceMode: Int = 0,
     val landscapeDrawerMode: Int = UserPrefs.DRAWER_MODE_PERMANENT,
-    val solidTopBar: Boolean = true,
+    val solidTopBar: Boolean = false,
     val themeMode: Int = UserPrefs.THEME_MODE_FOLLOW_SYSTEM,
     val overlayThemeMode: Int = UserPrefs.THEME_MODE_FOLLOW_SYSTEM,
     val themeColorArgb: Int = UserPrefs.DEFAULT_THEME_COLOR_ARGB,
@@ -419,8 +420,8 @@ data class UiState(
     val internalWebViewEnabled: Boolean = true,
     val drawingSaveRelativePath: String = UserPrefs.DEFAULT_DRAWING_SAVE_RELATIVE_PATH,
     val quickCardAutoSaveOnExit: Boolean = false,
-    val useBuiltinFileManager: Boolean = true,
-    val useBuiltinGallery: Boolean = true,
+    val useBuiltinFileManager: Boolean = false,
+    val useBuiltinGallery: Boolean = false,
     val asrSendToQuickSubtitle: Boolean = true,
     val pushToTalkMode: Boolean = false,
     val pushToTalkConfirmInputMode: Boolean = false,
@@ -428,6 +429,7 @@ data class UiState(
     val floatingOverlayAutoDock: Boolean = true,
     val floatingOverlayShowOnLockScreen: Boolean = false,
     val lockScreenBackgroundPermissionGuideShown: Boolean = false,
+    val lockScreenSettings: LockScreenSettings = LockScreenSettings(),
     val floatingOverlayFabPrefersKeyboard: Boolean = false,
     val floatingOverlayHardcodedShortcutSupplement: Boolean = false,
     val quickTextGestureSettings: QuickTextGestureSettings = QuickTextGestureSettings(),
@@ -449,6 +451,7 @@ data class UiState(
     val quickSubtitleAllowLargeFont: Boolean = false,
     val quickSubtitleCompactControls: Boolean = false,
     val quickSubtitleFirstRunGuideCompleted: Boolean = false,
+    val quickSubtitleGuideReplayRequestId: Int = 0,
     val quickSubtitleKeepInputPreview: Boolean = true,
     val ledSubtitleSettings: LedSubtitleSettings = LedSubtitleSettings(),
     val lanCastDisplaySettings: LedSubtitleSettings = LedSubtitleSettings(),
@@ -546,8 +549,11 @@ data class QuickSubtitleGroup(
     val id: Long,
     val title: String,
     val icon: String,
-    val items: List<String>
-)
+    val items: List<String>,
+    val itemColors: List<Int?> = emptyList()
+) {
+    fun itemColorArgb(index: Int): Int? = itemColors.getOrNull(index)
+}
 
 enum class QuickCardType(val wireValue: String) {
     Image("image"),

@@ -8,9 +8,12 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material.IconButton
 import androidx.compose.material.Icon
 import androidx.compose.material.LocalContentColor
@@ -160,6 +163,7 @@ internal fun LedSubtitleGuideOverlay(
                             1f to Color.Black.copy(alpha = 0.72f)
                         )
                     )
+                    .windowInsetsPadding(WindowInsets.displayCutout)
                     .padding(horizontal = 54.dp, vertical = 24.dp),
                 contentAlignment = Alignment.BottomCenter
             ) {
@@ -199,6 +203,7 @@ internal fun LedQuickSubtitlePreviewDialog(
                 .fillMaxSize()
                 .background(Color.Black.copy(alpha = 0.62f))
                 .clickable { viewModel.closeQuickSubtitlePreview() }
+                .windowInsetsPadding(WindowInsets.displayCutout)
                 .padding(14.dp)
         ) {
             Surface(

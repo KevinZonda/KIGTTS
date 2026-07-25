@@ -354,6 +354,7 @@ internal fun SettingsNavHost(
     state: UiState,
     onTopBarActionsChange: (LogTopBarActions?) -> Unit,
     onFontTopBarActionsChange: (FontTopBarActions?) -> Unit,
+    onOpenQuickSubtitleGuide: () -> Unit,
     onOpenRecognitionResourceSources: () -> Unit,
     onPickRecognitionResourcePackage: () -> Unit,
     onDownloadRecognitionResources: () -> Unit,
@@ -436,6 +437,7 @@ internal fun SettingsNavHost(
                 onOpenAgreement = {
                     navController.navigate(SettingsRoutes.Agreement) { launchSingleTop = true }
                 },
+                onOpenQuickSubtitleGuide = onOpenQuickSubtitleGuide,
                 onOpenRecognitionResourceSources = onOpenRecognitionResourceSources,
                 onPickRecognitionResourcePackage = onPickRecognitionResourcePackage,
                 onDownloadRecognitionResources = onDownloadRecognitionResources,
@@ -449,7 +451,10 @@ internal fun SettingsNavHost(
             LogScreen(onTopBarActionsChange = onTopBarActionsChange)
         }
         composable(SettingsRoutes.Fonts) {
-            FontSettingsScreen(onTopBarActionsChange = onFontTopBarActionsChange)
+            FontSettingsScreen(
+                onTopBarActionsChange = onFontTopBarActionsChange,
+                useBuiltinFileManager = state.useBuiltinFileManager
+            )
         }
         composable(SettingsRoutes.Licenses) {
             LegalDocumentScreen(
@@ -478,6 +483,7 @@ fun SettingsScreen(
     onOpenLicenses: () -> Unit,
     onOpenPrivacy: () -> Unit,
     onOpenAgreement: () -> Unit,
+    onOpenQuickSubtitleGuide: () -> Unit,
     onOpenRecognitionResourceSources: () -> Unit,
     onPickRecognitionResourcePackage: () -> Unit,
     onDownloadRecognitionResources: () -> Unit,
@@ -1906,6 +1912,7 @@ fun SettingsScreen(
             }
             Md2StaggeredFloatIn(index = 3) {
                 Md2SettingsCard(title = "便捷字幕显示") {
+                    QuickSubtitleGuideSettingsEntry(onClick = onOpenQuickSubtitleGuide)
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()

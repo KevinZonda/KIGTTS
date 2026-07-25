@@ -6,4 +6,6 @@
     <string name="lock_screen_unlock_hint">滑动解锁</string>
     <string name="lock_screen_date_pattern">M月d日 EEEE</string>
     <string name="lock_screen_unlock_icon" translatable="false">keyboard_arrow_up</string>
+    <string name="lock_screen_clock_unavailable">未找到可用的时钟应用</string>
+    <string name="lock_screen_calendar_unavailable">未找到可用的日历应用</string>
 </resources>

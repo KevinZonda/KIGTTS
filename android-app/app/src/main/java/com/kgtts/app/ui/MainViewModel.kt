@@ -247,6 +247,8 @@ import com.lhtstudio.kigtts.app.data.AppFontRepository
 import com.lhtstudio.kigtts.app.data.AppFontChangeBus
 import com.lhtstudio.kigtts.app.data.AppConfigBackupIo
 import com.lhtstudio.kigtts.app.data.AppConfigBackupOptions
+import com.lhtstudio.kigtts.app.data.LockScreenSettings
+import com.lhtstudio.kigtts.app.data.LockScreenWallpaperStore
 import com.lhtstudio.kigtts.app.data.RecognitionResourceProgress
 import com.lhtstudio.kigtts.app.data.RecognitionResourceStatus
 import com.lhtstudio.kigtts.app.data.ResourceStorageCleaner
@@ -267,12 +269,16 @@ import com.lhtstudio.kigtts.app.data.SYSTEM_TTS_VOICE_NAME
 import com.lhtstudio.kigtts.app.data.VoicePackInfo
 import com.lhtstudio.kigtts.app.data.UserPrefs
 import com.lhtstudio.kigtts.app.data.VoicePackMeta
+import com.lhtstudio.kigtts.app.data.alignedQuickSubtitleItemColors
+import com.lhtstudio.kigtts.app.data.compactQuickSubtitleItemColors
 import com.lhtstudio.kigtts.app.data.defaultSoundboardGroups
 import com.lhtstudio.kigtts.app.data.isKokoroVoiceDir
 import com.lhtstudio.kigtts.app.data.isSystemTtsVoiceDir
 import com.lhtstudio.kigtts.app.data.parseSoundboardConfig
+import com.lhtstudio.kigtts.app.data.readQuickSubtitleItems
 import com.lhtstudio.kigtts.app.data.serializeSoundboardConfig
 import com.lhtstudio.kigtts.app.data.uniqueImportedGroupTitle
+import com.lhtstudio.kigtts.app.data.writeQuickSubtitleItems
 import com.lhtstudio.kigtts.app.overlay.FloatingOverlayService
 import com.lhtstudio.kigtts.app.overlay.OverlayBridge
 import com.lhtstudio.kigtts.app.overlay.RealtimeOwnerGate
@@ -914,6 +920,7 @@ class MainViewModel(
             floatingOverlayShowOnLockScreen = settings.floatingOverlayShowOnLockScreen,
             lockScreenBackgroundPermissionGuideShown =
                 settings.lockScreenBackgroundPermissionGuideShown,
+            lockScreenSettings = settings.lockScreenSettings,
             floatingOverlayFabPrefersKeyboard = settings.floatingOverlayFabPrefersKeyboard,
             floatingOverlayHardcodedShortcutSupplement =
                 settings.floatingOverlayHardcodedShortcutSupplement,
@@ -994,19 +1001,14 @@ class MainViewModel(
             val id = g.optLong("id", i.toLong() + 1L).coerceAtLeast(1L)
             val title = g.optString("title", "").trim()
             val icon = g.optString("icon", "sentiment_satisfied").ifBlank { "sentiment_satisfied" }
-            val itemsArr = g.optJSONArray("items") ?: JSONArray()
-            val items = mutableListOf<String>()
-            for (j in 0 until itemsArr.length()) {
-                val text = itemsArr.optString(j, "").trim()
-                if (text.isNotEmpty()) items.add(text)
-            }
-            if (items.isEmpty()) items.add("请输入常用短句")
+            val itemPayload = readQuickSubtitleItems(g)
             parsedGroups.add(
                 QuickSubtitleGroup(
                     id = id,
                     title = title,
                     icon = icon,
-                    items = items
+                    items = itemPayload.items,
+                    itemColors = itemPayload.colors
                 )
             )
             if (id > maxId) maxId = id
@@ -1056,9 +1058,7 @@ class MainViewModel(
                         put("id", g.id)
                         put("title", g.title)
                         put("icon", g.icon)
-                        val itemsArr = JSONArray()
-                        g.items.forEach { itemsArr.put(it) }
-                        put("items", itemsArr)
+                        writeQuickSubtitleItems(this, g.items, g.itemColors)
                     }
                 )
             }
@@ -1316,14 +1316,20 @@ class MainViewModel(
         replaceUntouchedDefaults: Boolean = false
     ): Int {
         val cleaned = imported.mapNotNull { group ->
-            val items = group.items.map { it.trim() }.filter { it.isNotEmpty() }
+            val entries = group.items.mapIndexedNotNull { index, rawText ->
+                rawText.trim().takeIf { it.isNotEmpty() }?.let { text ->
+                    text to group.itemColorArgb(index)
+                }
+            }
+            val items = entries.map { it.first }
             if (items.isEmpty()) {
                 null
             } else {
                 group.copy(
                     title = group.title.trim().ifBlank { "未命名分组" },
                     icon = group.icon.ifBlank { "sentiment_satisfied" },
-                    items = items
+                    items = items,
+                    itemColors = entries.map { it.second }.compactQuickSubtitleItemColors()
                 )
             }
         }
@@ -1531,7 +1537,10 @@ class MainViewModel(
         val text = value.trim().ifEmpty { "新快捷文本" }
         val next = quickSubtitleGroups.toMutableList()
         val g = next[groupIndex]
-        next[groupIndex] = g.copy(items = g.items + text)
+        next[groupIndex] = g.copy(
+            items = g.items + text,
+            itemColors = g.itemColors.alignedQuickSubtitleItemColors(g.items.size) + null
+        )
         quickSubtitleGroups = next
         saveQuickSubtitleConfig()
     }
@@ -1542,8 +1551,13 @@ class MainViewModel(
         if (itemIndex !in g.items.indices) return
         if (g.items.size <= 1) return
         val items = g.items.toMutableList().apply { removeAt(itemIndex) }
+        val colors = g.itemColors.alignedQuickSubtitleItemColors(g.items.size)
+            .toMutableList().apply { removeAt(itemIndex) }
         val next = quickSubtitleGroups.toMutableList()
-        next[groupIndex] = g.copy(items = items)
+        next[groupIndex] = g.copy(
+            items = items,
+            itemColors = colors.compactQuickSubtitleItemColors()
+        )
         quickSubtitleGroups = next
         saveQuickSubtitleConfig()
     }
@@ -1554,9 +1568,16 @@ class MainViewModel(
         val validIndexes = itemIndexes.filter { it in group.items.indices }.distinct().sortedDescending()
         if (validIndexes.isEmpty()) return 0
         val items = group.items.toMutableList()
-        validIndexes.forEach { idx -> items.removeAt(idx) }
+        val colors = group.itemColors.alignedQuickSubtitleItemColors(group.items.size).toMutableList()
+        validIndexes.forEach { idx ->
+            items.removeAt(idx)
+            colors.removeAt(idx)
+        }
         val next = quickSubtitleGroups.toMutableList()
-        next[groupIndex] = group.copy(items = items)
+        next[groupIndex] = group.copy(
+            items = items,
+            itemColors = colors.compactQuickSubtitleItemColors()
+        )
         quickSubtitleGroups = next
         saveQuickSubtitleConfig()
         return validIndexes.size
@@ -1570,10 +1591,20 @@ class MainViewModel(
         val validIndexes = itemIndexes.filter { it in source.items.indices }.distinct().sorted()
         if (validIndexes.isEmpty()) return 0
         val movedItems = validIndexes.map { source.items[it] }
+        val sourceColors = source.itemColors.alignedQuickSubtitleItemColors(source.items.size)
+        val targetColors = target.itemColors.alignedQuickSubtitleItemColors(target.items.size)
+        val movedColors = validIndexes.map { sourceColors[it] }
         val remainItems = source.items.filterIndexed { index, _ -> index !in validIndexes }
+        val remainColors = sourceColors.filterIndexed { index, _ -> index !in validIndexes }
         val next = quickSubtitleGroups.toMutableList()
-        next[fromGroupIndex] = source.copy(items = remainItems)
-        next[toGroupIndex] = target.copy(items = target.items + movedItems)
+        next[fromGroupIndex] = source.copy(
+            items = remainItems,
+            itemColors = remainColors.compactQuickSubtitleItemColors()
+        )
+        next[toGroupIndex] = target.copy(
+            items = target.items + movedItems,
+            itemColors = (targetColors + movedColors).compactQuickSubtitleItemColors()
+        )
         quickSubtitleGroups = next
         saveQuickSubtitleConfig()
         return movedItems.size
@@ -1586,8 +1617,14 @@ class MainViewModel(
         val items = g.items.toMutableList()
         val item = items.removeAt(from)
         items.add(to, item)
+        val colors = g.itemColors.alignedQuickSubtitleItemColors(g.items.size).toMutableList()
+        val color = colors.removeAt(from)
+        colors.add(to, color)
         val next = quickSubtitleGroups.toMutableList()
-        next[groupIndex] = g.copy(items = items)
+        next[groupIndex] = g.copy(
+            items = items,
+            itemColors = colors.compactQuickSubtitleItemColors()
+        )
         quickSubtitleGroups = next
         saveQuickSubtitleConfig()
     }
@@ -1604,11 +1641,27 @@ class MainViewModel(
         saveQuickSubtitleConfig()
     }
 
-    fun setQuickSubtitleItems(groupIndex: Int, items: List<String>) {
+    fun updateQuickSubtitleItemColor(groupIndex: Int, itemIndex: Int, colorArgb: Int?) {
+        if (groupIndex !in quickSubtitleGroups.indices) return
+        val group = quickSubtitleGroups[groupIndex]
+        if (itemIndex !in group.items.indices) return
+        val colors = group.itemColors.alignedQuickSubtitleItemColors(group.items.size).toMutableList()
+        colors[itemIndex] = colorArgb
+        val next = quickSubtitleGroups.toMutableList()
+        next[groupIndex] = group.copy(itemColors = colors.compactQuickSubtitleItemColors())
+        quickSubtitleGroups = next
+        saveQuickSubtitleConfig()
+    }
+
+    fun setQuickSubtitleItems(groupIndex: Int, items: List<String>, colors: List<Int?>) {
         if (groupIndex !in quickSubtitleGroups.indices) return
         val g = quickSubtitleGroups[groupIndex]
         val next = quickSubtitleGroups.toMutableList()
-        next[groupIndex] = g.copy(items = items.toList())
+        next[groupIndex] = g.copy(
+            items = items.toList(),
+            itemColors = colors.alignedQuickSubtitleItemColors(items.size)
+                .compactQuickSubtitleItemColors()
+        )
         quickSubtitleGroups = next
         saveQuickSubtitleConfig()
     }
@@ -3670,6 +3723,36 @@ class MainViewModel(
         }
     }
 
+    fun updateLockScreenSettings(transform: (LockScreenSettings) -> LockScreenSettings) {
+        val next = transform(uiState.lockScreenSettings)
+        uiState = uiState.copy(lockScreenSettings = next)
+        viewModelScope.launch {
+            UserPrefs.setLockScreenSettings(appContext, next)
+        }
+    }
+
+    fun importLockScreenWallpaper(uri: Uri, onResult: (Boolean) -> Unit = {}) {
+        viewModelScope.launch {
+            runCatching { LockScreenWallpaperStore.import(appContext, uri) }
+                .onSuccess { path ->
+                    updateLockScreenSettings { it.copy(wallpaperPath = path) }
+                    onResult(true)
+                }
+                .onFailure { error ->
+                    AppLogger.e("Lock screen wallpaper import failed", error)
+                    onResult(false)
+                }
+        }
+    }
+
+    fun clearLockScreenWallpaper() {
+        updateLockScreenSettings { it.copy(wallpaperPath = "") }
+        viewModelScope.launch {
+            runCatching { LockScreenWallpaperStore.clear(appContext) }
+                .onFailure { AppLogger.e("Lock screen wallpaper clear failed", it) }
+        }
+    }
+
     fun setFloatingOverlayFabPrefersKeyboard(enabled: Boolean) {
         uiState = uiState.copy(floatingOverlayFabPrefersKeyboard = enabled)
         viewModelScope.launch {
@@ -3836,11 +3919,26 @@ class MainViewModel(
     }
 
     fun completeQuickSubtitleFirstRunGuide() {
-        if (uiState.quickSubtitleFirstRunGuideCompleted) return
-        uiState = uiState.copy(quickSubtitleFirstRunGuideCompleted = true)
-        viewModelScope.launch {
-            UserPrefs.setQuickSubtitleFirstRunGuideCompleted(appContext, true)
+        val persistCompletion = !uiState.quickSubtitleFirstRunGuideCompleted
+        if (!persistCompletion && uiState.quickSubtitleGuideReplayRequestId == 0) return
+        uiState = uiState.copy(
+            quickSubtitleFirstRunGuideCompleted = true,
+            quickSubtitleGuideReplayRequestId = 0
+        )
+        if (persistCompletion) {
+            viewModelScope.launch {
+                UserPrefs.setQuickSubtitleFirstRunGuideCompleted(appContext, true)
+            }
         }
+    }
+
+    fun replayQuickSubtitleGuide() {
+        val nextRequestId = if (uiState.quickSubtitleGuideReplayRequestId == Int.MAX_VALUE) {
+            1
+        } else {
+            uiState.quickSubtitleGuideReplayRequestId + 1
+        }
+        uiState = uiState.copy(quickSubtitleGuideReplayRequestId = nextRequestId)
     }
 
     fun setQuickSubtitleKeepInputPreview(enabled: Boolean) {
