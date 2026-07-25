@@ -18,6 +18,7 @@ class QuickSubtitleFirstRunGuideTest {
         assertTrue(QuickSubtitleGuideAnchor.BottomBar in steps.last().anchors)
         assertTrue(QuickSubtitleGuideAnchor.RecognitionFab in steps.last().anchors)
         assertTrue(steps.last().messages.any { "用于语音识别" in it })
+        assertTrue(steps.last().messages.any { "可以从设置中再次进入使用引导" in it })
         assertTrue(QuickSubtitleGuideAnchor.TopBarMenu in steps[1].anchors)
         assertTrue(QuickSubtitleGuideAnchor.TopBarFullscreen in steps[1].anchors)
         assertTrue(QuickSubtitleGuideAnchor.SubtitleDisplay in steps[1].anchors)
@@ -69,6 +70,28 @@ class QuickSubtitleFirstRunGuideTest {
             resolveQuickSubtitleFirstRunGuideCompleted(
                 stored = false,
                 onboardingCompleted = true
+            )
+        )
+    }
+
+    @Test
+    fun completedGuideCanBePresentedForManualReplay() {
+        assertFalse(
+            shouldPresentQuickSubtitleGuide(
+                firstRunCompleted = true,
+                replayRequestId = 0
+            )
+        )
+        assertTrue(
+            shouldPresentQuickSubtitleGuide(
+                firstRunCompleted = true,
+                replayRequestId = 1
+            )
+        )
+        assertTrue(
+            shouldPresentQuickSubtitleGuide(
+                firstRunCompleted = false,
+                replayRequestId = 0
             )
         )
     }

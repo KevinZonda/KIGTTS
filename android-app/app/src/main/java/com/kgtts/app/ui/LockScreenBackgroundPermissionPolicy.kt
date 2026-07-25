@@ -32,9 +32,9 @@ internal object LockScreenBackgroundPermissionPolicy {
         when (vendor) {
             LockScreenBackgroundPermissionVendor.XIAOMI ->
                 LockScreenBackgroundPermissionCopy(
-                    description = "小米设备需要额外允许“后台弹出界面”，否则 KIGTTS 退到后台后无法显示自定义锁屏。",
-                    instructions = "打开权限设置后，找到“后台弹出界面”并设为“允许”。该权限只用于显示你已启用的自定义锁屏。",
-                    settingsEntryLabel = "后台弹出权限"
+                    description = "小米设备需要额外允许“锁屏显示”和“后台弹出界面”，否则 KIGTTS 退到后台后无法显示自定义锁屏。",
+                    instructions = "打开权限设置后，将“锁屏显示”和“后台弹出界面”设为“允许”。这些权限只用于显示你已启用的自定义锁屏。",
+                    settingsEntryLabel = "锁屏显示权限"
                 )
 
             LockScreenBackgroundPermissionVendor.VIVO ->

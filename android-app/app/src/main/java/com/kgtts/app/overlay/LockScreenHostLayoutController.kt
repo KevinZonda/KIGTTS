@@ -41,7 +41,11 @@ internal class LockScreenHostLayoutController(
             FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
-            )
+            ).apply {
+                leftMargin = -root.paddingLeft
+                rightMargin = -root.paddingRight
+                bottomMargin = -root.paddingBottom
+            }
         )
         val timeGroup = createTimeGroup()
         currentTimeGroup = timeGroup

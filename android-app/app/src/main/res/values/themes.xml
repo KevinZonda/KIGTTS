@@ -20,16 +20,21 @@
         <item name="android:navigationBarColor" tools:targetApi="l">#000000</item>
     </style>
 
-    <style name="Theme.KGTTS.LockScreenOverlayHost" parent="android:style/Theme.Translucent.NoTitleBar">
+    <style name="Theme.KGTTS.LockScreenOverlayHostBase" parent="android:style/Theme.Translucent.NoTitleBar">
         <item name="android:windowIsTranslucent">true</item>
         <item name="android:windowBackground">@android:color/transparent</item>
         <item name="android:windowNoTitle">true</item>
+        <item name="android:windowDrawsSystemBarBackgrounds">true</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
         <item name="android:backgroundDimEnabled">false</item>
         <item name="android:windowDisablePreview">true</item>
         <item name="android:windowIsFloating">false</item>
         <item name="android:showWhenLocked">true</item>
         <item name="android:turnScreenOn">false</item>
     </style>
+
+    <style name="Theme.KGTTS.LockScreenOverlayHost" parent="@style/Theme.KGTTS.LockScreenOverlayHostBase" />
 
     <style name="ThemeOverlay.KGTTS.OverlayPopup" parent="">
         <item name="android:popupBackground">@drawable/bg_overlay_popup</item>

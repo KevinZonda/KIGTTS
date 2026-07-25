@@ -625,9 +625,41 @@ enum class QuickSubtitleListPopupLayout {
     List
 }
 
+internal enum class QuickSubtitleItemColorEdge {
+    Left,
+    Bottom
+}
+
+internal fun Modifier.quickSubtitleItemColorMarker(
+    colorArgb: Int?,
+    edge: QuickSubtitleItemColorEdge,
+    thickness: Dp = 4.dp,
+    crossAxisInset: Dp = 0.dp
+): Modifier = if (colorArgb == null) {
+    this
+} else {
+    drawWithContent {
+        drawContent()
+        val thicknessPx = thickness.toPx()
+        val insetPx = crossAxisInset.toPx()
+        val markerSize = when (edge) {
+            QuickSubtitleItemColorEdge.Left ->
+                Size(thicknessPx, (size.height - insetPx * 2f).coerceAtLeast(0f))
+            QuickSubtitleItemColorEdge.Bottom ->
+                Size((size.width - insetPx * 2f).coerceAtLeast(0f), thicknessPx)
+        }
+        val markerOffset = when (edge) {
+            QuickSubtitleItemColorEdge.Left -> Offset(0f, insetPx)
+            QuickSubtitleItemColorEdge.Bottom -> Offset(insetPx, size.height - thicknessPx)
+        }
+        drawRect(Color(colorArgb), topLeft = markerOffset, size = markerSize)
+    }
+}
+
 @Composable
 internal fun QuickSubtitlePopupItem(
     text: String,
+    colorArgb: Int?,
     grid: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
@@ -650,12 +682,22 @@ internal fun QuickSubtitlePopupItem(
                         .background(gridContainerColor)
                         .border(
                             width = 1.dp,
-                            color = MaterialTheme.colorScheme.outline.copy(alpha = 0.28f),
+                            color = colorArgb?.let { Color(it) }
+                                ?: MaterialTheme.colorScheme.outline.copy(alpha = 0.28f),
                             shape = shape
                         )
                 } else {
                     Modifier
                 }
+            )
+            .quickSubtitleItemColorMarker(
+                colorArgb = colorArgb,
+                edge = if (grid) {
+                    QuickSubtitleItemColorEdge.Bottom
+                } else {
+                    QuickSubtitleItemColorEdge.Left
+                },
+                crossAxisInset = if (grid) 0.dp else 6.dp
             )
             .clickable(onClick = onClick)
     ) {
@@ -872,7 +914,8 @@ internal fun QuickSubtitleListDialog(
                 },
                 label = "quick_subtitle_list_popup_group_switch"
             ) { (targetGroupIndex, targetLayoutMode) ->
-                val targetItems = groups.getOrNull(targetGroupIndex)?.items.orEmpty()
+                val targetGroup = groups.getOrNull(targetGroupIndex)
+                val targetItems = targetGroup?.items.orEmpty()
                 val grid = targetLayoutMode == QuickSubtitleListPopupLayout.Grid
                 if (targetItems.isEmpty()) {
                     Box(
@@ -902,6 +945,7 @@ internal fun QuickSubtitleListDialog(
                             val text = targetItems[index]
                             QuickSubtitlePopupItem(
                                 text = text,
+                                colorArgb = targetGroup?.itemColorArgb(index),
                                 grid = true,
                                 onClick = {
                                     performKeyHaptic()
@@ -922,6 +966,7 @@ internal fun QuickSubtitleListDialog(
                         ) { index, text ->
                             QuickSubtitlePopupItem(
                                 text = text,
+                                colorArgb = targetGroup?.itemColorArgb(index),
                                 grid = false,
                                 onClick = {
                                     performKeyHaptic()
@@ -1864,14 +1909,15 @@ fun QuickSubtitleScreen(
                                                 .weight(1f)
                                                 .fillMaxWidth()
                                         ) { groupIndex ->
-                                            val animatedQuickItems = groups.getOrNull(groupIndex)?.items.orEmpty()
+                                            val animatedGroup = groups.getOrNull(groupIndex)
+                                            val animatedQuickItems = animatedGroup?.items.orEmpty()
                                             Column(
                                                 modifier = Modifier
                                                     .fillMaxWidth()
                                                     .verticalScroll(quickItemsScrollState)
                                             ) {
                                                 Spacer(Modifier.height(3.dp))
-                                                animatedQuickItems.forEach { text ->
+                                                animatedQuickItems.forEachIndexed { itemIndex, text ->
                                                     Box(
                                                         modifier = Modifier
                                                             .fillMaxWidth()
@@ -1884,10 +1930,14 @@ fun QuickSubtitleScreen(
                                                                         hasVoice = hasVoice,
                                                                         interruptCurrent = state.quickSubtitleInterruptQueue
                                                                     )
-                                                                },
-                                                                onLongClick = openQuickSubtitleListDialog
-                                                            )
-                                                            .padding(horizontal = 8.dp, vertical = 7.dp),
+                                                            },
+                                                            onLongClick = openQuickSubtitleListDialog
+                                                        )
+                                                        .quickSubtitleItemColorMarker(
+                                                            animatedGroup?.itemColorArgb(itemIndex),
+                                                            QuickSubtitleItemColorEdge.Left
+                                                        )
+                                                        .padding(horizontal = 8.dp, vertical = 7.dp),
                                                         contentAlignment = Alignment.CenterStart
                                                     ) {
                                                         Text(
@@ -2065,7 +2115,8 @@ fun QuickSubtitleScreen(
                                                 },
                                                 label = "quick_subtitle_items_switch_landscape"
                                             ) { groupIndex ->
-                                                val animatedQuickItems = groups.getOrNull(groupIndex)?.items.orEmpty()
+                                                val animatedGroup = groups.getOrNull(groupIndex)
+                                                val animatedQuickItems = animatedGroup?.items.orEmpty()
                                                 Column(
                                                     modifier = Modifier
                                                         .fillMaxWidth()
@@ -2073,7 +2124,7 @@ fun QuickSubtitleScreen(
                                                         .verticalScroll(quickItemsScrollState)
                                                 ) {
                                                     Spacer(Modifier.height(3.dp))
-                                                    animatedQuickItems.forEach { text ->
+                                                    animatedQuickItems.forEachIndexed { itemIndex, text ->
                                                         Box(
                                                             modifier = Modifier
                                                                 .fillMaxWidth()
@@ -2085,10 +2136,14 @@ fun QuickSubtitleScreen(
                                                                             text = text,
                                                                             hasVoice = hasVoice
                                                                         )
-                                                                    },
-                                                                    onLongClick = openQuickSubtitleListDialog
-                                                                )
-                                                                .padding(horizontal = 8.dp, vertical = 8.dp),
+                                                                },
+                                                                onLongClick = openQuickSubtitleListDialog
+                                                            )
+                                                            .quickSubtitleItemColorMarker(
+                                                                animatedGroup?.itemColorArgb(itemIndex),
+                                                                QuickSubtitleItemColorEdge.Left
+                                                            )
+                                                            .padding(horizontal = 8.dp, vertical = 8.dp),
                                                             contentAlignment = Alignment.CenterStart
                                                         ) {
                                                             Text(
@@ -2425,7 +2480,8 @@ fun QuickSubtitleScreen(
                                                     },
                                                     label = "quick_subtitle_items_switch_portrait_compact"
                                                 ) { groupIndex ->
-                                                    val animatedQuickItems = groups.getOrNull(groupIndex)?.items.orEmpty()
+                                                    val animatedGroup = groups.getOrNull(groupIndex)
+                                                    val animatedQuickItems = animatedGroup?.items.orEmpty()
                                                     val compactScrollState = rememberScrollState()
                                                     val compactLeftFadeAlpha by animateFloatAsState(
                                                         targetValue = if (
@@ -2453,7 +2509,7 @@ fun QuickSubtitleScreen(
                                                             verticalAlignment = Alignment.CenterVertically
                                                         ) {
                                                             Spacer(Modifier.width(10.dp))
-                                                            animatedQuickItems.forEach { text ->
+                                                            animatedQuickItems.forEachIndexed { itemIndex, text ->
                                                                 Box(
                                                                     modifier = Modifier
                                                                         .width(148.dp)
@@ -2468,6 +2524,10 @@ fun QuickSubtitleScreen(
                                                                                 )
                                                                             },
                                                                             onLongClick = openQuickSubtitleListDialog
+                                                                        )
+                                                                        .quickSubtitleItemColorMarker(
+                                                                            animatedGroup?.itemColorArgb(itemIndex),
+                                                                            QuickSubtitleItemColorEdge.Bottom
                                                                         )
                                                                         .padding(horizontal = 12.dp, vertical = 8.dp),
                                                                     contentAlignment = Alignment.CenterStart
@@ -2677,7 +2737,8 @@ fun QuickSubtitleScreen(
                                         },
                                         label = "quick_subtitle_items_switch_portrait"
                                     ) { groupIndex ->
-                                        val animatedQuickItems = groups.getOrNull(groupIndex)?.items.orEmpty()
+                                        val animatedGroup = groups.getOrNull(groupIndex)
+                                        val animatedQuickItems = animatedGroup?.items.orEmpty()
                                         Row(
                                             modifier = Modifier
                                                 .fillMaxWidth()
@@ -2687,7 +2748,7 @@ fun QuickSubtitleScreen(
                                             verticalAlignment = Alignment.CenterVertically
                                         ) {
                                             Spacer(Modifier.width(8.dp))
-                                            animatedQuickItems.forEach { text ->
+                                            animatedQuickItems.forEachIndexed { itemIndex, text ->
                                                 Card(
                                                     modifier = Modifier
                                                         .padding(vertical = 3.dp)
@@ -2710,6 +2771,10 @@ fun QuickSubtitleScreen(
                                                     Box(
                                                         modifier = Modifier
                                                             .fillMaxSize()
+                                                            .quickSubtitleItemColorMarker(
+                                                                animatedGroup?.itemColorArgb(itemIndex),
+                                                                QuickSubtitleItemColorEdge.Bottom
+                                                            )
                                                             .padding(horizontal = 10.dp, vertical = 8.dp),
                                                         contentAlignment = Alignment.CenterStart
                                                     ) {
@@ -4131,6 +4196,7 @@ internal fun QuickSubtitleEditorScreen(
                 modifier = if (internalScroll) Modifier.fillMaxHeight() else Modifier,
                 internalListScroll = internalScroll,
                 items = selectedGroup.items,
+                itemColors = selectedGroup.itemColors,
                 selectionMode = batchSelectionMode,
                 selectedIndexes = selectedItemIndexes,
                 parentEdgeScrollBy = if (internalScroll) null else { delta ->
@@ -4146,11 +4212,14 @@ internal fun QuickSubtitleEditorScreen(
                     viewModel.addQuickSubtitleItem(selectedGroupIndex, it)
                     toast(context, "已新增快捷文本")
                 },
-                onItemsChanged = { reordered ->
-                    viewModel.setQuickSubtitleItems(selectedGroupIndex, reordered)
+                onItemsChanged = { reordered, colors ->
+                    viewModel.setQuickSubtitleItems(selectedGroupIndex, reordered, colors)
                 },
                 onItemTextChanged = { itemIndex, value ->
                     viewModel.updateQuickSubtitleItem(selectedGroupIndex, itemIndex, value)
+                },
+                onItemColorChanged = { itemIndex, colorArgb ->
+                    viewModel.updateQuickSubtitleItemColor(selectedGroupIndex, itemIndex, colorArgb)
                 },
                 onEnterSelectionMode = { index -> enterBatchSelection(index) },
                 onToggleSelection = { index -> toggleBatchSelection(index) }
@@ -4396,6 +4465,7 @@ internal fun QuickSubtitleEditorScreen(
             item(key = "items_card") {
                 QuickSubtitleItemsRecyclerCard(
                     items = selectedGroup.items,
+                    itemColors = selectedGroup.itemColors,
                     selectionMode = batchSelectionMode,
                     selectedIndexes = selectedItemIndexes,
                     parentEdgeScrollBy = { delta ->
@@ -4411,11 +4481,14 @@ internal fun QuickSubtitleEditorScreen(
                         viewModel.addQuickSubtitleItem(selectedGroupIndex, it)
                         toast(context, "已新增快捷文本")
                     },
-                    onItemsChanged = { reordered ->
-                        viewModel.setQuickSubtitleItems(selectedGroupIndex, reordered)
+                    onItemsChanged = { reordered, colors ->
+                        viewModel.setQuickSubtitleItems(selectedGroupIndex, reordered, colors)
                     },
                     onItemTextChanged = { itemIndex, value ->
                         viewModel.updateQuickSubtitleItem(selectedGroupIndex, itemIndex, value)
+                    },
+                    onItemColorChanged = { itemIndex, colorArgb ->
+                        viewModel.updateQuickSubtitleItemColor(selectedGroupIndex, itemIndex, colorArgb)
                     },
                     onEnterSelectionMode = { index -> enterBatchSelection(index) },
                     onToggleSelection = { index -> toggleBatchSelection(index) }
@@ -4508,12 +4581,14 @@ internal fun QuickSubtitleItemsRecyclerCard(
     modifier: Modifier = Modifier,
     internalListScroll: Boolean = false,
     items: List<String>,
+    itemColors: List<Int?>,
     selectionMode: Boolean,
     selectedIndexes: Set<Int>,
     parentEdgeScrollBy: ((Int) -> Boolean)? = null,
     onAdd: (String) -> Unit,
-    onItemsChanged: (List<String>) -> Unit,
+    onItemsChanged: (List<String>, List<Int?>) -> Unit,
     onItemTextChanged: (Int, String) -> Unit,
+    onItemColorChanged: (Int, Int?) -> Unit,
     onEnterSelectionMode: (Int) -> Unit,
     onToggleSelection: (Int) -> Unit
 ) {
@@ -4523,6 +4598,7 @@ internal fun QuickSubtitleItemsRecyclerCard(
     var showAddDialog by remember { mutableStateOf(false) }
     var addText by remember { mutableStateOf("") }
     var addTextFocused by remember { mutableStateOf(false) }
+    var colorTargetIndex by remember(items) { mutableStateOf<Int?>(null) }
 
     val cardColor = md2ElevatedCardContainerColor(UiTokens.CardElevation)
     Card(
@@ -4563,6 +4639,7 @@ internal fun QuickSubtitleItemsRecyclerCard(
                 modifier = listModifier
                     .padding(horizontal = 8.dp, vertical = 6.dp),
                 items = items,
+                itemColors = itemColors,
                 selectionMode = selectionMode,
                 selectedIndexes = selectedIndexes,
                 onItemsChanged = onItemsChanged,
@@ -4570,6 +4647,7 @@ internal fun QuickSubtitleItemsRecyclerCard(
                     editTargetIndex = index
                     editText = value
                 },
+                onColorRequested = { index -> colorTargetIndex = index },
                 onEnterSelectionMode = onEnterSelectionMode,
                 onToggleSelection = onToggleSelection,
                 parentEdgeScrollBy = parentEdgeScrollBy,
@@ -4715,16 +4793,38 @@ internal fun QuickSubtitleItemsRecyclerCard(
             }
         }
     }
+
+    val coloringIndex = colorTargetIndex
+    if (coloringIndex != null && coloringIndex in items.indices) {
+        val currentColor = itemColors.getOrNull(coloringIndex)
+        ThemeColorPickerDialog(
+            title = "快捷文本颜色",
+            initialColor = currentColor?.let { Color(it) } ?: MaterialTheme.colorScheme.primary,
+            colorLabel = "候选颜色",
+            clearOptionLabel = "清除条目颜色",
+            onClear = {
+                onItemColorChanged(coloringIndex, null)
+                colorTargetIndex = null
+            },
+            onDismissRequest = { colorTargetIndex = null },
+            onColorSelected = { color ->
+                onItemColorChanged(coloringIndex, color.toArgb())
+                colorTargetIndex = null
+            }
+        )
+    }
 }
 
 @Composable
 internal fun QuickSubtitleItemsRecyclerList(
     modifier: Modifier = Modifier,
     items: List<String>,
+    itemColors: List<Int?>,
     selectionMode: Boolean,
     selectedIndexes: Set<Int>,
-    onItemsChanged: (List<String>) -> Unit,
+    onItemsChanged: (List<String>, List<Int?>) -> Unit,
     onEditRequested: (Int, String) -> Unit,
+    onColorRequested: (Int) -> Unit,
     onEnterSelectionMode: (Int) -> Unit,
     onToggleSelection: (Int) -> Unit,
     parentEdgeScrollBy: ((Int) -> Boolean)? = null,
@@ -4734,6 +4834,7 @@ internal fun QuickSubtitleItemsRecyclerList(
     val parentComposition = rememberCompositionContext()
     val onItemsChangedState = rememberUpdatedState(onItemsChanged)
     val onEditRequestedState = rememberUpdatedState(onEditRequested)
+    val onColorRequestedState = rememberUpdatedState(onColorRequested)
     val onEnterSelectionModeState = rememberUpdatedState(onEnterSelectionMode)
     val onToggleSelectionState = rememberUpdatedState(onToggleSelection)
 
@@ -4757,8 +4858,9 @@ internal fun QuickSubtitleItemsRecyclerList(
 
             val adapter = QuickSubtitleItemRecyclerAdapter(
                 parentComposition = parentComposition,
-                onItemsChanged = { changed -> onItemsChangedState.value(changed) },
+                onItemsChanged = { changed, colors -> onItemsChangedState.value(changed, colors) },
                 onEditRequested = { index, value -> onEditRequestedState.value(index, value) },
+                onColorRequested = { index -> onColorRequestedState.value(index) },
                 onEnterSelectionMode = { index -> onEnterSelectionModeState.value(index) },
                 onToggleSelection = { index -> onToggleSelectionState.value(index) }
             )
@@ -4833,7 +4935,7 @@ internal fun QuickSubtitleItemsRecyclerList(
                     adapter.isDragging = false
                     adapter.clearDraggingItem()
                     if (moved) {
-                        onItemsChangedState.value(adapter.snapshotTexts())
+                        onItemsChangedState.value(adapter.snapshotTexts(), adapter.snapshotColors())
                         moved = false
                     }
                 }
@@ -4849,20 +4951,22 @@ internal fun QuickSubtitleItemsRecyclerList(
             recycler.clipChildren = clipListBounds
             val adapter = recycler.adapter as? QuickSubtitleItemRecyclerAdapter ?: return@AndroidView
             adapter.updateSelection(selectionMode, selectedIndexes)
-            adapter.submitFromState(items)
+            adapter.submitFromState(items, itemColors)
         }
     )
 }
 
 internal data class QuickSubtitleEditableItem(
     val id: Long,
-    var text: String
+    var text: String,
+    var colorArgb: Int?
 )
 
 internal class QuickSubtitleItemRecyclerAdapter(
     private val parentComposition: CompositionContext,
-    private val onItemsChanged: (List<String>) -> Unit,
+    private val onItemsChanged: (List<String>, List<Int?>) -> Unit,
     private val onEditRequested: (Int, String) -> Unit,
+    private val onColorRequested: (Int) -> Unit,
     private val onEnterSelectionMode: (Int) -> Unit,
     private val onToggleSelection: (Int) -> Unit
 ) : RecyclerView.Adapter<QuickSubtitleItemRecyclerAdapter.ItemViewHolder>() {
@@ -4903,6 +5007,7 @@ internal class QuickSubtitleItemRecyclerAdapter(
         val row = items[position]
         holder.bind(
             text = row.text,
+            colorArgb = row.colorArgb,
             isDragged = draggingItemId == row.id,
             selectionMode = selectionMode,
             selected = position in selectedIndexes,
@@ -4912,7 +5017,7 @@ internal class QuickSubtitleItemRecyclerAdapter(
                 if (idx in items.indices && items.size > 1) {
                     items.removeAt(idx)
                     notifyItemRemoved(idx)
-                    onItemsChanged(snapshotTexts())
+                    onItemsChanged(snapshotTexts(), snapshotColors())
                 }
             },
             onEdit = {
@@ -4920,6 +5025,10 @@ internal class QuickSubtitleItemRecyclerAdapter(
                 if (idx in items.indices) {
                     onEditRequested(idx, items[idx].text)
                 }
+            },
+            onColor = {
+                val idx = holder.bindingAdapterPosition
+                if (idx in items.indices) onColorRequested(idx)
             },
             onEnterSelectionMode = {
                 val idx = holder.bindingAdapterPosition
@@ -4944,25 +5053,38 @@ internal class QuickSubtitleItemRecyclerAdapter(
         if (changed) notifyDataSetChanged()
     }
 
-    fun submitFromState(newItems: List<String>) {
+    fun submitFromState(newItems: List<String>, newColors: List<Int?>) {
         if (isDragging) return
         val oldItems = items.toList()
         val used = BooleanArray(oldItems.size)
         val mapped = ArrayList<QuickSubtitleEditableItem>(newItems.size)
 
-        for (text in newItems) {
+        for ((newIndex, text) in newItems.withIndex()) {
+            val colorArgb = newColors.getOrNull(newIndex)
             var matchedIndex = -1
             for (i in oldItems.indices) {
-                if (!used[i] && oldItems[i].text == text) {
+                if (!used[i] && oldItems[i].text == text && oldItems[i].colorArgb == colorArgb) {
                     matchedIndex = i
                     break
                 }
             }
+            if (matchedIndex < 0) {
+                for (i in oldItems.indices) {
+                    if (!used[i] && oldItems[i].text == text) {
+                        matchedIndex = i
+                        break
+                    }
+                }
+            }
             if (matchedIndex >= 0) {
                 used[matchedIndex] = true
-                mapped += oldItems[matchedIndex].copy(text = text)
+                mapped += oldItems[matchedIndex].copy(text = text, colorArgb = colorArgb)
             } else {
-                mapped += QuickSubtitleEditableItem(id = nextId++, text = text)
+                mapped += QuickSubtitleEditableItem(
+                    id = nextId++,
+                    text = text,
+                    colorArgb = colorArgb
+                )
             }
         }
 
@@ -4975,7 +5097,8 @@ internal class QuickSubtitleItemRecyclerAdapter(
             }
 
             override fun areContentsTheSame(oldItemPosition: Int, newItemPosition: Int): Boolean {
-                return oldItems[oldItemPosition].text == mapped[newItemPosition].text
+                return oldItems[oldItemPosition].text == mapped[newItemPosition].text &&
+                    oldItems[oldItemPosition].colorArgb == mapped[newItemPosition].colorArgb
             }
         })
 
@@ -4996,6 +5119,8 @@ internal class QuickSubtitleItemRecyclerAdapter(
     }
 
     fun snapshotTexts(): List<String> = items.map { it.text }
+
+    fun snapshotColors(): List<Int?> = items.map { it.colorArgb }
 
     fun setDraggingPosition(position: Int) {
         val targetId = items.getOrNull(position)?.id
@@ -5024,12 +5149,14 @@ internal class QuickSubtitleItemRecyclerAdapter(
     ) : RecyclerView.ViewHolder(composeView) {
         fun bind(
             text: String,
+            colorArgb: Int?,
             isDragged: Boolean,
             selectionMode: Boolean,
             selected: Boolean,
             canDelete: Boolean,
             onDelete: () -> Unit,
             onEdit: () -> Unit,
+            onColor: () -> Unit,
             onEnterSelectionMode: () -> Unit,
             onToggleSelection: () -> Unit,
             onStartDrag: () -> Unit
@@ -5038,12 +5165,14 @@ internal class QuickSubtitleItemRecyclerAdapter(
                 KigttsFontScaleProvider {
                     QuickSubtitleEditableRow(
                         value = text,
+                        colorArgb = colorArgb,
                         isDragged = isDragged,
                         selectionMode = selectionMode,
                         selected = selected,
                         canDelete = canDelete,
                         onDelete = onDelete,
                         onEdit = onEdit,
+                        onColor = onColor,
                         onEnterSelectionMode = onEnterSelectionMode,
                         onToggleSelection = onToggleSelection,
                         onStartDrag = onStartDrag
@@ -5058,12 +5187,14 @@ internal class QuickSubtitleItemRecyclerAdapter(
 @OptIn(ExperimentalComposeUiApi::class, ExperimentalFoundationApi::class)
 internal fun QuickSubtitleEditableRow(
     value: String,
+    colorArgb: Int?,
     isDragged: Boolean,
     selectionMode: Boolean,
     selected: Boolean,
     canDelete: Boolean,
     onDelete: () -> Unit,
     onEdit: () -> Unit,
+    onColor: () -> Unit,
     onEnterSelectionMode: () -> Unit,
     onToggleSelection: () -> Unit,
     onStartDrag: () -> Unit
@@ -5096,13 +5227,32 @@ internal fun QuickSubtitleEditableRow(
         },
         elevation = rowElevation
     ) {
-        Row(
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 8.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                .heightIn(min = 72.dp)
+                .drawBehind {
+                    colorArgb?.let { color ->
+                        val verticalInset = 8.dp.toPx()
+                        drawRect(
+                            color = Color(color),
+                            topLeft = Offset(0f, verticalInset),
+                            size = Size(
+                                4.dp.toPx(),
+                                (size.height - verticalInset * 2f).coerceAtLeast(0f)
+                            )
+                        )
+                    }
+                },
+            contentAlignment = Alignment.Center
         ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 8.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
             AnimatedVisibility(visible = selectionMode) {
                 Checkbox(
                     checked = selected,
@@ -5132,6 +5282,11 @@ internal fun QuickSubtitleEditableRow(
                         onClick = onEdit
                     )
                     Md2IconButton(
+                        icon = "palette",
+                        contentDescription = "设置文本颜色",
+                        onClick = onColor
+                    )
+                    Md2IconButton(
                         icon = "drag_indicator",
                         contentDescription = "拖动排序",
                         onClick = {},
@@ -5155,6 +5310,7 @@ internal fun QuickSubtitleEditableRow(
                         enabled = canDelete
                     )
                 }
+            }
             }
         }
     }

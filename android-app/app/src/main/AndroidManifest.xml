@@ -16,6 +16,12 @@
         <intent>
             <action android:name="android.speech.tts.engine.CHECK_TTS_DATA" />
         </intent>
+        <intent>
+            <action android:name="android.intent.action.SHOW_ALARMS" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.SET_ALARM" />
+        </intent>
     </queries>
 
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
@@ -166,6 +172,14 @@
         <service
             android:name=".overlay.LockScreenFloatingOverlayService"
             android:exported="false" />
+        <service
+            android:name=".overlay.LockScreenMonitorService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="custom_lock_screen_monitor" />
+        </service>
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"

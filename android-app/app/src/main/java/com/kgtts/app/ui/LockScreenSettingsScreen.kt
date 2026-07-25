@@ -18,6 +18,7 @@ import androidx.compose.material.MaterialTheme
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
@@ -67,7 +68,7 @@ internal fun LockScreenSettingsEntryCard(
             if (enabled) {
                 "已开启${if (hasWallpaper) " · 使用自定义壁纸" else " · 透出系统锁屏壁纸"}"
             } else {
-                "开启后可在锁屏上查看时间并使用快捷操作。"
+                "开启后可在锁屏上查看时间并使用快捷操作；普通悬浮窗可保持关闭。"
             },
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -112,6 +113,7 @@ internal fun LockScreenSettingsScreen(
     val scroll = rememberScrollState()
     var showBuiltinGalleryPicker by rememberSaveable { mutableStateOf(false) }
     var permissionGuideOpen by rememberSaveable { mutableStateOf(false) }
+    var wallpaperPreviewRevision by rememberSaveable { mutableLongStateOf(0L) }
     val permissionVendor = remember { LockScreenBackgroundPermissionGuide.vendorForDevice() }
     val requiresVendorPermission = permissionVendor != LockScreenBackgroundPermissionVendor.NONE
     val permissionLabel = remember(permissionVendor) {
@@ -125,6 +127,7 @@ internal fun LockScreenSettingsScreen(
         }
         val uri = result.uriContent ?: return@rememberLauncherForActivityResult
         viewModel.importLockScreenWallpaper(uri) { success ->
+            if (success) wallpaperPreviewRevision++
             toast(context, if (success) "锁屏壁纸已更新" else "无法使用这张图片，请重新选择")
         }
     }
@@ -180,7 +183,7 @@ internal fun LockScreenSettingsScreen(
                 }
             )
             Text(
-                "使用独立的锁屏界面，普通悬浮窗的位置和页面状态不会受到影响。",
+                "自定义锁屏独立运行；关闭普通悬浮窗后仍可使用。",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -193,6 +196,7 @@ internal fun LockScreenSettingsScreen(
 
         LockScreenWallpaperSettingsCard(
             settings = settings,
+            wallpaperRevision = wallpaperPreviewRevision,
             onChooseWallpaper = {
                 if (state.useBuiltinGallery) {
                     showBuiltinGalleryPicker = true
@@ -202,6 +206,7 @@ internal fun LockScreenSettingsScreen(
             },
             onClearWallpaper = {
                 viewModel.clearLockScreenWallpaper()
+                wallpaperPreviewRevision++
                 toast(context, "已恢复系统锁屏壁纸")
             },
             onSettingsChange = { updated ->

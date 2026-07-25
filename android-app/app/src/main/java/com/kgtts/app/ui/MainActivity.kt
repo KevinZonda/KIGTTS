@@ -255,6 +255,7 @@ import com.lhtstudio.kigtts.app.data.parseSoundboardConfig
 import com.lhtstudio.kigtts.app.data.serializeSoundboardConfig
 import com.lhtstudio.kigtts.app.data.uniqueImportedGroupTitle
 import com.lhtstudio.kigtts.app.overlay.FloatingOverlayService
+import com.lhtstudio.kigtts.app.overlay.LockScreenMonitorService
 import com.lhtstudio.kigtts.app.overlay.OverlayBridge
 import com.lhtstudio.kigtts.app.overlay.RealtimeOwnerGate
 import com.lhtstudio.kigtts.app.overlay.RealtimeRuntimeBridge
@@ -674,6 +675,10 @@ class MainActivity : ComponentActivity() {
 
     private fun syncFloatingOverlayState() {
         val enabled = viewModel.uiState.floatingOverlayEnabled
+        LockScreenMonitorService.sync(
+            this,
+            viewModel.uiState.floatingOverlayShowOnLockScreen
+        )
         if (!enabled) {
             FloatingOverlayService.stop(this)
             return

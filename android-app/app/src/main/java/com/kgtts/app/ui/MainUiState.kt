@@ -451,6 +451,7 @@ data class UiState(
     val quickSubtitleAllowLargeFont: Boolean = false,
     val quickSubtitleCompactControls: Boolean = false,
     val quickSubtitleFirstRunGuideCompleted: Boolean = false,
+    val quickSubtitleGuideReplayRequestId: Int = 0,
     val quickSubtitleKeepInputPreview: Boolean = true,
     val ledSubtitleSettings: LedSubtitleSettings = LedSubtitleSettings(),
     val lanCastDisplaySettings: LedSubtitleSettings = LedSubtitleSettings(),
@@ -548,8 +549,11 @@ data class QuickSubtitleGroup(
     val id: Long,
     val title: String,
     val icon: String,
-    val items: List<String>
-)
+    val items: List<String>,
+    val itemColors: List<Int?> = emptyList()
+) {
+    fun itemColorArgb(index: Int): Int? = itemColors.getOrNull(index)
+}
 
 enum class QuickCardType(val wireValue: String) {
     Image("image"),

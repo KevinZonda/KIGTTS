@@ -2,6 +2,8 @@ package com.lhtstudio.kigtts.app.ui
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
@@ -55,6 +57,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.DialogProperties
+import kotlinx.coroutines.delay
 import kotlin.math.roundToInt
 
 internal enum class QuickSubtitleGuideAnchor {
@@ -153,7 +156,8 @@ internal fun quickSubtitleGuideSteps(
         ),
         messages = listOf(
             "输入文本后使用发送按钮更新字幕。",
-            "麦克风按钮用于语音识别。"
+            "麦克风按钮用于语音识别。",
+            "可以从设置中再次进入使用引导。"
         ),
         callouts = listOf(
             QuickSubtitleGuideCallout(QuickSubtitleGuideAnchor.BottomCursorLeft, "左移"),
@@ -178,10 +182,16 @@ internal fun Modifier.quickSubtitleGuideAnchor(
     onBoundsChanged(anchor, coordinates.boundsInWindow())
 }
 
+internal fun shouldPresentQuickSubtitleGuide(
+    firstRunCompleted: Boolean,
+    replayRequestId: Int
+): Boolean = !firstRunCompleted || replayRequestId != 0
+
 @Composable
 internal fun QuickSubtitleFirstRunGuideCoordinator(
     visible: Boolean,
     compactControls: Boolean,
+    replayRequestId: Int,
     anchorBounds: Map<QuickSubtitleGuideAnchor, Rect>,
     onSelectCompactControls: (Boolean) -> Unit,
     onComplete: () -> Unit,
@@ -195,9 +205,16 @@ internal fun QuickSubtitleFirstRunGuideCoordinator(
     LaunchedEffect(visible, compactControls) {
         if (visible && phase == GUIDE_PHASE_MODE) selectedCompact = compactControls
     }
+    LaunchedEffect(replayRequestId) {
+        if (replayRequestId != 0) {
+            postponedForVisit = false
+            stepIndex = 0
+            phase = GUIDE_PHASE_OVERLAY
+        }
+    }
     if (!visible || postponedForVisit) return
 
-    if (phase == GUIDE_PHASE_MODE) {
+    if (phase == GUIDE_PHASE_MODE && replayRequestId == 0) {
         QuickSubtitleModeSelectionDialog(
             selectedCompact = selectedCompact,
             onSelectedCompactChange = { selectedCompact = it },
@@ -248,21 +265,43 @@ private fun QuickSubtitleGuideOverlay(
         var cardSize by remember { mutableStateOf(IntSize.Zero) }
         val paddingPx = with(density) { 7.dp.toPx() }
         val cornerPx = with(density) { 8.dp.toPx() }
-        val localHoles = step.anchors.mapNotNull { anchorBounds[it] }.map { bounds ->
-            Rect(
-                left = (bounds.left - overlayBounds.left - paddingPx).coerceAtLeast(0f),
-                top = (bounds.top - overlayBounds.top - paddingPx).coerceAtLeast(0f),
-                right = (bounds.right - overlayBounds.left + paddingPx).coerceAtMost(overlayBounds.width),
-                bottom = (bounds.bottom - overlayBounds.top + paddingPx).coerceAtMost(overlayBounds.height)
-            )
-        }.filter { it.width > 0f && it.height > 0f }
-        val union = localHoles.reduceOrNull { acc, rect ->
+        val localHoles = step.anchors.mapIndexedNotNull { sequenceIndex, anchor ->
+            anchorBounds[anchor]?.let { bounds ->
+                sequenceIndex to Rect(
+                    left = (bounds.left - overlayBounds.left - paddingPx).coerceAtLeast(0f),
+                    top = (bounds.top - overlayBounds.top - paddingPx).coerceAtLeast(0f),
+                    right = (bounds.right - overlayBounds.left + paddingPx).coerceAtMost(overlayBounds.width),
+                    bottom = (bounds.bottom - overlayBounds.top + paddingPx).coerceAtMost(overlayBounds.height)
+                )
+            }
+        }.filter { (_, rect) -> rect.width > 0f && rect.height > 0f }
+        val union = localHoles.map { it.second }.reduceOrNull { acc, rect ->
             Rect(
                 left = minOf(acc.left, rect.left),
                 top = minOf(acc.top, rect.top),
                 right = maxOf(acc.right, rect.right),
                 bottom = maxOf(acc.bottom, rect.bottom)
             )
+        }
+        var visibleHighlightCount by remember(step) { mutableIntStateOf(0) }
+        LaunchedEffect(step) {
+            visibleHighlightCount = 0
+            delay(GUIDE_HIGHLIGHT_INITIAL_DELAY_MS)
+            step.anchors.forEachIndexed { index, _ ->
+                visibleHighlightCount = index + 1
+                if (index < step.anchors.size - 1) delay(GUIDE_HIGHLIGHT_STAGGER_MS)
+            }
+        }
+        val animatedHoles = localHoles.map { (sequenceIndex, hole) ->
+            val progress by animateFloatAsState(
+                targetValue = if (sequenceIndex < visibleHighlightCount) 1f else 0f,
+                animationSpec = tween(
+                    durationMillis = GUIDE_HIGHLIGHT_DURATION_MS,
+                    easing = FastOutSlowInEasing
+                ),
+                label = "quick_subtitle_guide_highlight_$sequenceIndex"
+            )
+            hole to progress
         }
         val maxWidthPx = with(density) { maxWidth.toPx() }
         val maxHeightPx = with(density) { maxHeight.toPx() }
@@ -301,18 +340,29 @@ private fun QuickSubtitleGuideOverlay(
                 .onGloballyPositioned { overlayBounds = it.boundsInWindow() }
         ) {
             drawRect(Color.Black.copy(alpha = 0.74f))
-            localHoles.forEach { hole ->
+            animatedHoles.forEach { (hole, progress) ->
+                if (progress <= 0f) return@forEach
+                val scale = 0.9f + 0.1f * progress
+                val animatedWidth = hole.width * scale
+                val animatedHeight = hole.height * scale
+                val animatedHole = Rect(
+                    left = hole.center.x - animatedWidth / 2f,
+                    top = hole.center.y - animatedHeight / 2f,
+                    right = hole.center.x + animatedWidth / 2f,
+                    bottom = hole.center.y + animatedHeight / 2f
+                )
                 drawRoundRect(
                     color = Color.Transparent,
-                    topLeft = Offset(hole.left, hole.top),
-                    size = androidx.compose.ui.geometry.Size(hole.width, hole.height),
+                    topLeft = Offset(animatedHole.left, animatedHole.top),
+                    size = androidx.compose.ui.geometry.Size(animatedHole.width, animatedHole.height),
                     cornerRadius = androidx.compose.ui.geometry.CornerRadius(cornerPx, cornerPx),
+                    alpha = progress,
                     blendMode = BlendMode.Clear
                 )
                 drawRoundRect(
-                    color = primary,
-                    topLeft = Offset(hole.left, hole.top),
-                    size = androidx.compose.ui.geometry.Size(hole.width, hole.height),
+                    color = primary.copy(alpha = progress),
+                    topLeft = Offset(animatedHole.left, animatedHole.top),
+                    size = androidx.compose.ui.geometry.Size(animatedHole.width, animatedHole.height),
                     cornerRadius = androidx.compose.ui.geometry.CornerRadius(cornerPx, cornerPx),
                     style = Stroke(width = with(density) { 2.dp.toPx() })
                 )
@@ -396,6 +446,9 @@ private fun QuickSubtitleGuideOverlay(
             anchorBounds = anchorBounds,
             overlayBounds = overlayBounds,
             screenSize = IntSize(maxWidthPx.roundToInt(), maxHeightPx.roundToInt()),
+            initialDelayMillis = GUIDE_HIGHLIGHT_INITIAL_DELAY_MS +
+                (step.anchors.size - 1).coerceAtLeast(0) * GUIDE_HIGHLIGHT_STAGGER_MS +
+                GUIDE_CALLOUT_AFTER_HIGHLIGHT_DELAY_MS,
             modifier = Modifier.fillMaxSize()
         )
     }
@@ -403,3 +456,7 @@ private fun QuickSubtitleGuideOverlay(
 
 private const val GUIDE_PHASE_MODE = 0
 private const val GUIDE_PHASE_OVERLAY = 1
+private const val GUIDE_HIGHLIGHT_INITIAL_DELAY_MS = 40L
+private const val GUIDE_HIGHLIGHT_STAGGER_MS = 55L
+private const val GUIDE_HIGHLIGHT_DURATION_MS = 180
+private const val GUIDE_CALLOUT_AFTER_HIGHLIGHT_DELAY_MS = 80L

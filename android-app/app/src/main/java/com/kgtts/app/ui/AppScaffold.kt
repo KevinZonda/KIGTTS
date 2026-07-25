@@ -263,6 +263,7 @@ import com.lhtstudio.kigtts.app.data.parseSoundboardConfig
 import com.lhtstudio.kigtts.app.data.serializeSoundboardConfig
 import com.lhtstudio.kigtts.app.data.uniqueImportedGroupTitle
 import com.lhtstudio.kigtts.app.overlay.FloatingOverlayService
+import com.lhtstudio.kigtts.app.overlay.LockScreenMonitorService
 import com.lhtstudio.kigtts.app.overlay.OverlayBridge
 import com.lhtstudio.kigtts.app.overlay.RealtimeOwnerGate
 import com.lhtstudio.kigtts.app.overlay.RealtimeRuntimeBridge
@@ -865,7 +866,11 @@ fun AppScaffold(viewModel: MainViewModel) {
             drawerState.close()
         }
     }
-    LaunchedEffect(state.floatingOverlayEnabled) {
+    LaunchedEffect(state.floatingOverlayEnabled, state.floatingOverlayShowOnLockScreen) {
+        LockScreenMonitorService.sync(
+            context,
+            state.floatingOverlayShowOnLockScreen
+        )
         if (!state.floatingOverlayEnabled) {
             FloatingOverlayService.stop(context)
         } else if (FloatingOverlayService.canDrawOverlays(context)) {
@@ -2490,6 +2495,18 @@ fun AppScaffold(viewModel: MainViewModel) {
                         state = state,
                         onTopBarActionsChange = { logTopBarActions = it },
                         onFontTopBarActionsChange = { fontTopBarActions = it },
+                        onOpenQuickSubtitleGuide = {
+                            quickSubtitleFullscreen = false
+                            quickSubtitleGuideAnchorBounds.clear()
+                            if (quickSubtitleRoute != QuickSubtitleRoutes.Main) {
+                                quickSubtitleNavController.popBackStack(
+                                    QuickSubtitleRoutes.Main,
+                                    inclusive = false
+                                )
+                            }
+                            viewModel.replayQuickSubtitleGuide()
+                            page = pageQuickSubtitle
+                        },
                         onOpenRecognitionResourceSources = { recognitionResourceSourceDialog = true },
                         onPickRecognitionResourcePackage = {
                             openFileManagerAfterPermission(recognitionResourceFileExtensions) {
@@ -2921,8 +2938,12 @@ fun AppScaffold(viewModel: MainViewModel) {
                 topBarVisible &&
                 state.settingsLoaded &&
                 state.onboardingCompleted &&
-                !state.quickSubtitleFirstRunGuideCompleted,
+                shouldPresentQuickSubtitleGuide(
+                    firstRunCompleted = state.quickSubtitleFirstRunGuideCompleted,
+                    replayRequestId = state.quickSubtitleGuideReplayRequestId
+                ),
             compactControls = state.quickSubtitleCompactControls,
+            replayRequestId = state.quickSubtitleGuideReplayRequestId,
             anchorBounds = quickSubtitleGuideAnchorBounds,
             onSelectCompactControls = viewModel::setQuickSubtitleCompactControls,
             onComplete = viewModel::completeQuickSubtitleFirstRunGuide,

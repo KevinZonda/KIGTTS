@@ -91,10 +91,12 @@ import com.lhtstudio.kigtts.app.data.SoundboardGroup
 import com.lhtstudio.kigtts.app.data.SoundboardItem
 import com.lhtstudio.kigtts.app.data.SoundboardLayoutMode
 import com.lhtstudio.kigtts.app.data.UserPrefs
+import com.lhtstudio.kigtts.app.data.readQuickSubtitleItems
 import com.lhtstudio.kigtts.app.data.defaultSoundboardConfig
 import com.lhtstudio.kigtts.app.data.defaultSoundboardGroups
 import com.lhtstudio.kigtts.app.data.parseSoundboardConfig
 import com.lhtstudio.kigtts.app.data.serializeSoundboardConfig
+import com.lhtstudio.kigtts.app.data.writeQuickSubtitleItems
 import com.lhtstudio.kigtts.app.overlay.RealtimeRuntimeBridge
 import com.lhtstudio.kigtts.app.service.VolumeHotkeyAccessibilityService
 import com.lhtstudio.kigtts.app.theme.ThemeColorRoles
@@ -166,7 +168,9 @@ open class FloatingOverlayService : Service() {
     private var screenStateReceiverRegistered = false
 
     protected open fun requiresOverlayPermission(): Boolean = true
-    protected open fun managesLockScreenHost(): Boolean = true
+    protected open fun requiresFloatingOverlayEnabled(): Boolean = true
+    protected open fun managesLockScreenHost(): Boolean = false
+    protected open fun observesScreenState(): Boolean = true
     protected open fun runsAsForegroundService(): Boolean = true
     protected open fun restartsAfterTaskRemoval(): Boolean = true
     protected open fun usesAttachedHostWindow(): Boolean = false
@@ -492,7 +496,15 @@ open class FloatingOverlayService : Service() {
         val id: Long,
         val title: String,
         val icon: String,
-        val items: List<String>
+        val items: List<String>,
+        val itemColors: List<Int?> = emptyList()
+    ) {
+        fun itemColorArgb(index: Int): Int? = itemColors.getOrNull(index)
+    }
+
+    private data class OverlayQuickTextItem(
+        val text: String,
+        val colorArgb: Int?
     )
 
     private data class MiniQuickItemsScrollState(
@@ -800,11 +812,12 @@ open class FloatingOverlayService : Service() {
 
     private inner class MiniQuickTextAdapter :
         RecyclerView.Adapter<MiniQuickTextAdapter.TextViewHolder>() {
-        private var items: List<String> = emptyList()
+        private var items: List<OverlayQuickTextItem> = emptyList()
 
         inner class TextViewHolder(
             val root: FrameLayout,
-            val textView: TextView
+            val textView: TextView,
+            val colorMarker: View
         ) : RecyclerView.ViewHolder(root)
 
         override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): TextViewHolder {
@@ -820,17 +833,17 @@ open class FloatingOverlayService : Service() {
                     gravity = Gravity.START or Gravity.CENTER_VERTICAL
                     textAlignment = View.TEXT_ALIGNMENT_VIEW_START
                 }
+            val colorMarker = View(parent.context)
             val root =
                 FrameLayout(parent.context).apply {
-                    layoutParams = RecyclerView.LayoutParams(dp(112), dp(104))
-                    setPadding(dp(14), dp(8), dp(14), dp(20))
+                    layoutParams = RecyclerView.LayoutParams(dp(112), dp(88))
                     minimumWidth = dp(112)
-                    minimumHeight = dp(104)
+                    minimumHeight = dp(88)
                     clipChildren = true
-                    clipToPadding = true
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                         foreground = selectableDrawable()
                     }
+                    textView.setPadding(dp(14), dp(8), dp(14), dp(20))
                     addView(
                         textView,
                         FrameLayout.LayoutParams(
@@ -839,34 +852,36 @@ open class FloatingOverlayService : Service() {
                             Gravity.START
                         )
                     )
+                    addView(colorMarker)
                 }
-            return TextViewHolder(root, textView)
+            return TextViewHolder(root, textView, colorMarker)
         }
 
         override fun onBindViewHolder(holder: TextViewHolder, position: Int) {
-            val item = items.getOrNull(position).orEmpty()
+            val item = items.getOrNull(position) ?: OverlayQuickTextItem("", null)
             val landscapePhone = isPhoneLandscapeUi()
             holder.root.layoutParams = RecyclerView.LayoutParams(
                 if (landscapePhone) ViewGroup.LayoutParams.MATCH_PARENT else dp(112),
-                if (landscapePhone) dp(74) else dp(104)
+                if (landscapePhone) dp(74) else dp(88)
             )
             holder.root.minimumWidth = if (landscapePhone) 0 else dp(112)
-            holder.root.minimumHeight = if (landscapePhone) dp(74) else dp(104)
-            holder.root.setPadding(
+            holder.root.minimumHeight = if (landscapePhone) dp(74) else dp(88)
+            holder.textView.setPadding(
                 if (landscapePhone) dp(12) else dp(14),
                 if (landscapePhone) dp(10) else dp(8),
                 if (landscapePhone) dp(12) else dp(14),
                 if (landscapePhone) dp(10) else dp(20)
             )
             holder.textView.maxLines = if (landscapePhone) 2 else 3
-            holder.textView.text = item
+            holder.textView.text = item.text
+            bindQuickTextColorMarker(holder.colorMarker, item.colorArgb, bottom = !landscapePhone)
             holder.root.setOnClickListener {
-                if (item.isBlank()) return@setOnClickListener
+                if (item.text.isBlank()) return@setOnClickListener
                 performOverlayKeyHaptic(holder.root)
-                submitQuickSubtitleText(item)
+                submitQuickSubtitleText(item.text)
             }
             holder.root.setOnLongClickListener {
-                if (item.isBlank()) return@setOnLongClickListener true
+                if (item.text.isBlank()) return@setOnLongClickListener true
                 performOverlayKeyHaptic(holder.root)
                 showMiniQuickTextListOverlay()
                 true
@@ -875,20 +890,23 @@ open class FloatingOverlayService : Service() {
 
         override fun getItemCount(): Int = items.size
 
-        fun submitItems(newItems: List<String>) {
-            items = newItems.toList()
+        fun submitItems(newItems: List<String>, colors: List<Int?>) {
+            items = newItems.mapIndexed { index, text ->
+                OverlayQuickTextItem(text = text, colorArgb = colors.getOrNull(index))
+            }
             notifyDataSetChanged()
         }
     }
 
     private inner class MiniQuickTextListAdapter :
         RecyclerView.Adapter<MiniQuickTextListAdapter.TextViewHolder>() {
-        private var items: List<String> = emptyList()
+        private var items: List<OverlayQuickTextItem> = emptyList()
         private var gridMode = true
 
         inner class TextViewHolder(
             val root: FrameLayout,
-            val textView: TextView
+            val textView: TextView,
+            val colorMarker: View
         ) : RecyclerView.ViewHolder(root)
 
         override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): TextViewHolder {
@@ -901,10 +919,10 @@ open class FloatingOverlayService : Service() {
                 gravity = Gravity.START or Gravity.CENTER_VERTICAL
                 textAlignment = View.TEXT_ALIGNMENT_VIEW_START
             }
+            val colorMarker = View(parent.context)
             val root = FrameLayout(parent.context).apply {
                 elevation = 0f
                 clipChildren = true
-                clipToPadding = true
                 isClickable = true
                 isFocusable = true
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
@@ -917,16 +935,22 @@ open class FloatingOverlayService : Service() {
                         ViewGroup.LayoutParams.MATCH_PARENT
                     )
                 )
+                addView(colorMarker)
             }
-            return TextViewHolder(root, textView)
+            return TextViewHolder(root, textView, colorMarker)
         }
 
         override fun onBindViewHolder(holder: TextViewHolder, position: Int) {
-            val item = items.getOrNull(position).orEmpty()
+            val item = items.getOrNull(position) ?: OverlayQuickTextItem("", null)
             holder.root.layoutParams = recyclerItemLayoutParams(gridMode)
-            holder.root.background = if (gridMode) overlayItemGridBackground() else null
+            holder.root.background = if (gridMode) overlayItemGridBackground(item.colorArgb) else null
             holder.root.elevation = 0f
-            holder.root.setPadding(dp(12), dp(8), dp(12), dp(8))
+            if (gridMode) {
+                holder.root.clipToRoundedOutline(overlayRadiusDp)
+            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                holder.root.clipToOutline = false
+            }
+            holder.textView.setPadding(dp(12), dp(8), dp(12), dp(8))
             holder.textView.layoutParams = FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 if (gridMode) ViewGroup.LayoutParams.MATCH_PARENT else ViewGroup.LayoutParams.WRAP_CONTENT,
@@ -934,19 +958,22 @@ open class FloatingOverlayService : Service() {
             )
             holder.textView.gravity = Gravity.START or Gravity.CENTER_VERTICAL
             holder.textView.maxLines = if (gridMode) 2 else 1
-            holder.textView.text = item
+            holder.textView.text = item.text
+            bindQuickTextColorMarker(holder.colorMarker, item.colorArgb, bottom = gridMode)
             holder.root.setOnClickListener {
-                if (item.isBlank()) return@setOnClickListener
+                if (item.text.isBlank()) return@setOnClickListener
                 performOverlayKeyHaptic(holder.root)
                 hideMiniQuickTextListOverlay()
-                submitQuickSubtitleText(item)
+                submitQuickSubtitleText(item.text)
             }
         }
 
         override fun getItemCount(): Int = items.size
 
-        fun submit(newItems: List<String>, grid: Boolean) {
-            items = newItems.toList()
+        fun submit(newItems: List<String>, colors: List<Int?>, grid: Boolean) {
+            items = newItems.mapIndexed { index, text ->
+                OverlayQuickTextItem(text = text, colorArgb = colors.getOrNull(index))
+            }
             gridMode = grid
             notifyDataSetChanged()
         }
@@ -1990,7 +2017,7 @@ open class FloatingOverlayService : Service() {
         scope.launch {
             awaitOverlayHostReady()
             settings = UserPrefs.getSettings(this@FloatingOverlayService)
-            if (!settings.floatingOverlayEnabled) {
+            if (requiresFloatingOverlayEnabled() && !settings.floatingOverlayEnabled) {
                 stopSelf()
                 return@launch
             }
@@ -2176,7 +2203,7 @@ open class FloatingOverlayService : Service() {
                 val previousBluetoothTitleSubtitle = settings.bluetoothMediaTitleSubtitle
                 val previousUseSystemTextToolbar = settings.useSystemTextToolbar
                 settings = next
-                if (!next.floatingOverlayEnabled) {
+                if (requiresFloatingOverlayEnabled() && !next.floatingOverlayEnabled) {
                     stopSelf()
                     return@collectLatest
                 }
@@ -2316,7 +2343,7 @@ open class FloatingOverlayService : Service() {
     }
 
     private fun registerScreenStateReceiver() {
-        if (!managesLockScreenHost()) return
+        if (!observesScreenState()) return
         if (screenStateReceiverRegistered) return
         val filter = IntentFilter().apply {
             addAction(Intent.ACTION_SCREEN_OFF)
@@ -6306,18 +6333,13 @@ open class FloatingOverlayService : Service() {
             val id = obj.optLong("id", i.toLong() + 1L).coerceAtLeast(1L)
             val title = obj.optString("title", "未命名分组").ifBlank { "未命名分组" }
             val icon = obj.optString("icon", "sentiment_satisfied").ifBlank { "sentiment_satisfied" }
-            val itemsArr = obj.optJSONArray("items") ?: JSONArray()
-            val items = buildList {
-                for (j in 0 until itemsArr.length()) {
-                    val text = itemsArr.optString(j, "").trim()
-                    if (text.isNotEmpty()) add(text)
-                }
-            }.ifEmpty { listOf("请输入常用短句") }
+            val itemPayload = readQuickSubtitleItems(obj)
             parsedGroups += QuickSubtitleGroupConfig(
                 id = id,
                 title = title,
                 icon = icon,
-                items = items
+                items = itemPayload.items,
+                itemColors = itemPayload.colors
             )
             maxId = max(maxId, id)
         }
@@ -6370,14 +6392,12 @@ open class FloatingOverlayService : Service() {
                     put("textCentered", quickSubtitleCentered)
                     val groupsArray = JSONArray()
                     quickSubtitleGroups.forEach { group ->
-                        val itemsArray = JSONArray()
-                        group.items.forEach { item -> itemsArray.put(item) }
                         groupsArray.put(
                             JSONObject().apply {
                                 put("id", group.id)
                                 put("title", group.title)
                                 put("icon", group.icon)
-                                put("items", itemsArray)
+                                writeQuickSubtitleItems(this, group.items, group.itemColors)
                             }
                         )
                     }
@@ -6641,7 +6661,7 @@ open class FloatingOverlayService : Service() {
         val group = selectedMiniQuickTextListGroup()
         val applyContentUpdate = {
             ensureMiniQuickTextListLayoutManager(recycler)
-            adapter.submit(group.items, miniQuickListGridMode)
+            adapter.submit(group.items, group.itemColors, miniQuickListGridMode)
         }
         if (animateContent && recycler.visibility == View.VISIBLE) {
             recycler.animate().cancel()
@@ -6669,7 +6689,7 @@ open class FloatingOverlayService : Service() {
         recycler.post {
             ensureMiniQuickTextListLayoutManager(recycler)
             if (!animateContent) {
-                adapter.submit(group.items, miniQuickListGridMode)
+                adapter.submit(group.items, group.itemColors, miniQuickListGridMode)
             }
         }
     }
@@ -6995,7 +7015,7 @@ open class FloatingOverlayService : Service() {
         }
         miniQuickRow?.visibility = if (miniQuickItemsCollapsed) View.GONE else View.VISIBLE
         miniQuickRow?.requestLayout()
-        miniQuickItemsAdapter?.submitItems(group.items)
+        miniQuickItemsAdapter?.submitItems(group.items, group.itemColors)
         refreshMiniSubtitleLayoutMetrics()
         restoreMiniQuickItemsScrollState(group.id)
         if (miniQuickListOverlayView?.visibility == View.VISIBLE) {
@@ -12141,10 +12161,24 @@ open class FloatingOverlayService : Service() {
             setColor(color)
         }
 
-    private fun overlayItemGridBackground(): GradientDrawable =
+    private fun overlayItemGridBackground(borderColor: Int? = null): GradientDrawable =
         roundedRectDrawable(overlayRadiusDp, overlayCardColor()).apply {
-            setStroke(dp(1), ColorUtils.setAlphaComponent(overlayOutlineColor(), 72))
+            setStroke(
+                dp(1),
+                borderColor ?: ColorUtils.setAlphaComponent(overlayOutlineColor(), 72)
+            )
         }
+
+    private fun bindQuickTextColorMarker(marker: View, colorArgb: Int?, bottom: Boolean) {
+        marker.visibility = if (colorArgb == null) View.GONE else View.VISIBLE
+        if (colorArgb == null) return
+        marker.setBackgroundColor(colorArgb)
+        marker.layoutParams = FrameLayout.LayoutParams(
+            if (bottom) ViewGroup.LayoutParams.MATCH_PARENT else dp(4),
+            if (bottom) dp(4) else ViewGroup.LayoutParams.MATCH_PARENT,
+            if (bottom) Gravity.BOTTOM else Gravity.START
+        )
+    }
 
     private fun overlayItemDividerColor(): Int =
         ColorUtils.setAlphaComponent(overlayOutlineColor(), 46)

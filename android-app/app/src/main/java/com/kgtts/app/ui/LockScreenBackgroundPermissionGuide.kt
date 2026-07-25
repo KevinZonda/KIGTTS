@@ -75,7 +75,7 @@ internal fun LockScreenBackgroundPermissionGuideDialog(
     val copy = LockScreenBackgroundPermissionPolicy.copyFor(vendor)
     KigttsAlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("允许后台显示锁屏") },
+        title = { Text("允许锁屏与后台显示") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(copy.description)

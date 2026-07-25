@@ -28,6 +28,7 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextClock
 import android.widget.TextView
+import android.widget.Toast
 import androidx.core.content.ContextCompat
 import androidx.core.content.res.ResourcesCompat
 import androidx.core.view.WindowCompat
@@ -71,6 +72,12 @@ internal class LockScreenOverlayHostActivity : Activity() {
             checkKeyguardState()
         }
     }
+    private val hostRevealFallbackTask = Runnable {
+        if (!hostEntryRevealed) {
+            AppLogger.w("Lock screen host entry reveal used timeout fallback")
+            revealHostWithAnimation()
+        }
+    }
 
     private lateinit var root: FrameLayout
     private lateinit var timeView: TextClock
@@ -86,6 +93,8 @@ internal class LockScreenOverlayHostActivity : Activity() {
     private var receiverRegistered = false
     private var lockOverlayBound = false
     private var showLunarDate = false
+    private var hostAppearancePrepared = false
+    private var hostEntryRevealed = false
     private val lockOverlayConnection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
             val binder = service as? LockScreenFloatingOverlayService.LocalBinder ?: return
@@ -95,7 +104,8 @@ internal class LockScreenOverlayHostActivity : Activity() {
                 binder.attachHost(
                     token = token,
                     unlockRequester = { action -> unlockController.runAfterUnlock(action) },
-                    miniVisibilityListener = layoutController::setMiniOverlayVisible
+                    miniVisibilityListener = layoutController::setMiniOverlayVisible,
+                    entryRevealListener = { root.post(::revealHostWithAnimation) }
                 )
             }
         }
@@ -103,6 +113,7 @@ internal class LockScreenOverlayHostActivity : Activity() {
         override fun onServiceDisconnected(name: ComponentName?) {
             lockOverlayBinder = null
             lockOverlayBound = false
+            revealHostWithAnimation()
         }
     }
 
@@ -110,7 +121,6 @@ internal class LockScreenOverlayHostActivity : Activity() {
         super.onCreate(savedInstanceState)
         configureLockScreenWindow()
         createContent()
-        applySystemBarVisibility()
         registerCloseReceiver()
         clockHandler.post(dateRefreshTask)
         loadHostAppearance()
@@ -153,11 +163,19 @@ internal class LockScreenOverlayHostActivity : Activity() {
         window.apply {
             setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
             clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
-            addFlags(WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN)
+            addFlags(
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+                    WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
+                    WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS
+            )
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
                 attributes = attributes.apply {
                     layoutInDisplayCutoutMode =
-                        WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                            WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
+                        } else {
+                            WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+                        }
                 }
             }
             statusBarColor = Color.TRANSPARENT
@@ -169,26 +187,24 @@ internal class LockScreenOverlayHostActivity : Activity() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             window.setHideOverlayWindows(true)
         }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            window.setDecorFitsSystemWindows(false)
-        } else {
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
             @Suppress("DEPRECATION")
             window.decorView.systemUiVisibility =
-                View.SYSTEM_UI_FLAG_FULLSCREEN or
-                    View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or
+                View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or
+                    View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION or
                     View.SYSTEM_UI_FLAG_LAYOUT_STABLE
         }
     }
 
     private fun applySystemBarVisibility() {
         WindowCompat.setDecorFitsSystemWindows(window, false)
-        root.post {
-            WindowInsetsControllerCompat(window, root).apply {
-                hide(WindowInsetsCompat.Type.statusBars())
-                systemBarsBehavior =
-                    WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-            }
+        WindowInsetsControllerCompat(window, root).apply {
+            hide(WindowInsetsCompat.Type.statusBars())
+            systemBarsBehavior =
+                WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         }
+        root.requestApplyInsets()
     }
 
     private fun createContent() {
@@ -205,12 +221,14 @@ internal class LockScreenOverlayHostActivity : Activity() {
             includeFontPadding = false
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 68f)
             setShadowLayer(dp(3).toFloat(), 0f, dp(1).toFloat(), 0xB3000000.toInt())
+            setOnClickListener { openClockAfterUnlock() }
         }
         dateView = TextView(this).apply {
             gravity = Gravity.CENTER
             includeFontPadding = false
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 17f)
             setShadowLayer(dp(2).toFloat(), 0f, dp(1).toFloat(), 0xB3000000.toInt())
+            setOnClickListener { openCalendarAfterUnlock() }
         }
         unlockIcon = TextView(this).apply {
             gravity = Gravity.CENTER
@@ -252,7 +270,9 @@ internal class LockScreenOverlayHostActivity : Activity() {
         )
         root = FrameLayout(this).apply {
             setBackgroundColor(Color.TRANSPARENT)
-            visibility = View.INVISIBLE
+            clipToPadding = false
+            alpha = 0f
+            visibility = View.VISIBLE
             importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
             contentDescription = getString(R.string.lock_screen_content_description)
             isFocusableInTouchMode = true
@@ -398,8 +418,38 @@ internal class LockScreenOverlayHostActivity : Activity() {
 
     private fun revealPreparedHost() {
         if (isFinishing || isDestroyed || !isKeyguardLocked()) return
+        applySystemBarVisibility()
+        root.animate().cancel()
+        root.alpha = 0f
         root.visibility = View.VISIBLE
-        bindLockOverlayInstance()
+        root.post {
+            if (isFinishing || isDestroyed || !isKeyguardLocked()) return@post
+            hostAppearancePrepared = true
+            bindLockOverlayInstance()
+            clockHandler.removeCallbacks(hostRevealFallbackTask)
+            clockHandler.postDelayed(hostRevealFallbackTask, HOST_ENTRY_REVEAL_FALLBACK_MS)
+        }
+    }
+
+    private fun revealHostWithAnimation() {
+        if (
+            !hostAppearancePrepared ||
+            hostEntryRevealed ||
+            isFinishing ||
+            isDestroyed ||
+            !isKeyguardLocked()
+        ) {
+            return
+        }
+        hostEntryRevealed = true
+        clockHandler.removeCallbacks(hostRevealFallbackTask)
+        root.animate().cancel()
+        root.alpha = 0f
+        root.visibility = View.VISIBLE
+        root.animate()
+            .alpha(1f)
+            .setDuration(HOST_ENTRY_REVEAL_DURATION_MS)
+            .start()
     }
 
     private fun applySystemBarAppearance(dark: Boolean) {
@@ -422,6 +472,22 @@ internal class LockScreenOverlayHostActivity : Activity() {
 
     private fun updateDate() {
         dateView.text = LockScreenDateFormatter.currentLabel(this, showLunarDate)
+    }
+
+    private fun openClockAfterUnlock() {
+        unlockController.runAfterUnlock {
+            if (!LockScreenSystemAppLauncher.openClock(this)) {
+                Toast.makeText(this, R.string.lock_screen_clock_unavailable, Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    private fun openCalendarAfterUnlock() {
+        unlockController.runAfterUnlock {
+            if (!LockScreenSystemAppLauncher.openCalendar(this)) {
+                Toast.makeText(this, R.string.lock_screen_calendar_unavailable, Toast.LENGTH_SHORT).show()
+            }
+        }
     }
 
     private fun registerCloseReceiver() {
@@ -463,6 +529,7 @@ internal class LockScreenOverlayHostActivity : Activity() {
             root.alpha = 0f
             root.visibility = View.INVISIBLE
         }
+        clockHandler.removeCallbacks(hostRevealFallbackTask)
         window.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
         finishAndRemoveTask()
         overridePendingTransition(0, 0)
@@ -473,11 +540,13 @@ internal class LockScreenOverlayHostActivity : Activity() {
 
     companion object {
         private const val KEYGUARD_STATE_CHECK_INTERVAL_MS = 400L
+        private const val HOST_ENTRY_REVEAL_DURATION_MS = 220L
+        private const val HOST_ENTRY_REVEAL_FALLBACK_MS = 2_000L
         private const val ACTION_DISMISS =
             "com.lhtstudio.kigtts.app.action.DISMISS_LOCK_SCREEN_OVERLAY_HOST"
         fun showIfLocked(context: Context, reason: String) {
             val keyguard = context.getSystemService(KeyguardManager::class.java)
-            if (keyguard?.isKeyguardLocked != true || !FloatingOverlayService.canDrawOverlays(context)) {
+            if (keyguard?.isKeyguardLocked != true) {
                 return
             }
             runCatching {

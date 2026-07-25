@@ -47,4 +47,15 @@ class LockScreenBackgroundPermissionPolicyTest {
         assertTrue(copy.instructions.contains("后台弹出界面"))
         assertEquals("锁屏显示权限", copy.settingsEntryLabel)
     }
+
+    @Test
+    fun `Xiaomi guide names lock screen and background controls`() {
+        val copy = LockScreenBackgroundPermissionPolicy.copyFor(
+            LockScreenBackgroundPermissionVendor.XIAOMI
+        )
+
+        assertTrue(copy.instructions.contains("锁屏显示"))
+        assertTrue(copy.instructions.contains("后台弹出界面"))
+        assertEquals("锁屏显示权限", copy.settingsEntryLabel)
+    }
 }

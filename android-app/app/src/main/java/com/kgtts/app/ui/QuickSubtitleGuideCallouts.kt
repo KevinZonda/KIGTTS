@@ -1,5 +1,11 @@
 package com.lhtstudio.kigtts.app.ui
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.offset
@@ -7,7 +13,9 @@ import androidx.compose.material.MaterialTheme
 import androidx.compose.material.Surface
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -28,6 +36,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.text.style.TextAlign
+import kotlinx.coroutines.delay
 import kotlin.math.roundToInt
 
 internal data class QuickSubtitleGuideCallout(
@@ -41,14 +50,24 @@ internal fun QuickSubtitleGuideCallouts(
     anchorBounds: Map<QuickSubtitleGuideAnchor, Rect>,
     overlayBounds: Rect,
     screenSize: IntSize,
+    initialDelayMillis: Long,
     modifier: Modifier = Modifier
 ) {
     if (overlayBounds == Rect.Zero || screenSize.width <= 0 || screenSize.height <= 0) return
     val actionBounds = anchorBounds[QuickSubtitleGuideAnchor.DisplayActions]
     val verticalActions = actionBounds != null && actionBounds.height > actionBounds.width
+    var visibleCalloutCount by remember(callouts) { mutableIntStateOf(0) }
+    LaunchedEffect(callouts, initialDelayMillis) {
+        visibleCalloutCount = 0
+        delay(initialDelayMillis)
+        callouts.forEachIndexed { index, _ ->
+            visibleCalloutCount = index + 1
+            if (index < callouts.lastIndex) delay(GUIDE_CALLOUT_STAGGER_MS)
+        }
+    }
     Box(modifier = modifier) {
-        callouts.forEach { callout ->
-            val windowTarget = anchorBounds[callout.anchor] ?: return@forEach
+        callouts.forEachIndexed { index, callout ->
+            val windowTarget = anchorBounds[callout.anchor] ?: return@forEachIndexed
             val target = Rect(
                 left = windowTarget.left - overlayBounds.left,
                 top = windowTarget.top - overlayBounds.top,
@@ -61,7 +80,8 @@ internal fun QuickSubtitleGuideCallouts(
                 target = target,
                 placement = placement,
                 horizontalOffset = calloutHorizontalOffset(callout.anchor),
-                screenSize = screenSize
+                screenSize = screenSize,
+                visible = index < visibleCalloutCount
             )
         }
     }
@@ -73,7 +93,8 @@ private fun GuideArrowBubble(
     target: Rect,
     placement: GuideCalloutPlacement,
     horizontalOffset: Dp,
-    screenSize: IntSize
+    screenSize: IntSize,
+    visible: Boolean
 ) {
     var measuredSize by remember(label, placement) { mutableStateOf(IntSize.Zero) }
     val density = androidx.compose.ui.platform.LocalDensity.current
@@ -115,10 +136,26 @@ private fun GuideArrowBubble(
     }
     val x = rawOffset.x.coerceIn(margin, (screenSize.width - bubbleWidth - margin).coerceAtLeast(margin))
     val y = rawOffset.y.coerceIn(margin, (screenSize.height - bubbleHeight - margin).coerceAtLeast(margin))
-    Box(
+    AnimatedVisibility(
+        visible = visible,
         modifier = Modifier
             .onSizeChanged { measuredSize = it }
-            .then(Modifier.offset { IntOffset(x.roundToInt(), y.roundToInt()) })
+            .then(Modifier.offset { IntOffset(x.roundToInt(), y.roundToInt()) }),
+        enter = fadeIn(animationSpec = tween(GUIDE_CALLOUT_FADE_DURATION_MS)) +
+            scaleIn(
+                initialScale = 0.9f,
+                animationSpec = tween(
+                    durationMillis = GUIDE_CALLOUT_SCALE_DURATION_MS,
+                    easing = FastOutSlowInEasing
+                )
+            ) +
+            slideInVertically(
+                animationSpec = tween(
+                    durationMillis = GUIDE_CALLOUT_SCALE_DURATION_MS,
+                    easing = FastOutSlowInEasing
+                ),
+                initialOffsetY = { height -> height / 3 }
+            )
     ) {
         GuideBubbleContent(label = label, placement = placement)
     }
@@ -258,3 +295,7 @@ private enum class GuideCalloutPlacement {
     InsideBottom,
     InsideTop
 }
+
+private const val GUIDE_CALLOUT_STAGGER_MS = 45L
+private const val GUIDE_CALLOUT_FADE_DURATION_MS = 150
+private const val GUIDE_CALLOUT_SCALE_DURATION_MS = 180
