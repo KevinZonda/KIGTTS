@@ -1,0 +1,289 @@
+.quick-dialog-open {
+  overflow: hidden;
+}
+
+.quick-card,
+.quick-dialog-shell {
+  position: relative;
+}
+
+.remote-group-hint,
+.quick-dialog-group-hint {
+  position: absolute;
+  z-index: 6;
+  top: 50%;
+  right: 66px;
+  max-width: calc(100% - 84px);
+  min-height: 44px;
+  border: 1px solid var(--outlined-border);
+  border-radius: 4px;
+  padding: 8px 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--on-surface);
+  background: var(--surface);
+  box-shadow: 0 3px 8px rgba(0, 0, 0, .28);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-50%) scale(.96);
+  transition: opacity 140ms ease, transform 180ms cubic-bezier(.4, 0, .2, 1);
+}
+
+.remote-group-hint.visible,
+.quick-dialog-group-hint.visible {
+  opacity: 1;
+  transform: translateY(-50%) scale(1);
+}
+
+.remote-group-hint span:last-child,
+.quick-dialog-group-hint span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.quick-dialog-group-hint {
+  right: 68px;
+}
+
+.quick-dialog-backdrop {
+  position: fixed;
+  z-index: 40;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 26px 16px;
+  background: rgba(0, 0, 0, .36);
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 160ms ease, visibility 160ms ease;
+}
+
+.quick-dialog-backdrop.open {
+  opacity: 1;
+  visibility: visible;
+}
+
+.quick-dialog-shell {
+  width: min(100%, 520px);
+  height: min(560px, 100%);
+  min-width: 0;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) 54px;
+  gap: 10px;
+  transform: scale(.97);
+  transition: transform 180ms cubic-bezier(.4, 0, .2, 1);
+}
+
+.quick-dialog-backdrop.open .quick-dialog-shell {
+  transform: none;
+}
+
+.quick-dialog-content,
+.quick-dialog-tabs {
+  min-width: 0;
+  min-height: 0;
+  border-radius: 4px;
+  color: var(--on-surface);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.quick-dialog-content {
+  padding: 10px;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.quick-dialog-items {
+  min-height: 100%;
+}
+
+.quick-dialog-items.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(138px, 1fr));
+  align-content: start;
+  gap: 8px;
+}
+
+.quick-dialog-items.list {
+  display: flex;
+  flex-direction: column;
+}
+
+.quick-dialog-item {
+  min-width: 0;
+  border: 0;
+  padding: 10px 12px;
+  color: var(--on-surface);
+  background: transparent;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+
+.quick-dialog-items.grid .quick-dialog-item {
+  min-height: 74px;
+  border: 1px solid var(--outlined-border);
+  border-radius: 4px;
+  background: transparent;
+  box-shadow: 0 2px 3px rgba(0, 0, 0, .14);
+}
+
+.quick-dialog-items.list .quick-dialog-item {
+  min-height: 52px;
+  border-bottom: 1px solid var(--divider);
+}
+
+.quick-dialog-items.list .quick-dialog-item:last-child {
+  border-bottom: 0;
+}
+
+.quick-dialog-empty {
+  min-height: 100%;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  color: var(--muted);
+  text-align: center;
+}
+
+.quick-dialog-tabs {
+  display: flex;
+  overflow: hidden;
+}
+
+.quick-dialog-groups {
+  min-width: 0;
+  flex: 1 1 auto;
+  display: flex;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+
+.quick-dialog-groups::-webkit-scrollbar {
+  display: none;
+}
+
+.quick-dialog-group,
+.quick-dialog-layout {
+  min-width: max-content;
+  height: 54px;
+  border: 0;
+  border-radius: 4px;
+  padding: 0 11px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  color: var(--muted);
+  background: transparent;
+}
+
+.quick-dialog-group.active {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--primary) 16%, transparent);
+}
+
+.quick-dialog-layout {
+  width: 54px;
+  min-width: 54px;
+  padding: 0;
+  border-left: 1px solid var(--divider);
+  color: var(--accent);
+}
+
+.quick-dialog-items.switch-forward {
+  animation: quick-dialog-forward 210ms cubic-bezier(.4, 0, .2, 1);
+}
+
+.quick-dialog-items.switch-back {
+  animation: quick-dialog-back 210ms cubic-bezier(.4, 0, .2, 1);
+}
+
+@keyframes quick-dialog-forward {
+  from { opacity: .25; transform: translateX(48px); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes quick-dialog-back {
+  from { opacity: .25; transform: translateX(-48px); }
+  to { opacity: 1; transform: none; }
+}
+
+@media (orientation: landscape) {
+  .quick-dialog-backdrop {
+    padding: 18px 26px;
+  }
+
+  .quick-dialog-shell {
+    width: min(760px, 100%);
+    height: min(360px, 100%);
+    grid-template-columns: minmax(0, 1fr) 58px;
+    grid-template-rows: minmax(0, 1fr);
+  }
+
+  .quick-dialog-tabs {
+    flex-direction: column;
+  }
+
+  .quick-dialog-groups {
+    flex-direction: column;
+    overflow-x: hidden;
+    overflow-y: auto;
+  }
+
+  .quick-dialog-group {
+    width: 58px;
+    min-width: 58px;
+    height: 52px;
+    min-height: 52px;
+    padding: 0;
+  }
+
+  .quick-dialog-group span:last-child {
+    display: none;
+  }
+
+  .quick-dialog-layout {
+    width: 58px;
+    min-width: 58px;
+    height: 54px;
+    border-top: 1px solid var(--divider);
+    border-left: 0;
+  }
+
+  .quick-card.compact .remote-group-hint {
+    right: 12px;
+  }
+
+  @keyframes quick-dialog-forward {
+    from { opacity: .25; transform: translateY(40px); }
+    to { opacity: 1; transform: none; }
+  }
+
+  @keyframes quick-dialog-back {
+    from { opacity: .25; transform: translateY(-40px); }
+    to { opacity: 1; transform: none; }
+  }
+}
+
+@media (orientation: landscape) and (min-width: 900px) {
+  .quick-dialog-shell {
+    grid-template-columns: minmax(0, 1fr) 136px;
+  }
+
+  .quick-dialog-group,
+  .quick-dialog-layout {
+    width: 136px;
+  }
+
+  .quick-dialog-group span:last-child {
+    display: inline;
+    max-width: 82px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}

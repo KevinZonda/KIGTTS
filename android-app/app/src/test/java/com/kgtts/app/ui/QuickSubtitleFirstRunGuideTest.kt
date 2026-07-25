@@ -1,0 +1,75 @@
+package com.lhtstudio.kigtts.app.ui
+
+import com.lhtstudio.kigtts.app.data.resolveQuickSubtitleFirstRunGuideCompleted
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+class QuickSubtitleFirstRunGuideTest {
+    @Test
+    fun guideUsesThreeNonInteractiveSteps() {
+        val steps = quickSubtitleGuideSteps(compactControls = false)
+
+        assertEquals(3, steps.size)
+        assertEquals(setOf(QuickSubtitleGuideAnchor.QuickText), steps.first().anchors)
+        assertTrue(steps.first().messages.any { "长按" in it })
+        assertTrue(steps.first().callouts.any { it.label == "长按打开候选列表" })
+        assertTrue(QuickSubtitleGuideAnchor.BottomBar in steps.last().anchors)
+        assertTrue(QuickSubtitleGuideAnchor.RecognitionFab in steps.last().anchors)
+        assertTrue(steps.last().messages.any { "用于语音识别" in it })
+        assertTrue(QuickSubtitleGuideAnchor.TopBarMenu in steps[1].anchors)
+        assertTrue(QuickSubtitleGuideAnchor.TopBarFullscreen in steps[1].anchors)
+        assertTrue(QuickSubtitleGuideAnchor.SubtitleDisplay in steps[1].anchors)
+        assertTrue(steps[1].messages.any { "长按大字幕" in it })
+        assertEquals(
+            setOf(
+                "大字幕（点按进入预览，长按复制文本）",
+                "粗体",
+                "对齐",
+                "倒置",
+                "LED",
+                "清屏",
+                "历史",
+                "调整字体大小",
+                "菜单",
+                "音频设置菜单",
+                "编辑",
+                "全屏"
+            ),
+            steps[1].callouts.map { it.label }.toSet()
+        )
+        assertTrue(steps.last().callouts.any { it.anchor == QuickSubtitleGuideAnchor.BottomSend })
+        assertTrue(steps.last().callouts.any { it.label == "语音识别\n（需要安装资源包）" })
+    }
+
+    @Test
+    fun compactGuideExplainsGroupSelectorGestures() {
+        val firstStep = quickSubtitleGuideSteps(compactControls = true).first()
+
+        assertTrue(firstStep.messages.any { "上下滑动" in it })
+        assertTrue(firstStep.messages.any { "左右滑动" in it })
+    }
+
+    @Test
+    fun legacyUsersDoNotReceiveAFirstRunPopupAfterUpgrade() {
+        assertTrue(
+            resolveQuickSubtitleFirstRunGuideCompleted(
+                stored = null,
+                onboardingCompleted = true
+            )
+        )
+        assertFalse(
+            resolveQuickSubtitleFirstRunGuideCompleted(
+                stored = null,
+                onboardingCompleted = false
+            )
+        )
+        assertFalse(
+            resolveQuickSubtitleFirstRunGuideCompleted(
+                stored = false,
+                onboardingCompleted = true
+            )
+        )
+    }
+}

@@ -14,6 +14,7 @@ desktop.ini
 *.swp
 *.swo
 *.orig
+AGENTS.md
 
 # -----------------------------
 # Logs / Temp
@@ -25,6 +26,7 @@ logs/
 _tmp/
 tmp*/
 tmp_voicepack_inspect_*/
+*.baiduyun.uploading.cfg
 
 # -----------------------------
 # Python
@@ -58,6 +60,7 @@ pnpm-debug.log*
 Electron_Trainer/node_modules/
 Electron_Trainer/dist/
 Electron_Trainer/dist-runtime/
+runtime-build/
 Electron_Trainer/dist-renderer/
 Electron_Trainer/build/python_bootstrap/
 Electron_Trainer/build/python-bootstrap-cache/

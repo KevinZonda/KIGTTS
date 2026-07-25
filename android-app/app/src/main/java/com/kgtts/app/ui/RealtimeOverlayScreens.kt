@@ -384,7 +384,8 @@ fun RealtimeScreen(viewModel: MainViewModel) {
 fun FloatingOverlayScreen(
     viewModel: MainViewModel,
     state: UiState,
-    onOpenMainSettings: () -> Unit
+    onOpenMainSettings: () -> Unit,
+    onOpenQuickTextGestureSettings: () -> Unit
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -403,6 +404,10 @@ fun FloatingOverlayScreen(
     var accessibilityExplainDialogOpen by remember { mutableStateOf(false) }
     var pendingVolumeHotkeyEnableSequence by remember { mutableStateOf<VolumeHotkeySequence?>(null) }
     var dismissVolumeHotkeyEnableWarning by remember { mutableStateOf(false) }
+    val requiresBackgroundPopupPermission = remember {
+        LockScreenBackgroundPermissionGuide.isRequiredForDevice()
+    }
+    var backgroundPopupPermissionGuideOpen by rememberSaveable { mutableStateOf(false) }
     val overlayPermissionLauncher =
         rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
             val granted = FloatingOverlayService.canDrawOverlays(context)
@@ -533,6 +538,20 @@ fun FloatingOverlayScreen(
         }
     }
 
+    LaunchedEffect(
+        requiresBackgroundPopupPermission,
+        state.floatingOverlayShowOnLockScreen,
+        state.lockScreenBackgroundPermissionGuideShown
+    ) {
+        if (
+            requiresBackgroundPopupPermission &&
+            state.floatingOverlayShowOnLockScreen &&
+            !state.lockScreenBackgroundPermissionGuideShown
+        ) {
+            backgroundPopupPermissionGuideOpen = true
+        }
+    }
+
     CenteredPageColumn(
         maxWidth = UiTokens.WideContentMaxWidth,
         scroll = scroll
@@ -561,7 +580,7 @@ fun FloatingOverlayScreen(
                             }
                         }
                     )
-                    Text("启用独立悬浮窗")
+                    Text("启用悬浮窗")
                 }
                 Text(
                     "权限状态：${if (overlayPermissionGranted.value) "已授权" else "未授权"}",
@@ -606,7 +625,7 @@ fun FloatingOverlayScreen(
                     Text("长时间不操作自动贴边")
                 }
                 Text(
-                    "开启后，悬浮 FAB 在 3 秒无操作时会自动吸附到屏幕边缘，仅露出半边并降低透明度。",
+                    "3 秒无操作后收至屏幕边缘，仅露出半边并降低透明度。",
                     style = MaterialTheme.typography.bodySmall
                 )
                 Spacer(Modifier.height(8.dp))
@@ -616,12 +635,39 @@ fun FloatingOverlayScreen(
                 ) {
                     Md2Switch(
                         checked = state.floatingOverlayShowOnLockScreen,
-                        onCheckedChange = { viewModel.setFloatingOverlayShowOnLockScreen(it) }
+                        onCheckedChange = { enabled ->
+                            viewModel.setFloatingOverlayShowOnLockScreen(enabled)
+                            if (enabled && requiresBackgroundPopupPermission) {
+                                backgroundPopupPermissionGuideOpen = true
+                            }
+                        }
                     )
                     Text("锁屏时显示悬浮窗")
                 }
                 Text(
-                    "开启后，悬浮窗可能在后台、锁屏或息屏状态继续显示并响应操作；应用会在本地更新悬浮窗位置、展开状态和当前显示文本。部分系统还需要允许锁屏显示或后台弹出界面。",
+                    "锁屏时仍可查看和操作悬浮窗；部分设备需要额外允许锁屏显示或后台弹出界面。",
+                    style = MaterialTheme.typography.bodySmall
+                )
+                if (requiresBackgroundPopupPermission) {
+                    Md2OutlinedButton(
+                        onClick = { backgroundPopupPermissionGuideOpen = true }
+                    ) {
+                        Text("后台弹出权限")
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Md2Switch(
+                        checked = state.floatingOverlayFabPrefersKeyboard,
+                        onCheckedChange = { viewModel.setFloatingOverlayFabPrefersKeyboard(it) }
+                    )
+                    Text("悬浮按钮优先打开键盘")
+                }
+                Text(
+                    "悬浮按钮显示键盘图标。点按打开输入；长按用于切换语音识别或按住说话。",
                     style = MaterialTheme.typography.bodySmall
                 )
                 Spacer(Modifier.height(8.dp))
@@ -632,9 +678,17 @@ fun FloatingOverlayScreen(
         }
 
         Md2StaggeredFloatIn(index = 1) {
+            QuickTextGestureEntryCard(
+                settings = state.quickTextGestureSettings,
+                onMasterEnabledChange = viewModel::setQuickTextGestureMasterEnabled,
+                onOpen = onOpenQuickTextGestureSettings
+            )
+        }
+
+        Md2StaggeredFloatIn(index = 2) {
             Md2SettingsCard(title = "音量热键") {
                 Text(
-                    "序列监听由独立服务处理，不挂在现有悬浮窗服务上。开启后可能在后台或锁屏状态读取系统音量变化；开启无障碍稳定监听后，会优先读取音量键事件。读取范围仅用于判断你配置的音量键序列。",
+                    "开启后，可在应用外通过设定的音量键顺序触发快捷功能；按键状态只用于判断你配置的热键。",
                     style = MaterialTheme.typography.bodySmall
                 )
                 Spacer(Modifier.height(8.dp))
@@ -661,7 +715,7 @@ fun FloatingOverlayScreen(
                             }
                         }
                     )
-                    Text("优先使用无障碍稳定监听")
+                    Text("提高音量热键响应稳定性")
                 }
                 Text(
                     "权限状态：${if (accessibilityPermissionGranted.value) "已开启" else "未开启"}",
@@ -704,7 +758,7 @@ fun FloatingOverlayScreen(
                     color = MaterialTheme.colors.onSurface.copy(alpha = 0.12f)
                 )
                 Text(
-                    "序列判定时间：${"%.1f".format(Locale.US, state.volumeHotkeyWindowMs / 1000f)}s",
+                    "两次按键最长间隔：${"%.1f".format(Locale.US, state.volumeHotkeyWindowMs / 1000f)} 秒",
                     style = MaterialTheme.typography.bodySmall
                 )
                 Slider(
@@ -768,8 +822,24 @@ fun FloatingOverlayScreen(
         )
     }
 
+    if (backgroundPopupPermissionGuideOpen) {
+        fun closeBackgroundPopupPermissionGuide() {
+            viewModel.setLockScreenBackgroundPermissionGuideShown(true)
+            backgroundPopupPermissionGuideOpen = false
+        }
+        LockScreenBackgroundPermissionGuideDialog(
+            onOpenSettings = {
+                closeBackgroundPopupPermissionGuide()
+                if (!LockScreenBackgroundPermissionGuide.openSettings(context)) {
+                    toast(context, "无法打开权限设置，请在系统设置中手动查找 KIGTTS")
+                }
+            },
+            onDismiss = ::closeBackgroundPopupPermissionGuide
+        )
+    }
+
     pendingVolumeHotkeyEnableSequence?.let { sequence ->
-        AlertDialog(
+        KigttsAlertDialog(
             onDismissRequest = {
                 pendingVolumeHotkeyEnableSequence = null
                 dismissVolumeHotkeyEnableWarning = false
@@ -795,7 +865,7 @@ fun FloatingOverlayScreen(
             },
             confirmButton = {
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    TextButton(
+                    Md2TextButton(
                         onClick = {
                             pendingVolumeHotkeyEnableSequence = null
                             dismissVolumeHotkeyEnableWarning = false
@@ -803,7 +873,7 @@ fun FloatingOverlayScreen(
                     ) {
                         Text("取消")
                     }
-                    TextButton(
+                    Md2TextButton(
                         onClick = {
                             persistVolumeHotkeyEnableWarningChoiceIfNeeded()
                             viewModel.setVolumeHotkeyEnabled(sequence, true)
@@ -813,7 +883,7 @@ fun FloatingOverlayScreen(
                     ) {
                         Text("开启热键")
                     }
-                    TextButton(
+                    Md2TextButton(
                         onClick = {
                             persistVolumeHotkeyEnableWarningChoiceIfNeeded()
                             viewModel.setVolumeHotkeyEnabled(sequence, true)
@@ -830,7 +900,7 @@ fun FloatingOverlayScreen(
     }
 
     hotkeyActionPickerSequence?.let { sequence ->
-        AlertDialog(
+        KigttsAlertDialog(
             onDismissRequest = { hotkeyActionPickerSequence = null },
             title = {
                 Text(
@@ -843,7 +913,7 @@ fun FloatingOverlayScreen(
                     Text("选择这个序列触发后的功能。", style = MaterialTheme.typography.bodySmall)
                     Text("直接打开", fontWeight = FontWeight.Bold)
                     VolumeHotkeyActions.directOptions.forEach { action ->
-                        TextButton(
+                        Md2TextButton(
                             onClick = {
                                 viewModel.setVolumeHotkeyAction(sequence, action)
                                 hotkeyActionPickerSequence = null
@@ -860,7 +930,7 @@ fun FloatingOverlayScreen(
                     Divider(color = MaterialTheme.colors.onSurface.copy(alpha = 0.12f))
                     Text("悬浮窗", fontWeight = FontWeight.Bold)
                     VolumeHotkeyActions.overlayOptions.forEach { action ->
-                        TextButton(
+                        Md2TextButton(
                             onClick = {
                                 viewModel.setVolumeHotkeyAction(sequence, action)
                                 hotkeyActionPickerSequence = null
@@ -875,7 +945,7 @@ fun FloatingOverlayScreen(
                         }
                     }
                     Divider(color = MaterialTheme.colors.onSurface.copy(alpha = 0.12f))
-                    TextButton(
+                    Md2TextButton(
                         onClick = {
                             externalShortcutSearchQuery = ""
                             externalShortcutPickerSequence = sequence
@@ -892,7 +962,7 @@ fun FloatingOverlayScreen(
                 }
             },
             confirmButton = {
-                TextButton(onClick = { hotkeyActionPickerSequence = null }) {
+                Md2TextButton(onClick = { hotkeyActionPickerSequence = null }) {
                     Text("关闭")
                 }
             }
@@ -900,7 +970,7 @@ fun FloatingOverlayScreen(
     }
 
     if (accessibilityExplainDialogOpen) {
-        AlertDialog(
+        KigttsAlertDialog(
             onDismissRequest = { accessibilityExplainDialogOpen = false },
             title = { Text("启用无障碍稳定监听") },
             text = {
@@ -912,7 +982,7 @@ fun FloatingOverlayScreen(
                 }
             },
             confirmButton = {
-                TextButton(
+                Md2TextButton(
                     onClick = {
                         accessibilityExplainDialogOpen = false
                         openAccessibilitySettingsWithGuide()
@@ -922,7 +992,7 @@ fun FloatingOverlayScreen(
                 }
             },
             dismissButton = {
-                TextButton(onClick = { accessibilityExplainDialogOpen = false }) {
+                Md2TextButton(onClick = { accessibilityExplainDialogOpen = false }) {
                     Text("取消")
                 }
             }
@@ -930,7 +1000,7 @@ fun FloatingOverlayScreen(
     }
 
     externalShortcutPickerSequence?.let { sequence ->
-        AlertDialog(
+        KigttsAlertDialog(
             onDismissRequest = {
                 externalShortcutPickerSequence = null
                 externalShortcutLoading = false
@@ -939,15 +1009,14 @@ fun FloatingOverlayScreen(
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(
-                        "这里读取当前已加入悬浮窗启动器的应用快捷方式；内嵌列表补全关闭时仅保留运行时可查询项和必要的固定入口。",
+                        "这里显示已加入悬浮窗启动器的应用快捷操作；关闭常用操作补全后，仅保留系统能够提供的项目。",
                         style = MaterialTheme.typography.bodySmall
                     )
-                    OutlinedTextField(
+                    Md2OutlinedField(
                         value = externalShortcutSearchQuery,
                         onValueChange = { externalShortcutSearchQuery = it },
                         modifier = Modifier.fillMaxWidth(),
-                        singleLine = true,
-                        label = { Text("搜索应用或快捷方式") }
+                        label = "搜索应用或快捷方式"
                     )
                     Box(
                         modifier = Modifier
@@ -977,7 +1046,7 @@ fun FloatingOverlayScreen(
                                     modifier = Modifier.fillMaxSize()
                                 ) {
                                     items(filteredExternalShortcutChoices) { choice ->
-                                        TextButton(
+                                        Md2TextButton(
                                             onClick = {
                                                 viewModel.setVolumeHotkeyAction(
                                                     sequence,
@@ -1012,7 +1081,7 @@ fun FloatingOverlayScreen(
                 }
             },
             confirmButton = {
-                TextButton(
+                Md2TextButton(
                     onClick = {
                         externalShortcutPickerSequence = null
                         externalShortcutLoading = false
@@ -1138,6 +1207,7 @@ internal fun RecognizedQueueItemCard(
 internal fun RunningStatusTopStrip(
     viewModel: MainViewModel,
     status: String,
+    recognitionResourceInstalled: Boolean,
     pushToTalkMode: Boolean,
     pushToTalkPressed: Boolean,
     ttsDisabled: Boolean,
@@ -1152,10 +1222,10 @@ internal fun RunningStatusTopStrip(
     val inputLevel = viewModel.realtimeInputLevel
     val playbackProgress = viewModel.realtimePlaybackProgress
     val micIcon = when {
-        ttsDisabled -> "mic_off"
         pushToTalkMode && pushToTalkPressed -> "settings_voice"
         else -> "mic"
     }
+    val audioIcon = if (ttsDisabled) "graphic_eq_off" else "graphic_eq"
     var inputExpanded by remember { mutableStateOf(false) }
     var outputExpanded by remember { mutableStateOf(false) }
     val inputTypeOptions = remember {
@@ -1206,29 +1276,31 @@ internal fun RunningStatusTopStrip(
                     onClick = onToggleCollapsed
                 )
             }
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Crossfade(
-                    targetState = micIcon,
-                    animationSpec = tween(durationMillis = 180),
-                    label = "running_strip_panel_mic_icon"
-                ) { icon ->
-                    MsIcon(icon, contentDescription = "麦克风音量")
+            if (recognitionResourceInstalled) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Crossfade(
+                        targetState = micIcon,
+                        animationSpec = tween(durationMillis = 180),
+                        label = "running_strip_panel_mic_icon"
+                    ) { icon ->
+                        MsIcon(icon, contentDescription = "麦克风音量")
+                    }
+                    LinearProgressIndicator(
+                        progress = inputLevel.coerceIn(0f, 1f),
+                        modifier = Modifier.weight(1f)
+                    )
                 }
-                LinearProgressIndicator(
-                    progress = inputLevel.coerceIn(0f, 1f),
-                    modifier = Modifier.weight(1f)
-                )
             }
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                MsIcon("graphic_eq", contentDescription = "识别进度")
+                MsIcon(audioIcon, contentDescription = "播放进度")
                 LinearProgressIndicator(
                     progress = playbackProgress.coerceIn(0f, 1f),
                     modifier = Modifier.weight(1f)
@@ -1239,46 +1311,48 @@ internal fun RunningStatusTopStrip(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                Box(modifier = Modifier.weight(1f)) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable(
-                                interactionSource = remember { MutableInteractionSource() },
-                                indication = rememberRipple(bounded = true)
-                            ) { inputExpanded = true }
-                            .padding(vertical = 2.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        MsIcon("mic", contentDescription = "输入设备")
-                        Text(
-                            text = inputDeviceLabel,
-                            modifier = Modifier.weight(1f),
-                            style = MaterialTheme.typography.bodySmall,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                        MsIcon(
-                            name = if (inputExpanded) "expand_less" else "expand_more",
-                            contentDescription = "选择首选输入设备"
-                        )
-                    }
-                    Md2AnimatedOptionMenu(
-                        expanded = inputExpanded,
-                        onDismissRequest = { inputExpanded = false }
-                    ) {
-                        inputTypeOptions.forEach { (value, label) ->
-                            M2DropdownMenuItem(
-                                onClick = {
-                                    inputExpanded = false
-                                    viewModel.setPreferredInputType(value)
+                if (recognitionResourceInstalled) {
+                    Box(modifier = Modifier.weight(1f)) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable(
+                                    interactionSource = remember { MutableInteractionSource() },
+                                    indication = rememberRipple(bounded = true)
+                                ) { inputExpanded = true }
+                                .padding(vertical = 2.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            MsIcon("mic", contentDescription = "输入设备")
+                            Text(
+                                text = inputDeviceLabel,
+                                modifier = Modifier.weight(1f),
+                                style = MaterialTheme.typography.bodySmall,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            MsIcon(
+                                name = if (inputExpanded) "expand_less" else "expand_more",
+                                contentDescription = "选择首选输入设备"
+                            )
+                        }
+                        Md2AnimatedOptionMenu(
+                            expanded = inputExpanded,
+                            onDismissRequest = { inputExpanded = false }
+                        ) {
+                            inputTypeOptions.forEach { (value, label) ->
+                                M2DropdownMenuItem(
+                                    onClick = {
+                                        inputExpanded = false
+                                        viewModel.setPreferredInputType(value)
+                                    }
+                                ) {
+                                    Text(
+                                        text = label,
+                                        fontWeight = if (value == preferredInputType) FontWeight.SemiBold else null
+                                    )
                                 }
-                            ) {
-                                Text(
-                                    text = label,
-                                    fontWeight = if (value == preferredInputType) FontWeight.SemiBold else null
-                                )
                             }
                         }
                     }
@@ -1328,22 +1402,24 @@ internal fun RunningStatusTopStrip(
                     }
                 }
             }
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
+            if (recognitionResourceInstalled) {
                 Row(
+                    modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    MsIcon("mic", contentDescription = "按住说话")
-                    Text("按住说话", style = MaterialTheme.typography.bodySmall)
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        MsIcon("mic", contentDescription = "按住说话")
+                        Text("按住说话", style = MaterialTheme.typography.bodySmall)
+                    }
+                    Md2Switch(
+                        checked = pushToTalkMode,
+                        onCheckedChange = { viewModel.setPushToTalkMode(it) }
+                    )
                 }
-                Md2Switch(
-                    checked = pushToTalkMode,
-                    onCheckedChange = { viewModel.setPushToTalkMode(it) }
-                )
             }
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -1354,8 +1430,8 @@ internal fun RunningStatusTopStrip(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    MsIcon("mic_off", contentDescription = "禁用TTS")
-                    Text("禁用TTS", style = MaterialTheme.typography.bodySmall)
+                    MsIcon("graphic_eq_off", contentDescription = "关闭语音朗读")
+                    Text("关闭语音朗读", style = MaterialTheme.typography.bodySmall)
                 }
                 Md2Switch(
                     checked = ttsDisabled,
@@ -1367,7 +1443,7 @@ internal fun RunningStatusTopStrip(
                 verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 Text(
-                    text = "音量倍率：${playbackGainPercent}%",
+                    text = "朗读与音效音量：${playbackGainPercent}%",
                     style = MaterialTheme.typography.bodySmall
                 )
                 Slider(
@@ -1385,20 +1461,23 @@ internal fun RunningStripTopBarToggle(
     micLevel: Float,
     playbackProgress: Float,
     expanded: Boolean,
+    recognitionResourceInstalled: Boolean,
     pushToTalkMode: Boolean,
     pushToTalkPressed: Boolean,
     ttsDisabled: Boolean,
     contentColor: Color,
-    onToggle: () -> Unit
+    onToggle: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
     val hapticToggle = rememberKigttsHapticClick(onToggle)
     val micIcon = when {
-        ttsDisabled -> "mic_off"
         pushToTalkMode && pushToTalkPressed -> "settings_voice"
         else -> "mic"
     }
+    val audioIcon = if (ttsDisabled) "graphic_eq_off" else "graphic_eq"
     Surface(
         modifier = Modifier
+            .then(modifier)
             .clip(RoundedCornerShape(4.dp))
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
@@ -1414,31 +1493,33 @@ internal fun RunningStripTopBarToggle(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(2.dp)
-            ) {
-                Crossfade(
-                    targetState = micIcon,
-                    animationSpec = tween(durationMillis = 180),
-                    label = "running_strip_toggle_mic_icon"
-                ) { icon ->
-                    MsIcon(icon, contentDescription = "麦克风音量", tint = contentColor)
+            if (recognitionResourceInstalled) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(2.dp)
+                ) {
+                    Crossfade(
+                        targetState = micIcon,
+                        animationSpec = tween(durationMillis = 180),
+                        label = "running_strip_toggle_mic_icon"
+                    ) { icon ->
+                        MsIcon(icon, contentDescription = "麦克风音量", tint = contentColor)
+                    }
+                    LinearProgressIndicator(
+                        progress = micLevel.coerceIn(0f, 1f),
+                        modifier = Modifier
+                            .width(30.dp)
+                            .height(2.dp),
+                        color = contentColor,
+                        backgroundColor = contentColor.copy(alpha = 0.24f)
+                    )
                 }
-                LinearProgressIndicator(
-                    progress = micLevel.coerceIn(0f, 1f),
-                    modifier = Modifier
-                        .width(30.dp)
-                        .height(2.dp),
-                    color = contentColor,
-                    backgroundColor = contentColor.copy(alpha = 0.24f)
-                )
             }
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(2.dp)
             ) {
-                MsIcon("graphic_eq", contentDescription = "播放进度", tint = contentColor)
+                MsIcon(audioIcon, contentDescription = "播放进度", tint = contentColor)
                 LinearProgressIndicator(
                     progress = playbackProgress.coerceIn(0f, 1f),
                     modifier = Modifier

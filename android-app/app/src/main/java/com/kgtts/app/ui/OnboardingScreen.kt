@@ -80,28 +80,6 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.lhtstudio.kigtts.app.R
 
-@Composable
-internal fun KigttsStartupLoadingScreen() {
-    val dark = currentAppDarkTheme()
-    val splashBackground = if (dark) Color(0xFF1D2023) else Color.White
-    val logoRes = if (dark) R.drawable.logo_white else R.drawable.logo_black
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(splashBackground),
-        contentAlignment = Alignment.Center
-    ) {
-        Image(
-            painter = painterResource(id = logoRes),
-            contentDescription = "KIGTTS Logo",
-            contentScale = ContentScale.Fit,
-            modifier = Modifier
-                .fillMaxWidth(0.48f)
-                .height(58.dp)
-        )
-    }
-}
-
 @OptIn(ExperimentalAnimationApi::class)
 @Composable
 internal fun KigttsOnboardingScreen(
@@ -586,7 +564,7 @@ internal fun QuickSubtitlePresetGroupSelectionList(
                     MsIcon(
                         name = group.icon,
                         contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary
+                        tint = MaterialTheme.colorScheme.accentText
                     )
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
@@ -642,7 +620,7 @@ private fun OnboardingDonePage() {
             textAlign = TextAlign.Center
         )
         Text(
-            text = "你已经完成基础准备。接下来可以先从便捷字幕开始，也可以继续配置语音识别、TTS、悬浮窗、音效板和快捷名片。",
+            text = "你已经完成基础准备。接下来可以先从便捷字幕开始，也可以继续配置语音识别、语音朗读、悬浮窗、音效板和快捷名片。",
             style = MaterialTheme.typography.body1,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center
@@ -773,7 +751,7 @@ private fun OnboardingHeroIcon(
             name = name,
             contentDescription = contentDescription,
             modifier = Modifier.size(96.dp),
-            tint = MaterialTheme.colorScheme.primary,
+            tint = MaterialTheme.colorScheme.accentText,
             iconSize = 88.dp
         )
     }
@@ -801,7 +779,7 @@ private fun PermissionGuideRow(
         MsIcon(
             name = icon,
             contentDescription = null,
-            tint = MaterialTheme.colorScheme.primary
+            tint = MaterialTheme.colorScheme.accentText
         )
         Column(modifier = Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {

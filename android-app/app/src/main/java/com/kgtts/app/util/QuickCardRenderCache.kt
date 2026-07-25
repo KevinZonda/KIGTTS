@@ -10,8 +10,11 @@ import com.google.zxing.qrcode.QRCodeWriter
 import java.io.File
 import kotlin.math.max
 
+internal const val QUICK_CARD_CROP_LONG_EDGE_PX = 3840
+internal const val QUICK_CARD_CROP_SHORT_EDGE_PX = 2160
+internal const val QUICK_CARD_RENDER_LONG_EDGE_PX = 2880
+
 object QuickCardRenderCache {
-    private const val defaultImageDecodeSizePx = 1600
     private const val defaultQrSizePx = 640
 
     private val imageCache = object : LruCache<String, Bitmap>(max(8 * 1024, cacheSizeKb() / 12)) {
@@ -22,17 +25,19 @@ object QuickCardRenderCache {
         override fun sizeOf(key: String, value: Bitmap): Int = value.byteCount / 1024
     }
 
-    fun loadImage(path: String, maxDimensionPx: Int = defaultImageDecodeSizePx): Bitmap? {
+    fun loadImage(path: String, maxDimensionPx: Int = QUICK_CARD_RENDER_LONG_EDGE_PX): Bitmap? {
         val normalized = path.trim()
         if (normalized.isEmpty()) return null
-        synchronized(imageCache) {
-            imageCache.get(normalized)?.let { return it }
-        }
         val file = File(normalized)
         if (!file.exists()) return null
-        val bitmap = decodeSampledBitmap(file, maxDimensionPx) ?: return null
+        val safeMaxDimensionPx = maxDimensionPx.coerceAtLeast(256)
+        val cacheKey = "$normalized:${file.lastModified()}:$safeMaxDimensionPx"
         synchronized(imageCache) {
-            imageCache.put(normalized, bitmap)
+            imageCache.get(cacheKey)?.let { return it }
+        }
+        val bitmap = decodeSampledBitmap(file, safeMaxDimensionPx) ?: return null
+        synchronized(imageCache) {
+            imageCache.put(cacheKey, bitmap)
         }
         return bitmap
     }
@@ -70,28 +75,41 @@ object QuickCardRenderCache {
         }
         BitmapFactory.decodeFile(file.absolutePath, bounds)
         if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
-        val sample = computeInSampleSize(bounds.outWidth, bounds.outHeight, safeMax)
+        val sample = quickCardImageSampleSize(bounds.outWidth, bounds.outHeight, safeMax)
         val opts = BitmapFactory.Options().apply {
             inSampleSize = sample
             inPreferredConfig = Bitmap.Config.ARGB_8888
         }
-        return BitmapFactory.decodeFile(file.absolutePath, opts)
-    }
+        val decoded = BitmapFactory.decodeFile(file.absolutePath, opts) ?: return null
+        val decodedMax = max(decoded.width, decoded.height)
+        if (decodedMax <= safeMax) return decoded
 
-    private fun computeInSampleSize(width: Int, height: Int, maxDimensionPx: Int): Int {
-        var inSampleSize = 1
-        var currentWidth = width
-        var currentHeight = height
-        while (currentWidth > maxDimensionPx || currentHeight > maxDimensionPx) {
-            inSampleSize *= 2
-            currentWidth /= 2
-            currentHeight /= 2
-        }
-        return inSampleSize.coerceAtLeast(1)
+        val scale = safeMax.toFloat() / decodedMax.toFloat()
+        val scaled = Bitmap.createScaledBitmap(
+            decoded,
+            (decoded.width * scale).toInt().coerceAtLeast(1),
+            (decoded.height * scale).toInt().coerceAtLeast(1),
+            true
+        )
+        if (scaled !== decoded) decoded.recycle()
+        return scaled
     }
 
     private fun cacheSizeKb(): Int {
         val maxMemoryKb = (Runtime.getRuntime().maxMemory() / 1024L).toInt()
         return maxMemoryKb.coerceAtLeast(12 * 1024)
     }
+}
+
+internal fun quickCardImageSampleSize(width: Int, height: Int, targetMaxDimensionPx: Int): Int {
+    val safeTarget = targetMaxDimensionPx.coerceAtLeast(1)
+    var sampleSize = 1
+    var currentWidth = width.coerceAtLeast(1)
+    var currentHeight = height.coerceAtLeast(1)
+    while (currentWidth / 2 >= safeTarget || currentHeight / 2 >= safeTarget) {
+        sampleSize *= 2
+        currentWidth /= 2
+        currentHeight /= 2
+    }
+    return sampleSize
 }

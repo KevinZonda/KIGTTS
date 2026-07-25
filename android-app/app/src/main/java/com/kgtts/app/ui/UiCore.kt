@@ -256,6 +256,7 @@ import com.lhtstudio.kigtts.app.data.SYSTEM_TTS_VOICE_NAME
 import com.lhtstudio.kigtts.app.data.VoicePackInfo
 import com.lhtstudio.kigtts.app.data.UserPrefs
 import com.lhtstudio.kigtts.app.data.VoicePackMeta
+import com.lhtstudio.kigtts.app.theme.ThemeColorResolver
 import com.lhtstudio.kigtts.app.data.defaultSoundboardGroups
 import com.lhtstudio.kigtts.app.data.isKokoroVoiceDir
 import com.lhtstudio.kigtts.app.data.isSystemTtsVoiceDir
@@ -565,20 +566,48 @@ internal val KgtDarkColors = darkColors(
 internal data class Md2ExtraColors(
     val surfaceVariant: Color,
     val onSurfaceVariant: Color,
-    val outline: Color
+    val outline: Color,
+    val accentText: Color
 )
 
 internal val KgtLightExtraColors = Md2ExtraColors(
     surfaceVariant = Color(0xFFE8ECEF),
     onSurfaceVariant = Color(0xFF495156),
-    outline = Color(0xFF9CA5AC)
+    outline = Color(0xFF9CA5AC),
+    accentText = UiTokens.Primary
 )
 
 internal val KgtDarkExtraColors = Md2ExtraColors(
     surfaceVariant = Color(0xFF262A2E),
     onSurfaceVariant = Color(0xFFB6BEC4),
-    outline = Color(0xFF757F87)
+    outline = Color(0xFF757F87),
+    accentText = UiTokens.Primary
 )
+
+internal fun resolveKgtColors(
+    darkTheme: Boolean,
+    themeColorArgb: Int,
+    toneCorrectionEnabled: Boolean
+): Colors {
+    val roles = ThemeColorResolver.resolve(themeColorArgb, darkTheme, toneCorrectionEnabled)
+    return (if (darkTheme) KgtDarkColors else KgtLightColors).copy(
+        primary = Color(roles.primaryArgb),
+        onPrimary = Color(roles.onPrimaryArgb),
+        secondary = Color(roles.primaryArgb),
+        onSecondary = Color(roles.onPrimaryArgb)
+    )
+}
+
+internal fun resolveKgtExtraColors(
+    darkTheme: Boolean,
+    themeColorArgb: Int,
+    toneCorrectionEnabled: Boolean
+): Md2ExtraColors {
+    val roles = ThemeColorResolver.resolve(themeColorArgb, darkTheme, toneCorrectionEnabled)
+    return (if (darkTheme) KgtDarkExtraColors else KgtLightExtraColors).copy(
+        accentText = Color(roles.accentTextArgb)
+    )
+}
 
 internal val LocalMd2ExtraColors = staticCompositionLocalOf { KgtLightExtraColors }
 internal val LocalSuppressStaggeredFloatIn = staticCompositionLocalOf { false }
@@ -594,7 +623,8 @@ internal data class Md2ColorScheme(
     val onSurface: Color,
     val surfaceVariant: Color,
     val onSurfaceVariant: Color,
-    val outline: Color
+    val outline: Color,
+    val accentText: Color
 )
 
 internal val MaterialTheme.colorScheme: Md2ColorScheme
@@ -613,7 +643,8 @@ internal val MaterialTheme.colorScheme: Md2ColorScheme
             onSurface = base.onSurface,
             surfaceVariant = extra.surfaceVariant,
             onSurfaceVariant = extra.onSurfaceVariant,
-            outline = extra.outline
+            outline = extra.outline,
+            accentText = extra.accentText
         )
     }
 
@@ -901,6 +932,7 @@ internal object QuickSubtitleRoutes {
     const val Main = "quick_subtitle/main"
     const val Editor = "quick_subtitle/editor"
     const val History = "quick_subtitle/history"
+    const val Led = "quick_subtitle/led"
 }
 
 data class QuickSubtitleFloatingInputPreviewState(
@@ -934,6 +966,7 @@ internal object QuickCardRoutes {
 
 internal object SettingsRoutes {
     const val Main = "settings/main"
+    const val Fonts = "settings/fonts"
     const val Log = "settings/log"
     const val Licenses = "settings/licenses"
     const val Privacy = "settings/privacy"
@@ -958,6 +991,5 @@ internal val SoundboardAudioFileExtensions = setOf(
     "webm"
 )
 
-internal const val TTS_DISABLED_MESSAGE = "TTS已禁用，如需打开，请打开顶部音频状态菜单将“禁用TTS”选项关闭"
+internal const val TTS_DISABLED_MESSAGE = "语音朗读已关闭，可在顶部音频设置菜单中重新开启"
 internal var quickCardSortHintShownThisProcess = false
-

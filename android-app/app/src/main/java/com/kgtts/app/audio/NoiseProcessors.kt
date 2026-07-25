@@ -47,10 +47,10 @@ object SpeechEnhancementMode {
 
     val options: List<Pair<Int, String>> = listOf(
         OFF to "关闭",
-        GTCRN_OFFLINE to "GTCRN 句级增强",
-        GTCRN_STREAMING to "GTCRN 流式增强",
-        DPDFNET2_STREAMING to "DPDFNet2 流式增强",
-        DPDFNET4_STREAMING to "DPDFNet4 流式增强"
+        GTCRN_OFFLINE to "稳定降噪（GTCRN）",
+        GTCRN_STREAMING to "实时轻量降噪（GTCRN）",
+        DPDFNET2_STREAMING to "实时增强降噪（DPDFNet2）",
+        DPDFNET4_STREAMING to "实时强力降噪（DPDFNet4）"
     )
 
     fun clamp(mode: Int): Int {
@@ -77,9 +77,9 @@ object VadMode {
     const val HYBRID = 2
 
     val options: List<Pair<Int, String>> = listOf(
-        CLASSIC to "阈值式VAD",
-        SILERO to "SileroVAD",
-        HYBRID to "混合VAD"
+        CLASSIC to "标准断句",
+        SILERO to "智能断句（Silero）",
+        HYBRID to "混合断句"
     )
 
     fun clamp(mode: Int): Int {

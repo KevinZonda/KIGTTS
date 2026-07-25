@@ -69,17 +69,6 @@ class ModelRepository(private val context: Context) {
     fun importVoice(uri: Uri, resolver: ContentResolver): File {
         val targetDir = File(voiceRoot, safeName(uri, resolver))
         val importDir = File(voiceRoot, ".import-${System.currentTimeMillis()}")
-        val preservedMeta = readVoiceMeta(targetDir)
-        val preservedAvatar = preservedMeta
-            ?.avatar
-            ?.takeIf { it.isNotBlank() }
-            ?.let { File(targetDir, it) }
-            ?.takeIf { it.isFile }
-            ?.let { source ->
-                File(context.cacheDir, "voice-avatar-${System.currentTimeMillis()}.tmp").also { temp ->
-                    source.copyTo(temp, overwrite = true)
-                }
-            }
         if (importDir.exists()) {
             importDir.deleteRecursively()
         }
@@ -88,23 +77,40 @@ class ModelRepository(private val context: Context) {
         try {
             unzipToDir(uri, resolver, importDir)
             validateVoicePack(importDir)
-            if (targetDir.exists()) {
-                targetDir.deleteRecursively()
-            }
-            importDir.parentFile?.mkdirs()
-            val moved = importDir.renameTo(targetDir)
-            if (!moved) {
-                importDir.copyRecursively(targetDir, overwrite = true)
-                importDir.deleteRecursively()
-            }
-            if (preservedMeta != null) {
-                val avatarName = sanitizeMetaFileName(preservedMeta.avatar, "avatar.png")
-                if (preservedAvatar?.isFile == true) {
-                    preservedAvatar.copyTo(File(targetDir, avatarName), overwrite = true)
+            VoicePackFileCoordinator.withDirectoryLock(targetDir) {
+                val preservedMeta = readVoiceMeta(targetDir)
+                val preservedAvatar = preservedMeta
+                    ?.avatar
+                    ?.takeIf { it.isNotBlank() }
+                    ?.let { File(targetDir, it) }
+                    ?.takeIf { it.isFile }
+                    ?.let { source ->
+                        File.createTempFile("voice-avatar-", ".tmp", context.cacheDir).also { temp ->
+                            source.copyTo(temp, overwrite = true)
+                        }
+                    }
+                try {
+                    if (targetDir.exists()) {
+                        targetDir.deleteRecursively()
+                    }
+                    importDir.parentFile?.mkdirs()
+                    val moved = importDir.renameTo(targetDir)
+                    if (!moved) {
+                        importDir.copyRecursively(targetDir, overwrite = true)
+                        importDir.deleteRecursively()
+                    }
+                    if (preservedMeta != null) {
+                        val avatarName = sanitizeMetaFileName(preservedMeta.avatar, "avatar.png")
+                        if (preservedAvatar?.isFile == true) {
+                            preservedAvatar.copyTo(File(targetDir, avatarName), overwrite = true)
+                        }
+                        saveVoiceMetaLocked(targetDir, preservedMeta.copy(avatar = avatarName))
+                    } else {
+                        ensureVoiceMetaLocked(targetDir)
+                    }
+                } finally {
+                    preservedAvatar?.delete()
                 }
-                saveVoiceMeta(targetDir, preservedMeta.copy(avatar = avatarName))
-            } else {
-                ensureVoiceMeta(targetDir)
             }
             AppLogger.i("importVoice done target=${targetDir.absolutePath}")
             return targetDir
@@ -112,13 +118,13 @@ class ModelRepository(private val context: Context) {
             importDir.deleteRecursively()
             AppLogger.e("importVoice failed uri=$uri", e)
             throw e
-        } finally {
-            preservedAvatar?.delete()
         }
     }
 
     fun listVoicePacks(): List<VoicePackInfo> {
-        val dirs = voiceRoot.listFiles()?.filter { it.isDirectory } ?: emptyList()
+        val dirs = voiceRoot.listFiles()
+            ?.filter { it.isDirectory && !it.name.startsWith(".import-") }
+            ?: emptyList()
         val infos = dirs.map { dir ->
             VoicePackInfo(dir, ensureVoiceMeta(dir))
         }
@@ -182,6 +188,12 @@ class ModelRepository(private val context: Context) {
     }
 
     fun saveVoiceMeta(dir: File, meta: VoicePackMeta) {
+        VoicePackFileCoordinator.withDirectoryLock(dir) {
+            saveVoiceMetaLocked(dir, meta)
+        }
+    }
+
+    private fun saveVoiceMetaLocked(dir: File, meta: VoicePackMeta) {
         val normalized = normalizeVoiceMeta(dir, meta)
         val file = metaFile(dir)
         val json = JSONObject().apply {
@@ -196,51 +208,64 @@ class ModelRepository(private val context: Context) {
     }
 
     fun updateVoiceMeta(dir: File, updater: (VoicePackMeta) -> VoicePackMeta) {
-        val current = ensureVoiceMeta(dir)
-        val next = updater(current)
-        saveVoiceMeta(dir, next)
+        VoicePackFileCoordinator.withDirectoryLock(dir) {
+            val current = ensureVoiceMetaLocked(dir)
+            val next = updater(current)
+            saveVoiceMetaLocked(dir, next)
+        }
     }
 
     fun updateVoiceAvatar(dir: File, resolver: ContentResolver, uri: Uri, fileName: String = "avatar.png") {
         val safeFileName = sanitizeMetaFileName(fileName, "avatar.png")
         val bitmap = decodeAvatarBitmap(resolver, uri)
             ?: throw IOException("无法读取头像图片")
-        val out = File(dir, safeFileName)
-        val tmp = File(dir, "$safeFileName.tmp")
-        tmp.parentFile?.mkdirs()
-        FileOutputStream(tmp).use { output ->
-            bitmap.compress(Bitmap.CompressFormat.PNG, 100, output)
-        }
-        if (out.exists() && !out.delete()) {
-            throw IOException("无法更新头像文件")
-        }
-        if (!tmp.renameTo(out)) {
-            tmp.copyTo(out, overwrite = true)
-            tmp.delete()
-        }
-        updateVoiceMeta(dir) { meta ->
-            meta.copy(avatar = safeFileName)
+        VoicePackFileCoordinator.withDirectoryLock(dir) {
+            val out = File(dir, safeFileName)
+            val tmp = File(dir, "$safeFileName.tmp")
+            tmp.parentFile?.mkdirs()
+            try {
+                FileOutputStream(tmp).use { output ->
+                    bitmap.compress(Bitmap.CompressFormat.PNG, 100, output)
+                }
+                if (out.exists() && !out.delete()) {
+                    throw IOException("无法更新头像文件")
+                }
+                if (!tmp.renameTo(out)) {
+                    tmp.copyTo(out, overwrite = true)
+                }
+            } finally {
+                tmp.delete()
+            }
+            val current = ensureVoiceMetaLocked(dir)
+            saveVoiceMetaLocked(dir, current.copy(avatar = safeFileName))
         }
     }
 
     fun deleteVoicePack(dir: File) {
         val target = requireManagedVoicePackDir(dir)
-        if (!target.exists()) return
-        target.deleteRecursively()
+        VoicePackFileCoordinator.withDirectoryLock(target) {
+            if (target.exists()) {
+                target.deleteRecursively()
+            }
+        }
     }
 
     fun zipVoicePack(dir: File, outZip: File) {
-        outZip.parentFile?.mkdirs()
-        ensureVoiceMeta(dir)
-        ZipOutputStream(FileOutputStream(outZip)).use { zos ->
-            dir.walkTopDown().forEach { file ->
-                if (file.isDirectory) return@forEach
-                val entryName = dir.toPath().relativize(file.toPath()).toString().replace('\\', '/')
-                if (entryName == "${META_FILE_NAME}.tmp" || entryName == "${META_FILE_NAME}.bak") return@forEach
-                val entry = ZipEntry(entryName)
-                zos.putNextEntry(entry)
-                file.inputStream().use { input -> input.copyTo(zos) }
-                zos.closeEntry()
+        VoicePackFileCoordinator.withDirectoryLock(dir) {
+            outZip.parentFile?.mkdirs()
+            ensureVoiceMetaLocked(dir)
+            ZipOutputStream(FileOutputStream(outZip)).use { zos ->
+                dir.walkTopDown().forEach { file ->
+                    if (file.isDirectory) return@forEach
+                    val entryName = dir.toPath().relativize(file.toPath()).toString().replace('\\', '/')
+                    if (entryName == "${META_FILE_NAME}.tmp" || entryName == "${META_FILE_NAME}.bak") {
+                        return@forEach
+                    }
+                    val entry = ZipEntry(entryName)
+                    zos.putNextEntry(entry)
+                    file.inputStream().use { input -> input.copyTo(zos) }
+                    zos.closeEntry()
+                }
             }
         }
     }
@@ -389,11 +414,20 @@ class ModelRepository(private val context: Context) {
     private fun backupMetaFile(dir: File): File = File(dir, "$META_FILE_NAME.bak")
 
     private fun ensureVoiceMeta(dir: File): VoicePackMeta {
-        val parsed = readVoiceMeta(dir)
-            ?: readVoiceMetaFile(backupMetaFile(dir))
-            ?: deriveVoiceMeta(dir)
+        return VoicePackFileCoordinator.withDirectoryLock(dir) {
+            ensureVoiceMetaLocked(dir)
+        }
+    }
+
+    private fun ensureVoiceMetaLocked(dir: File): VoicePackMeta {
+        val primary = readVoiceMeta(dir)
+        val parsed = primary ?: readVoiceMetaFile(backupMetaFile(dir)) ?: deriveVoiceMeta(dir)
         val normalized = normalizeVoiceMeta(dir, parsed)
-        saveVoiceMeta(dir, normalized)
+        if (primary == null || normalized != primary) {
+            saveVoiceMetaLocked(dir, normalized)
+        } else {
+            ensureAvatar(dir, normalized.avatar)
+        }
         return normalized
     }
 
@@ -460,16 +494,7 @@ class ModelRepository(private val context: Context) {
         if (currentLooksValid) {
             runCatching { file.copyTo(backup, overwrite = true) }
         }
-        val tmp = File(file.parentFile, "${file.name}.tmp")
-        tmp.writeText(content, Charsets.UTF_8)
-        if (file.exists() && !file.delete()) {
-            tmp.delete()
-            throw IOException("无法更新语音包元数据")
-        }
-        if (!tmp.renameTo(file)) {
-            tmp.copyTo(file, overwrite = true)
-            tmp.delete()
-        }
+        VoicePackFileCoordinator.writeTextAtomically(file, content)
     }
 
     private fun sanitizeMetaFileName(name: String, fallback: String): String {

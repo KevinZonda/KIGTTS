@@ -23,6 +23,18 @@
       "url": "https://huggingface.co/LHT02/KIGTTS_TRAINER_Runtime/resolve/main/piper_env_cuda.7z"
     }
   ],
+  "piper_cuda_runtime_cu128": [
+    {
+      "id": "modelscope",
+      "label": "ModelScope piper_env_cuda128.7z",
+      "url": "https://modelscope.cn/models/LHTSTUDIO/KIGTTS_TRAINER_Runtime/resolve/master/piper_env_cuda128.7z"
+    },
+    {
+      "id": "huggingface",
+      "label": "Hugging Face piper_env_cuda128.7z",
+      "url": "https://huggingface.co/LHT02/KIGTTS_TRAINER_Runtime/resolve/main/piper_env_cuda128.7z"
+    }
+  ],
   "voxcpm_runtime": [
     {
       "id": "modelscope",
@@ -33,6 +45,18 @@
       "id": "huggingface",
       "label": "Hugging Face voxcpm_env.7z",
       "url": "https://huggingface.co/LHT02/KIGTTS_TRAINER_Runtime/resolve/main/voxcpm_env.7z"
+    }
+  ],
+  "voxcpm_runtime_cu128": [
+    {
+      "id": "modelscope",
+      "label": "ModelScope voxcpm_env_cuda128.7z",
+      "url": "https://modelscope.cn/models/LHTSTUDIO/KIGTTS_TRAINER_Runtime/resolve/master/voxcpm_env_cuda128.7z"
+    },
+    {
+      "id": "huggingface",
+      "label": "Hugging Face voxcpm_env_cuda128.7z",
+      "url": "https://huggingface.co/LHT02/KIGTTS_TRAINER_Runtime/resolve/main/voxcpm_env_cuda128.7z"
     }
   ],
   "trainer_resources": [

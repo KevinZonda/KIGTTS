@@ -24,7 +24,7 @@ def main(argv: list[str]) -> int:
         import numpy as np
         import soundfile as sf
 
-        request = json.loads(Path(argv[1]).read_text(encoding="utf-8"))
+        request = json.loads(Path(argv[1]).read_text(encoding="utf-8-sig"))
         audio_path = Path(str(request["reference_audio"]))
         model_zip = Path(str(request["asr_model_zip"]))
         if not audio_path.exists():

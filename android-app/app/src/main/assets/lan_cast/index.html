@@ -1,0 +1,256 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#038387">
+  <title>KIGTTS 投屏与遥控</title>
+  <link rel="stylesheet" href="/assets/app.css">
+  <link rel="stylesheet" href="/assets/remote-control.css">
+  <link rel="stylesheet" href="/assets/remote-small.css">
+  <link rel="stylesheet" href="/assets/remote-landscape-actions.css">
+  <link rel="stylesheet" href="/assets/remote-quick-dialog.css">
+  <link rel="stylesheet" href="/assets/led-display.css">
+</head>
+<body>
+  <main id="display-view" class="display-view" aria-label="LED 字幕投屏">
+    <canvas id="led-canvas"></canvas>
+    <div id="adaptive-stage"><div id="adaptive-text"></div></div>
+    <div id="display-toolbar" class="display-toolbar led-unlocked-control">
+      <button id="fullscreen-button" class="icon-button led-control" title="全屏" aria-label="全屏">
+        <span class="material-symbols">fullscreen</span>
+      </button>
+      <div class="toolbar-spacer"></div>
+      <button id="led-settings-button" class="icon-button led-control" title="LED 设置" aria-label="LED 设置">
+        <span class="material-symbols">settings</span>
+      </button>
+    </div>
+
+    <div id="led-bottom-actions" class="led-bottom-actions led-unlocked-control">
+      <button id="led-quick-button" class="icon-button led-control" title="快捷文本" aria-label="快捷文本">
+        <span class="material-symbols">subtitles</span>
+      </button>
+      <button id="led-input-button" class="icon-button led-control" title="输入文本" aria-label="输入文本">
+        <span class="material-symbols">keyboard</span>
+      </button>
+    </div>
+    <button id="led-lock-button" class="icon-button led-control led-lock-button" title="锁定 LED 屏幕" aria-label="锁定 LED 屏幕">
+      <span class="material-symbols">lock</span>
+    </button>
+
+    <button id="led-guide" class="led-guide" aria-label="关闭操作提示">
+      <span id="led-guide-text">左右拖动字幕 · 快速左滑快捷文本 · 上滑输入文字</span>
+    </button>
+    <div id="led-panel-scrim" class="led-panel-scrim"></div>
+
+    <section id="led-input-panel" class="led-input-panel led-panel" aria-label="输入文本">
+      <button id="led-cursor-left" class="icon-button" title="光标左移" aria-label="光标左移"><span class="material-symbols">arrow_back</span></button>
+      <button id="led-cursor-right" class="icon-button" title="光标右移" aria-label="光标右移"><span class="material-symbols">arrow_forward</span></button>
+      <button id="led-play-on-send" class="icon-button" title="发送时播放语音" aria-label="发送时播放语音"><span class="material-symbols">volume_up</span></button>
+      <div class="led-input-field">
+        <input id="led-text-input" type="text" maxlength="4000" placeholder="请输入文本" autocomplete="off">
+        <button id="led-input-clear" class="icon-button" type="button" title="清空输入" aria-label="清空输入"><span class="material-symbols">close</span></button>
+      </div>
+      <button id="led-input-send" class="icon-button" title="发送到朗读队列" aria-label="发送到朗读队列"><span class="material-symbols">send</span></button>
+    </section>
+
+    <aside id="led-quick-panel" class="led-side-panel led-panel" aria-label="快捷文本面板">
+      <header class="led-panel-header">
+        <button id="led-group-previous" class="icon-button" title="上一分组" aria-label="上一分组"><span class="material-symbols">chevron_left</span></button>
+        <div id="led-group-title" class="led-panel-title">快捷文本</div>
+        <button id="led-group-next" class="icon-button" title="下一分组" aria-label="下一分组"><span class="material-symbols">chevron_right</span></button>
+      </header>
+      <div class="led-quick-layout">
+        <div id="led-quick-items" class="led-quick-list"></div>
+        <nav id="led-group-rail" class="led-group-rail" aria-label="快捷文本分组"></nav>
+      </div>
+    </aside>
+
+    <aside id="led-settings-panel" class="led-side-panel led-settings-panel led-panel" aria-label="LED 设置面板">
+      <header class="led-panel-header">
+        <div class="led-panel-title">LED 设置</div>
+        <button id="led-settings-close" class="icon-button" title="关闭设置" aria-label="关闭设置"><span class="material-symbols">close</span></button>
+      </header>
+      <div class="led-settings-scroll">
+        <h2>外观</h2>
+        <label class="led-setting-row"><span>使用正常字形</span><input id="led-normal-font" type="checkbox" role="switch"></label>
+        <label class="led-setting-row"><span>字幕颜色</span><input id="led-color" class="led-color-input" type="color"></label>
+        <label class="led-setting-row"><span>背景颜色</span><input id="led-background-color" class="led-color-input" type="color"></label>
+        <div id="led-dot-settings">
+          <div class="led-setting-block"><span>点阵形状</span><div class="led-setting-segments" data-setting="dotShape"><button data-value="0" aria-label="圆点"><span class="material-symbols">circle</span></button><button data-value="1" aria-label="方点"><span class="material-symbols">square</span></button></div></div>
+          <label class="led-slider-row"><span>点阵密度 <output id="led-density-value"></output></span><input id="led-density" type="range" min="0" max="1" step="0.01"></label>
+          <label class="led-setting-row"><span>发光效果</span><input id="led-glow-enabled" type="checkbox" role="switch"></label>
+          <label id="led-glow-strength-row" class="led-slider-row"><span>发光强度 <output id="led-glow-value"></output></span><input id="led-glow-strength" type="range" min="0" max="1" step="0.01"></label>
+        </div>
+        <label class="led-slider-row"><span>显示高度 <output id="led-height-value"></output></span><input id="led-height" type="range" min="0.35" max="0.92" step="0.01"></label>
+
+        <h2>排版</h2>
+        <label class="led-setting-row"><span>自适应多行</span><input id="led-adaptive-multiline" type="checkbox" role="switch"></label>
+        <div id="led-scroll-options">
+        <label class="led-slider-row"><span>滚动速度 <output id="led-speed-value"></output></span><input id="led-speed" type="range" min="24" max="1600" step="1"></label>
+        <div class="led-setting-block"><span>滚动方向</span><div class="led-setting-segments" data-setting="direction"><button data-value="0" aria-label="向左"><span class="material-symbols">arrow_back</span></button><button data-value="1" aria-label="向右"><span class="material-symbols">arrow_forward</span></button></div></div>
+        <label class="led-slider-row"><span>循环间距 <output id="led-gap-value"></output></span><input id="led-gap" type="range" min="24" max="1600" step="1"></label>
+        </div>
+        <label class="led-setting-row"><span>快速左滑打开快捷文本</span><input id="led-quick-swipe" type="checkbox" role="switch"></label>
+        <div class="led-setting-block"><span>文本对齐</span><div class="led-setting-segments" data-setting="shortTextAlignment"><button data-value="0" aria-label="居左"><span class="material-symbols">format_align_left</span></button><button data-value="1" aria-label="居中"><span class="material-symbols">format_align_center</span></button><button data-value="2" aria-label="居右"><span class="material-symbols">format_align_right</span></button></div></div>
+
+        <h2>屏幕</h2>
+        <label class="led-setting-row"><span>保持屏幕常亮</span><input id="led-keep-awake" type="checkbox" role="switch"></label>
+        <label class="led-setting-row"><span>亮度跟随系统</span><input id="led-follow-brightness" type="checkbox" role="switch"></label>
+        <label id="led-brightness-row" class="led-slider-row"><span>屏幕亮度 <output id="led-brightness-value"></output></span><input id="led-brightness" type="range" min="0.1" max="1" step="0.01"></label>
+        <label class="led-setting-row"><span>投屏端音频</span><input id="led-web-audio" type="checkbox" role="switch"></label>
+        <button id="led-reset-settings" class="led-reset-button"><span class="material-symbols">settings_backup_restore</span><span>恢复 LED 默认设置</span></button>
+      </div>
+    </aside>
+
+    <div id="led-reset-dialog" class="led-dialog" role="dialog" aria-modal="true" aria-labelledby="led-reset-title">
+      <div class="led-dialog-card">
+        <h2 id="led-reset-title">恢复 LED 默认设置</h2>
+        <p>确定恢复全部 LED 显示设置？</p>
+        <div><button id="led-reset-cancel">取消</button><button id="led-reset-confirm">恢复</button></div>
+      </div>
+    </div>
+  </main>
+
+  <main id="remote-view" class="remote-view">
+    <header class="app-bar">
+      <button id="remote-menu-button" class="icon-button" title="打开导航" aria-label="打开导航">
+        <span class="material-symbols">menu</span>
+      </button>
+      <div><h1 id="remote-page-title">字幕控制</h1><p id="connection-label">正在连接</p></div>
+      <div class="toolbar-spacer"></div>
+      <button id="open-app-button" class="icon-button" title="打开主软件" aria-label="打开主软件">
+        <span class="material-symbols">open_in_new</span>
+      </button>
+    </header>
+
+    <div id="remote-drawer-scrim" class="remote-drawer-scrim"></div>
+    <aside id="remote-drawer" class="remote-drawer" aria-label="遥控器导航">
+      <div class="drawer-brand"><img src="/assets/kigtts-logo-horizontal.svg" alt="KIGTTS"></div>
+      <button class="drawer-item active" data-remote-page="control">
+        <span class="material-symbols">subtitles</span><span>字幕控制</span>
+      </button>
+      <button class="drawer-item" data-remote-page="settings">
+        <span class="material-symbols">settings</span><span>设置</span>
+      </button>
+    </aside>
+
+    <section id="remote-control-page" class="remote-page-panel active">
+      <div class="remote-content remote-control-layout">
+        <section class="md-card subtitle-display-card">
+          <div id="now-showing" class="remote-subtitle-preview">等待字幕</div>
+          <div class="subtitle-actions" aria-label="字幕快捷操作">
+            <button id="remote-bold" class="icon-button" title="切换粗体" aria-label="切换粗体"><span class="material-symbols">format_bold</span></button>
+            <button id="remote-align" class="icon-button" title="切换对齐" aria-label="切换对齐"><span class="material-symbols">format_align_left</span></button>
+            <button id="remote-rotate" class="icon-button" title="倒置字幕" aria-label="倒置字幕"><span class="material-symbols">swap_vert</span></button>
+            <button id="replay-button" class="icon-button" title="重新朗读" aria-label="重新朗读"><span class="material-symbols">volume_up</span></button>
+            <button id="clear-button" class="icon-button" title="清屏" aria-label="清屏"><span class="material-symbols">cleaning_services</span></button>
+          </div>
+        </section>
+
+        <section class="md-card quick-card">
+          <div id="quick-items" class="quick-items"></div>
+          <div id="group-tabs" class="group-tabs" role="tablist" aria-label="快捷文本分组"></div>
+          <div id="compact-group-selector" class="compact-group-selector" aria-label="快捷文本分组切换">
+            <button id="compact-group-previous" class="icon-button" title="上一分组" aria-label="上一分组"><span class="material-symbols">keyboard_arrow_up</span></button>
+            <button id="compact-group-current" class="compact-group-current" title="当前分组" aria-label="当前分组">
+              <span class="material-symbols">label</span><span id="compact-group-title">快捷文本</span><i></i>
+            </button>
+            <button id="compact-group-next" class="icon-button" title="下一分组" aria-label="下一分组"><span class="material-symbols">keyboard_arrow_down</span></button>
+          </div>
+        </section>
+      </div>
+
+      <section id="remote-input-bar" class="remote-input-bar" aria-label="字幕输入栏">
+        <div class="remote-input-bar-inner">
+          <div class="remote-input-actions" aria-label="输入操作">
+            <button id="remote-cursor-left" class="icon-button" title="光标左移" aria-label="光标左移"><span class="material-symbols">arrow_back</span></button>
+            <button id="remote-cursor-right" class="icon-button" title="光标右移" aria-label="光标右移"><span class="material-symbols">arrow_forward</span></button>
+            <button id="remote-play-on-send" class="icon-button" title="发送时播放语音" aria-label="发送时播放语音"><span class="material-symbols">volume_up</span></button>
+            <button id="remote-quick-toggle" class="icon-button" title="收起快捷文本" aria-label="收起快捷文本"><span class="material-symbols">subtitles</span></button>
+            <button id="remote-input-replay" class="icon-button" title="朗读当前字幕" aria-label="朗读当前字幕"><span class="material-symbols">play_arrow</span></button>
+          </div>
+          <div class="remote-input-main">
+            <label class="remote-input-field">
+              <input id="subtitle-input" type="text" maxlength="4000" placeholder="请输入文本" autocomplete="off">
+              <button id="remote-input-clear" class="icon-button" type="button" title="清空输入" aria-label="清空输入" hidden><span class="material-symbols">close</span></button>
+            </label>
+            <button id="send-button" class="icon-button remote-send-button" title="发送到朗读队列" aria-label="发送到朗读队列" disabled><span class="material-symbols">send</span></button>
+          </div>
+        </div>
+      </section>
+    </section>
+
+    <section id="remote-settings-page" class="remote-page-panel">
+      <div class="remote-content remote-settings-layout">
+        <section class="md-card">
+          <div class="card-title">遥控器外观</div>
+          <div class="segmented three-segment" role="tablist" aria-label="遥控器主题">
+            <button class="segment" data-theme-mode="system"><span class="material-symbols">brightness_auto</span><span>跟随浏览器</span></button>
+            <button class="segment" data-theme-mode="light"><span class="material-symbols">light_mode</span><span>亮色</span></button>
+            <button class="segment" data-theme-mode="dark"><span class="material-symbols">dark_mode</span><span>暗色</span></button>
+          </div>
+          <label class="setting-row"><span>使用紧凑快捷文本控件</span><input id="remote-compact-quick-text" type="checkbox" role="switch"></label>
+        </section>
+
+        <section class="md-card">
+          <div class="card-title">投屏模式</div>
+          <div class="segmented" role="tablist" aria-label="投屏模式">
+            <button class="segment" data-display-mode="adaptive"><span class="material-symbols">fit_screen</span><span>自适应大字幕</span></button>
+            <button class="segment" data-display-mode="led"><span class="material-symbols">text_fields</span><span>LED 滚动</span></button>
+          </div>
+        </section>
+
+        <section class="md-card cast-settings-card">
+          <div class="card-title">投屏显示样式</div>
+          <div class="settings-section-label">外观</div>
+          <label class="setting-row"><span>使用正常字形</span><input id="remote-normal-font" type="checkbox" role="switch"></label>
+          <label class="setting-row"><span>字幕颜色</span><input id="remote-led-color" type="color"></label>
+          <label class="setting-row"><span>背景颜色</span><input id="remote-led-background" type="color"></label>
+          <div id="remote-dot-options">
+            <div class="setting-block"><span>点阵形状</span><div class="segmented compact-segments" data-cast-setting="dotShape"><button class="segment" data-value="0"><span class="material-symbols">circle</span><span>圆点</span></button><button class="segment" data-value="1"><span class="material-symbols">square</span><span>方点</span></button></div></div>
+            <label class="slider-row"><span>点阵密度 <output id="remote-density-value"></output></span><input id="remote-density" type="range" min="0" max="1" step="0.01"></label>
+            <label class="setting-row"><span>发光效果</span><input id="remote-glow-enabled" type="checkbox" role="switch"></label>
+            <label id="remote-glow-row" class="slider-row"><span>发光强度 <output id="remote-glow-value"></output></span><input id="remote-glow" type="range" min="0" max="1" step="0.01"></label>
+          </div>
+          <label class="slider-row"><span>显示高度 <output id="remote-height-value"></output></span><input id="remote-height" type="range" min="0.35" max="0.92" step="0.01"></label>
+          <div class="settings-section-label">排版</div>
+          <label class="setting-row"><span>自适应多行</span><input id="remote-adaptive-multiline" type="checkbox" role="switch"></label>
+          <div id="remote-scroll-options">
+          <label class="slider-row"><span>滚动速度 <output id="remote-speed-value"></output></span><input id="remote-speed" type="range" min="24" max="1600" step="1"></label>
+          <div class="setting-block"><span>滚动方向</span><div class="segmented compact-segments" data-cast-setting="direction"><button class="segment" data-value="0"><span class="material-symbols">arrow_back</span><span>向左</span></button><button class="segment" data-value="1"><span class="material-symbols">arrow_forward</span><span>向右</span></button></div></div>
+          <label class="slider-row"><span>循环间距 <output id="remote-gap-value"></output></span><input id="remote-gap" type="range" min="24" max="1600" step="1"></label>
+          </div>
+          <label class="setting-row"><span>快速左滑打开快捷文本</span><input id="remote-quick-swipe" type="checkbox" role="switch"></label>
+          <div class="setting-block"><span>文本对齐</span><div class="segmented three-segment compact-segments" data-cast-setting="shortTextAlignment"><button class="segment" data-value="0"><span class="material-symbols">format_align_left</span><span>居左</span></button><button class="segment" data-value="1"><span class="material-symbols">format_align_center</span><span>居中</span></button><button class="segment" data-value="2"><span class="material-symbols">format_align_right</span><span>居右</span></button></div></div>
+          <div class="settings-section-label">屏幕</div>
+          <label class="setting-row"><span>保持屏幕常亮</span><input id="remote-keep-awake" type="checkbox" role="switch"></label>
+          <label class="setting-row"><span>亮度跟随系统</span><input id="remote-follow-brightness" type="checkbox" role="switch"></label>
+          <label id="remote-brightness-row" class="slider-row"><span>屏幕亮度 <output id="remote-brightness-value"></output></span><input id="remote-brightness" type="range" min="0.1" max="1" step="0.01"></label>
+          <button id="remote-reset-display" class="md-button text-button"><span class="material-symbols">settings_backup_restore</span><span>恢复投屏默认设置</span></button>
+        </section>
+
+        <section class="md-card">
+          <div class="card-title">投屏端音频</div>
+          <div class="settings-section-label">声音仅发送到投屏显示页面，网页遥控器不接收音频</div>
+          <div class="segmented three-segment" role="tablist" aria-label="音频播放位置">
+            <button class="segment" data-audio-output="0"><span class="material-symbols">smartphone</span><span>仅本机</span></button>
+            <button class="segment" data-audio-output="1"><span class="material-symbols">cast</span><span>仅投屏端</span></button>
+            <button class="segment" data-audio-output="2"><span class="material-symbols">speaker_group</span><span>双端播放</span></button>
+          </div>
+        </section>
+      </div>
+    </section>
+  </main>
+
+  <div id="snackbar" class="snackbar" role="status"></div>
+  <script src="/assets/led-renderer.js" defer></script>
+  <script src="/assets/tv-remote.js" defer></script>
+  <script src="/assets/led-display.js" defer></script>
+  <script src="/assets/remote-drag-scroll.js" defer></script>
+  <script src="/assets/remote-quick-dialog.js" defer></script>
+  <script src="/assets/remote-group-hint.js" defer></script>
+  <script src="/assets/remote-controller.js" defer></script>
+  <script src="/assets/app.js" defer></script>
+</body>
+</html>

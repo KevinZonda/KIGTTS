@@ -41,6 +41,7 @@ import com.k2fsa.sherpa.onnx.SpeakerEmbeddingManager
 import com.k2fsa.sherpa.onnx.Vad
 import com.k2fsa.sherpa.onnx.VadModelConfig
 import com.lhtstudio.kigtts.app.data.EspeakData
+import com.lhtstudio.kigtts.app.lan.LanCastAudioBridge
 import com.lhtstudio.kigtts.app.data.RecognitionResourceRepository
 import com.lhtstudio.kigtts.app.data.UserPrefs
 import com.lhtstudio.kigtts.app.data.isKokoroVoiceDir
@@ -708,7 +709,7 @@ class SystemTtsEngine(context: Context) : TtsModule {
             }
             if (!posted) {
                 initLatch.countDown()
-                throw IllegalStateException("系统 TTS 初始化失败")
+                throw IllegalStateException("系统语音合成初始化失败")
             }
         }
         waitForInit()
@@ -737,7 +738,7 @@ class SystemTtsEngine(context: Context) : TtsModule {
         val content = text.trim()
         if (content.isEmpty()) return FloatArray(0)
         waitForInit()
-        val currentTts = tts ?: throw IllegalStateException("系统 TTS 不可用")
+        val currentTts = tts ?: throw IllegalStateException("系统语音合成不可用")
         synchronized(synthLock) {
             currentTts.setSpeechRate(speechRate)
             val outFile = File.createTempFile("system_tts_", ".wav", appContext.cacheDir)
@@ -748,12 +749,12 @@ class SystemTtsEngine(context: Context) : TtsModule {
             if (result != TextToSpeech.SUCCESS) {
                 pendingUtterances.remove(utteranceId)
                 outFile.delete()
-                throw IllegalStateException("系统 TTS 合成失败")
+                throw IllegalStateException("系统语音合成失败")
             }
             if (!pending.doneLatch.await(20, TimeUnit.SECONDS) || !pending.success) {
                 pendingUtterances.remove(utteranceId)
                 outFile.delete()
-                throw IllegalStateException("系统 TTS 合成超时")
+                throw IllegalStateException("系统语音合成超时")
             }
             val (sr, samples) = readWavToMonoFloat(outFile)
             outFile.delete()
@@ -766,7 +767,7 @@ class SystemTtsEngine(context: Context) : TtsModule {
     private fun waitForInit() {
         if (!initLatch.await(5, TimeUnit.SECONDS) || !initSuccess || closed.get()) {
             close()
-            throw IllegalStateException("系统 TTS 初始化失败")
+            throw IllegalStateException("系统语音合成初始化失败")
         }
     }
 
@@ -988,7 +989,7 @@ class SystemTtsEngine(context: Context) : TtsModule {
         }
 
         if (bytes.size < 44 || String(bytes, 0, 4) != "RIFF" || String(bytes, 8, 4) != "WAVE") {
-            throw IllegalStateException("系统 TTS 输出格式不支持")
+            throw IllegalStateException("系统语音合成输出格式不支持")
         }
 
         var offset = 12
@@ -1018,10 +1019,10 @@ class SystemTtsEngine(context: Context) : TtsModule {
             offset = chunkData + chunkSize + (chunkSize and 1)
         }
         if (dataOffset < 0 || dataSize <= 0) {
-            throw IllegalStateException("系统 TTS 输出无音频数据")
+            throw IllegalStateException("系统语音合成没有生成音频")
         }
         if (format != 1 || bitsPerSample != 16) {
-            throw IllegalStateException("系统 TTS 输出格式不支持")
+            throw IllegalStateException("系统语音合成输出格式不支持")
         }
         val frameCount = dataSize / (channels * 2)
         val out = FloatArray(frameCount)
@@ -1112,6 +1113,11 @@ class AudioPlayer(private val context: Context) {
                 (samples[idx] * gain).coerceIn(-1f, 1f)
             }
         }
+        val lanPlaybackPlan = LanCastAudioBridge.playbackPlan()
+        if (!lanPlaybackPlan.local) {
+            playWebOnly(scaledSamples, sampleRate, onProgress)
+            return
+        }
         val shorts = ShortArray(scaledSamples.size) { idx ->
             val v = max(-1f, min(1f, scaledSamples[idx])) * Short.MAX_VALUE
             v.toInt().toShort()
@@ -1173,6 +1179,11 @@ class AudioPlayer(private val context: Context) {
         }
 
         isPlaying = true
+        val webStreamId = if (lanPlaybackPlan.web) {
+            LanCastAudioBridge.beginPcm(sampleRate)
+        } else {
+            null
+        }
         val audioFocusLease = audioFocusController.acquire()
         var normalPlaybackEnded = false
         try {
@@ -1183,6 +1194,13 @@ class AudioPlayer(private val context: Context) {
             var lastReport = 0f
             while (written < total && !stopRequested) {
                 val count = min(2048, total - written)
+                LanCastAudioBridge.publishPcm(
+                    webStreamId,
+                    scaledSamples,
+                    written,
+                    count,
+                    sampleRate
+                )
                 onRender?.invoke(scaledSamples, written, count, sampleRate)
                 val w = track.write(shorts, written, count)
                 if (w <= 0) break
@@ -1214,9 +1232,40 @@ class AudioPlayer(private val context: Context) {
             }
             stopRequested = false
             isPlaying = false
+            LanCastAudioBridge.endPcm(webStreamId, interrupted = !normalPlaybackEnded)
             audioFocusLease?.releaseDelayed(
                 if (dwellAudioFocus) PLAYBACK_END_AUDIO_FOCUS_DWELL_MS else 0L
             )
+            onProgress?.invoke(1f)
+        }
+    }
+
+    private fun playWebOnly(
+        samples: FloatArray,
+        sampleRate: Int,
+        onProgress: ((Float) -> Unit)?
+    ) {
+        val streamId = LanCastAudioBridge.beginPcm(sampleRate)
+        if (streamId == null) return
+        isPlaying = true
+        onOutputDevice?.invoke("网页音频")
+        var sent = 0
+        var completed = false
+        try {
+            onProgress?.invoke(0f)
+            while (sent < samples.size && !stopRequested) {
+                val count = min(2048, samples.size - sent)
+                LanCastAudioBridge.publishPcm(streamId, samples, sent, count, sampleRate)
+                sent += count
+                onProgress?.invoke(sent.toFloat() / samples.size.toFloat())
+                val chunkMs = (count * 1000L / sampleRate.coerceAtLeast(1)).coerceAtLeast(1L)
+                SystemClock.sleep(chunkMs)
+            }
+            completed = sent >= samples.size && !stopRequested
+        } finally {
+            LanCastAudioBridge.endPcm(streamId, interrupted = !completed)
+            stopRequested = false
+            isPlaying = false
             onProgress?.invoke(1f)
         }
     }
@@ -2682,7 +2731,7 @@ class RealtimeController(
                     }
                 } catch (e: Exception) {
                     AppLogger.e("TTS failed", e)
-                    notifyError("TTS 失败: ${e.message}")
+                    notifyError("语音朗读失败，请检查语音合成设置")
                 } finally {
                     notifyProgress(next.id, 1f)
                 }
@@ -2725,7 +2774,7 @@ class RealtimeController(
                 }
             } catch (e: Throwable) {
                 AppLogger.e("ASR load failed", e)
-                notifyError("ASR 加载失败: ${e.message}")
+                notifyError("语音识别资源加载失败，请检查资源包")
                 return@withLock false
             }
             true
@@ -2757,9 +2806,9 @@ class RealtimeController(
                 AppLogger.e("TTS load failed", e)
                 notifyError(
                     if (isSystemTtsVoiceDir(voiceDir)) {
-                        "系统 TTS 初始化失败，请先完成系统 TTS 设置"
+                        "系统语音合成初始化失败，请先完成系统语音合成设置"
                     } else {
-                        "TTS 加载失败: ${e.message}"
+                        "语音合成引擎加载失败，请检查语音包"
                     }
                 )
                 return@withLock false
@@ -2834,7 +2883,7 @@ class RealtimeController(
                 AppLogger.e("Speaker enroll read failed", e)
                 return@withLock SpeakerEnrollResult(
                     success = false,
-                    message = "说话人注册失败：${e.message ?: "录音异常"}"
+                    message = "说话人注册失败，请检查麦克风后重试"
                 )
             } finally {
                 try {
@@ -2879,7 +2928,7 @@ class RealtimeController(
     suspend fun startMic(): Boolean {
         return recorderMutex.withLock {
             if (asr == null || tts == null) {
-                notifyError("模型未就绪，请先加载 ASR 和语音包")
+                notifyError("语音资源未就绪，请先安装语音识别资源并选择语音包")
                 return@withLock false
             }
             synchronized(queueLock) {
@@ -2908,7 +2957,7 @@ class RealtimeController(
             val normalized = text.trim()
             if (normalized.isEmpty()) return@withLock null
             if (tts == null) {
-                notifyError("TTS 未就绪，请先选择语音包")
+                notifyError("语音合成未就绪，请先选择语音包")
                 return@withLock null
             }
             if (interruptCurrent) {
@@ -3391,7 +3440,7 @@ class RealtimeController(
             asr?.transcribe(segment.audio, segment.sampleRate) ?: ""
         } catch (e: Exception) {
             AppLogger.e("ASR failed", e)
-            notifyError("ASR 失败: ${e.message}")
+            notifyError("语音识别失败，请检查识别资源")
             ""
         }
         val text = filterAsrText(rawText, segment.rms)
@@ -3665,7 +3714,7 @@ class RealtimeController(
                     }
                 } catch (e: Exception) {
                     AppLogger.e("Realtime loop failed", e)
-                    notifyError("实时转换异常: ${e.message}")
+                    notifyError("实时转换出现问题，请重新开始识别")
                 }
             }
         }

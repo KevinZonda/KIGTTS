@@ -2,7 +2,9 @@ param(
   [string]$OutputDir = "",
   [string]$PiperEnv = "",
   [string]$PiperCudaEnv = "",
-  [string]$VoxCpmEnv = ""
+  [string]$PiperCuda128Env = "",
+  [string]$VoxCpmEnv = "",
+  [string]$VoxCpmCuda128Env = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -18,10 +20,16 @@ if ([string]::IsNullOrWhiteSpace($PiperEnv)) {
   $PiperEnv = Join-Path $repoRoot "pc_trainer\piper_env"
 }
 if ([string]::IsNullOrWhiteSpace($PiperCudaEnv)) {
-  $PiperCudaEnv = Join-Path $env:APPDATA "kgtts-trainer\runtimes\piper_env_cuda"
+  $PiperCudaEnv = Join-Path $env:LOCALAPPDATA "kgtts-trainer\runtimes\piper_env_cuda"
+}
+if ([string]::IsNullOrWhiteSpace($PiperCuda128Env)) {
+  $PiperCuda128Env = Join-Path $env:LOCALAPPDATA "kgtts-trainer\runtimes\piper_env_cuda128"
 }
 if ([string]::IsNullOrWhiteSpace($VoxCpmEnv)) {
-  $VoxCpmEnv = Join-Path $env:APPDATA "kgtts-trainer\runtimes\voxcpm_env"
+  $VoxCpmEnv = Join-Path $env:LOCALAPPDATA "kgtts-trainer\runtimes\voxcpm_env"
+}
+if ([string]::IsNullOrWhiteSpace($VoxCpmCuda128Env)) {
+  $VoxCpmCuda128Env = Join-Path $env:LOCALAPPDATA "kgtts-trainer\runtimes\voxcpm_env_cuda128"
 }
 
 function Resolve-SevenZip {
@@ -105,6 +113,8 @@ function Pack-Runtime {
 $sevenZip = Resolve-SevenZip
 Pack-Runtime -Name "Piper basic runtime" -SourceDir $PiperEnv -ArchiveName "piper_env.7z" -SevenZip $sevenZip -PackageType "piper_runtime" -EnvName "piper_env" -Remark "KIGTTS Trainer Piper CPU/basic runtime. Install only into the Piper basic runtime slot."
 Pack-Runtime -Name "Piper CUDA runtime" -SourceDir $PiperCudaEnv -ArchiveName "piper_env_cuda.7z" -SevenZip $sevenZip -PackageType "piper_cuda_runtime" -EnvName "piper_env_cuda" -Remark "KIGTTS Trainer Piper CUDA runtime. Install only into the Piper CUDA runtime slot."
+Pack-Runtime -Name "Piper CUDA 12.8 / RTX 50 runtime" -SourceDir $PiperCuda128Env -ArchiveName "piper_env_cuda128.7z" -SevenZip $sevenZip -PackageType "piper_cuda_runtime_cu128" -EnvName "piper_env_cuda128" -Remark "KIGTTS Trainer Piper CUDA 12.8 / RTX 50 runtime. Install only into the Piper RTX 50 CUDA runtime slot."
 Pack-Runtime -Name "VoxCPM2 runtime" -SourceDir $VoxCpmEnv -ArchiveName "voxcpm_env.7z" -SevenZip $sevenZip -PackageType "voxcpm_runtime" -EnvName "voxcpm_env" -Remark "KIGTTS Trainer VoxCPM2 runtime. Install only into the VoxCPM2 runtime slot."
+Pack-Runtime -Name "VoxCPM2 CUDA 12.8 / RTX 50 runtime" -SourceDir $VoxCpmCuda128Env -ArchiveName "voxcpm_env_cuda128.7z" -SevenZip $sevenZip -PackageType "voxcpm_runtime_cu128" -EnvName "voxcpm_env_cuda128" -Remark "KIGTTS Trainer VoxCPM2 CUDA 12.8 / RTX 50 runtime. Install only into the VoxCPM2 RTX 50 runtime slot."
 
 Write-Host "Runtime archives output: $OutputDir"

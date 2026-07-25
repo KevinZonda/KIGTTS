@@ -137,7 +137,6 @@ import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.asImageBitmap
@@ -214,7 +213,6 @@ import androidx.compose.ui.window.PopupProperties
 import androidx.compose.ui.zIndex
 import androidx.core.content.FileProvider
 import androidx.core.content.ContextCompat
-import androidx.core.graphics.ColorUtils
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
@@ -255,6 +253,7 @@ import com.lhtstudio.kigtts.app.data.UserPrefs
 import com.lhtstudio.kigtts.app.data.VoicePackMeta
 import com.lhtstudio.kigtts.app.data.ResourceStorageCleaner
 import com.lhtstudio.kigtts.app.data.defaultSoundboardGroups
+import com.lhtstudio.kigtts.app.data.formatColorHexAndNameZhCn
 import com.lhtstudio.kigtts.app.data.isKokoroVoiceDir
 import com.lhtstudio.kigtts.app.data.isSystemTtsVoiceDir
 import com.lhtstudio.kigtts.app.data.parseSoundboardConfig
@@ -278,6 +277,8 @@ import com.lhtstudio.kigtts.app.util.LauncherMenuShortcuts
 import com.lhtstudio.kigtts.app.util.LiveSubtitleNotificationBridge
 import com.lhtstudio.kigtts.app.util.QqScannerSupport
 import com.lhtstudio.kigtts.app.util.QuickCardRenderCache
+import com.lhtstudio.kigtts.app.util.QUICK_CARD_CROP_LONG_EDGE_PX
+import com.lhtstudio.kigtts.app.util.QUICK_CARD_CROP_SHORT_EDGE_PX
 import com.lhtstudio.kigtts.app.util.VolumeHotkeyActionSpec
 import com.lhtstudio.kigtts.app.util.VolumeHotkeyActions
 import com.lhtstudio.kigtts.app.util.VolumeHotkeySequence
@@ -622,7 +623,7 @@ internal fun QuickCardMainScreen(
         if (granted) {
             onOpenScannerState.value()
         } else {
-            toast(context, "未授予相机权限")
+            toast(context, "需要相机权限才能扫码")
         }
     }
 
@@ -904,7 +905,7 @@ internal fun QuickCardMainScreen(
                                     .padding(vertical = 36.dp),
                                 contentAlignment = Alignment.Center
                             ) {
-                                CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
+                                CircularProgressIndicator(color = MaterialTheme.colorScheme.accentText)
                             }
                         }
                     }
@@ -1018,7 +1019,7 @@ internal fun QuickCardSortScreen(
 
     pendingDeleteIds?.let { deleteIds ->
         val count = deleteIds.size
-        AlertDialog(
+        KigttsAlertDialog(
             onDismissRequest = { pendingDeleteIds = null },
             title = { Text("删除名片") },
             text = {
@@ -1511,7 +1512,7 @@ internal fun QuickCardScannerScreen(
     val cameraPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         cameraPermissionGranted = granted
         if (!granted) {
-            toast(context, "未授予相机权限")
+            toast(context, "需要相机权限才能扫码")
             onOpenFailed()
         }
     }
@@ -1602,7 +1603,7 @@ internal fun QuickCardScannerScreen(
             val provider = runCatching { providerFuture.get() }.getOrNull()
             if (provider == null) {
                 if (!disposed.get()) {
-                    toast(context, "相机初始化失败")
+                    toast(context, "无法启动相机，请检查是否被其他应用占用后重试")
                     onOpenFailed()
                 }
                 return@Runnable
@@ -1685,7 +1686,7 @@ internal fun QuickCardScannerScreen(
             }.onFailure {
                 if (!disposed.get()) {
                     AppLogger.e("quickCard scanner bind failed", it)
-                    toast(context, "无法打开相机")
+                    toast(context, "无法打开相机，请检查权限后重试")
                     onOpenFailed()
                 }
             }
@@ -2039,7 +2040,7 @@ internal fun QuickCardWebViewScreen(
         QuickCardWebErrorPage(
             error = QuickCardWebError(
                 url = url,
-                detail = "内置 WebView 仅允许打开 http/https 页面。"
+                detail = "只能打开有效的网页链接。"
             ),
             onRetry = {},
             onOpenExternal = {
@@ -2163,7 +2164,8 @@ internal fun QuickCardWebViewScreen(
                                 loading = false
                                 webError = QuickCardWebError(
                                     url = request.url?.toString().orEmpty().ifBlank { url },
-                                    detail = buildString {
+                                    detail = "网页加载失败，请检查网络连接后重试。",
+                                    technicalDetail = buildString {
                                         append("错误代码：")
                                         append(error?.errorCode ?: 0)
                                         val description = error?.description?.toString().orEmpty()
@@ -2188,7 +2190,8 @@ internal fun QuickCardWebViewScreen(
                                 val reason = errorResponse?.reasonPhrase.orEmpty()
                                 webError = QuickCardWebError(
                                     url = request.url?.toString().orEmpty().ifBlank { url },
-                                    detail = "HTTP $statusCode${if (reason.isBlank()) "" else " $reason"}"
+                                    detail = "网页加载失败，请稍后重试。",
+                                    technicalDetail = "HTTP $statusCode${if (reason.isBlank()) "" else " $reason"}"
                                 )
                                 publishWebActions()
                             }
@@ -2209,9 +2212,9 @@ internal fun QuickCardWebViewScreen(
                         webError = QuickCardWebError(
                             url = url,
                             detail = if (isHttpWebUrl(url)) {
-                                "该网址不在内置 WebView 白名单中，请使用外部浏览器打开。"
+                                "该网址无法在应用内打开，请使用浏览器继续访问。"
                             } else {
-                                "内置 WebView 仅允许打开 http/https 页面。"
+                                "只能打开有效的网页链接。"
                             }
                         )
                     }
@@ -2265,7 +2268,8 @@ internal fun isHttpWebUrl(url: String): Boolean {
 
 internal data class QuickCardWebError(
     val url: String,
-    val detail: String
+    val detail: String,
+    val technicalDetail: String = ""
 )
 
 @Composable
@@ -2292,20 +2296,25 @@ internal fun QuickCardExternalLinkPage(url: String) {
                 verticalArrangement = Arrangement.spacedBy(14.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                MsIcon(
-                    name = "info",
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(42.dp)
-                )
+                Box(
+                    modifier = Modifier.size(64.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    MsIcon(
+                        name = "info",
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.accentText,
+                        iconSize = 52.dp
+                    )
+                }
                 Text(
-                    text = "第三方外部链接",
+                    text = "即将打开外部网站",
                     style = MaterialTheme.typography.h6,
                     fontWeight = FontWeight.Bold,
                     textAlign = TextAlign.Center
                 )
                 Text(
-                    text = "您正在访问的是第三方外部链接，并非本软件提供的内容。\n继续访问后，您的一切操作与后果均与本软件无关。",
+                    text = "此链接将由外部网站提供服务，请确认网址可信后继续。",
                     style = MaterialTheme.typography.body1,
                     textAlign = TextAlign.Start,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.78f)
@@ -2344,6 +2353,7 @@ internal fun QuickCardWebErrorPage(
     onOpenExternal: (Context) -> Unit
 ) {
     val context = LocalContext.current
+    var showTechnicalDetails by remember(error) { mutableStateOf(false) }
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -2365,12 +2375,17 @@ internal fun QuickCardWebErrorPage(
                 verticalArrangement = Arrangement.spacedBy(14.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                MsIcon(
-                    name = "info",
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(42.dp)
-                )
+                Box(
+                    modifier = Modifier.size(64.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    MsIcon(
+                        name = "info",
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.accentText,
+                        iconSize = 52.dp
+                    )
+                }
                 Text(
                     text = "无法打开此页面",
                     style = MaterialTheme.typography.h6,
@@ -2382,14 +2397,23 @@ internal fun QuickCardWebErrorPage(
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Text(
-                        text = "浏览器报错详细信息",
-                        style = MaterialTheme.typography.subtitle2,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                    Text(
-                        text = error.detail.ifBlank { "未知错误" },
+                        text = error.detail.ifBlank { "网页加载失败，请稍后重试。" },
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.76f)
                     )
+                    if (error.technicalDetail.isNotBlank()) {
+                        Md2TextButton(onClick = { showTechnicalDetails = !showTechnicalDetails }) {
+                            Text(if (showTechnicalDetails) "隐藏技术详情" else "查看技术详情")
+                        }
+                        AnimatedVisibility(visible = showTechnicalDetails) {
+                            SelectionContainer {
+                                Text(
+                                    text = error.technicalDetail,
+                                    style = MaterialTheme.typography.body2,
+                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.68f)
+                                )
+                            }
+                        }
+                    }
                     Text(
                         text = "网址",
                         style = MaterialTheme.typography.subtitle2,
@@ -2690,7 +2714,10 @@ internal fun QuickCardIndicatorRail(
                         modifier = Modifier
                             .size(6.dp)
                             .clip(CircleShape)
-                            .background(if (index == current) UiTokens.Primary else Color.White.copy(alpha = 0.85f))
+                            .background(
+                                if (index == current) MaterialTheme.colorScheme.primary
+                                else Color.White.copy(alpha = 0.85f)
+                            )
                     )
                 }
             }
@@ -2705,7 +2732,10 @@ internal fun QuickCardIndicatorRail(
                         modifier = Modifier
                             .size(6.dp)
                             .clip(CircleShape)
-                            .background(if (index == current) UiTokens.Primary else Color.White.copy(alpha = 0.85f))
+                            .background(
+                                if (index == current) MaterialTheme.colorScheme.primary
+                                else Color.White.copy(alpha = 0.85f)
+                            )
                     )
                 }
             }
@@ -2744,7 +2774,7 @@ internal fun QuickCardPreviewCard(
                 contentAlignment = Alignment.Center
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    MsIcon("add_circle", contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                    MsIcon("add_circle", contentDescription = null, tint = MaterialTheme.colorScheme.accentText)
                     Spacer(Modifier.height(8.dp))
                     Text("点击以新建名片", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
@@ -2789,13 +2819,22 @@ internal fun QuickCardUnifiedContent(
     val titleText = card.title.trim()
     val noteText = card.note.trim()
 
-    Box(
+    BoxWithConstraints(
         modifier = Modifier
             .fillMaxWidth()
             .aspectRatio(quickCardDisplayAspect(landscape))
             .clip(RoundedCornerShape(UiTokens.Radius))
             .background(theme)
     ) {
+        val qrRegionHeight = if (hasLink) {
+            (maxWidth * if (landscape) 0.28f else 0.46f).coerceAtMost(maxHeight)
+        } else {
+            (maxHeight - 28.dp).coerceAtLeast(16.dp)
+        }
+        val noteMaxLines = quickCardNoteMaxLines(
+            regionHeightDp = qrRegionHeight.value,
+            hasTitle = titleText.isNotEmpty()
+        )
         if (hasImage) {
             Image(
                 bitmap = imageBitmap!!.asImageBitmap(),
@@ -2837,6 +2876,7 @@ internal fun QuickCardUnifiedContent(
         Column(
             modifier = Modifier
                 .align(Alignment.TopStart)
+                .heightIn(max = qrRegionHeight)
                 .padding(start = 16.dp, top = 14.dp, end = 72.dp)
         ) {
             if (titleText.isNotEmpty()) {
@@ -2854,7 +2894,7 @@ internal fun QuickCardUnifiedContent(
                     text = noteText,
                     color = foreground.copy(alpha = 0.9f),
                     style = MaterialTheme.typography.bodySmall,
-                    maxLines = 1,
+                    maxLines = noteMaxLines,
                     overflow = TextOverflow.Ellipsis
                 )
             }
@@ -3458,37 +3498,16 @@ internal fun QuickCardEditorScreen(
     val context = LocalContext.current
     val uiState = viewModel.uiState
     val draft = viewModel.quickCardDraft
+    val cropToolbarColor = MaterialTheme.colorScheme.primary.toArgb()
+    val cropToolbarContentColor = MaterialTheme.colorScheme.onPrimary.toArgb()
     var cropLandscape by rememberSaveable { mutableStateOf(false) }
     var activeCropLandscape by rememberSaveable { mutableStateOf(false) }
     var showDeleteConfirm by remember { mutableStateOf(false) }
     var showExitConfirm by remember { mutableStateOf(false) }
     var showThemeColorDialog by remember { mutableStateOf(false) }
     var showBuiltinGalleryPicker by remember { mutableStateOf(false) }
-    var themeHexInput by rememberSaveable { mutableStateOf("#038387") }
-    var themeHue by rememberSaveable { mutableFloatStateOf(180f) }
-    var themeSat by rememberSaveable { mutableFloatStateOf(1f) }
-    var themeLight by rememberSaveable { mutableFloatStateOf(0.27f) }
     var exitConfirmAutoSaveChecked by remember { mutableStateOf(false) }
     var suppressNullDraftAutoBack by remember { mutableStateOf(false) }
-    val presetColors = remember {
-        listOf(
-            "#f44336", "#e91e63", "#9c27b0", "#673ab7", "#3f51b5",
-            "#2196f3", "#03a9f4", "#00bcd4", "#009688", "#4caf50",
-            "#8bc34a", "#cddc39", "#ffeb3b", "#ffc107", "#ff9800",
-            "#ff5722", "#795548", "#9e9e9e", "#607d8b", "#038387"
-        )
-    }
-    fun normalizeHexOrNull(raw: String): String? {
-        val v = raw.trim().let { if (it.startsWith("#")) it else "#$it" }
-        return if (Regex("^#[0-9a-fA-F]{6}$").matches(v)) v.lowercase(Locale.US) else null
-    }
-    fun syncThemePickerFromHex(hex: String) {
-        themeHexInput = normalizeHexOrNull(hex) ?: "#038387"
-        val hsl = composeColorToHsl(quickCardThemeColor(themeHexInput))
-        themeHue = hsl[0]
-        themeSat = hsl[1]
-        themeLight = hsl[2]
-    }
 
     if (draft == null) {
         LaunchedEffect(suppressNullDraftAutoBack) {
@@ -3502,10 +3521,10 @@ internal fun QuickCardEditorScreen(
             val uri = result.uriContent
             if (uri != null) {
                 if (!viewModel.setQuickCardDraftImage(uri, landscape = activeCropLandscape)) {
-                    toast(context, "设置图片失败")
+                    toast(context, "无法使用这张图片，请重新选择")
                 }
             } else {
-                toast(context, "裁剪失败：无输出")
+                toast(context, "没有生成裁剪后的图片，请重试")
             }
         } else {
             toast(context, "裁剪失败")
@@ -3516,8 +3535,16 @@ internal fun QuickCardEditorScreen(
         activeCropLandscape = targetLandscape
         val aspectX = if (targetLandscape) 16 else 9
         val aspectY = if (targetLandscape) 9 else 16
-        val outputWidth = if (targetLandscape) 1920 else 1080
-        val outputHeight = if (targetLandscape) 1080 else 1920
+        val outputWidth = if (targetLandscape) {
+            QUICK_CARD_CROP_LONG_EDGE_PX
+        } else {
+            QUICK_CARD_CROP_SHORT_EDGE_PX
+        }
+        val outputHeight = if (targetLandscape) {
+            QUICK_CARD_CROP_SHORT_EDGE_PX
+        } else {
+            QUICK_CARD_CROP_LONG_EDGE_PX
+        }
         val options = CropImageOptions(
             fixAspectRatio = true,
             aspectRatioX = aspectX,
@@ -3528,18 +3555,18 @@ internal fun QuickCardEditorScreen(
                 "裁剪竖屏名片图片（9:16）"
             },
             cropMenuCropButtonTitle = "确认",
-            activityMenuIconColor = 0xFFFFFFFF.toInt(),
-            activityMenuTextColor = 0xFFFFFFFF.toInt(),
+            activityMenuIconColor = cropToolbarContentColor,
+            activityMenuTextColor = cropToolbarContentColor,
             activityBackgroundColor = 0xFF121212.toInt(),
-            toolbarColor = 0xFF038387.toInt(),
-            toolbarTitleColor = 0xFFFFFFFF.toInt(),
-            toolbarBackButtonColor = 0xFFFFFFFF.toInt(),
-            toolbarTintColor = 0xFFFFFFFF.toInt(),
+            toolbarColor = cropToolbarColor,
+            toolbarTitleColor = cropToolbarContentColor,
+            toolbarBackButtonColor = cropToolbarContentColor,
+            toolbarTintColor = cropToolbarContentColor,
             outputCompressFormat = android.graphics.Bitmap.CompressFormat.PNG,
             outputCompressQuality = 100,
             outputRequestWidth = outputWidth,
             outputRequestHeight = outputHeight,
-            outputRequestSizeOptions = CropImageView.RequestSizeOptions.RESIZE_EXACT
+            outputRequestSizeOptions = CropImageView.RequestSizeOptions.RESIZE_INSIDE
         )
         cropLauncher.launch(CropImageContractOptions(uri, options))
     }
@@ -3561,7 +3588,7 @@ internal fun QuickCardEditorScreen(
                 toast(context, "已自动保存名片")
                 onBack()
             } else {
-                toast(context, "自动保存失败")
+                toast(context, "未能自动保存名片，请手动保存")
             }
             return
         }
@@ -3575,15 +3602,6 @@ internal fun QuickCardEditorScreen(
     val requestExitEditorState = rememberUpdatedState { requestExitEditor() }
 
     val isExisting = !draft.isNew && draft.editId != null
-    LaunchedEffect(draft.themeColor) {
-        if (!showThemeColorDialog) {
-            themeHexInput = draft.themeColor
-            val hsl = composeColorToHsl(quickCardThemeColor(draft.themeColor))
-            themeHue = hsl[0]
-            themeSat = hsl[1]
-            themeLight = hsl[2]
-        }
-    }
     val editorActions = remember(isExisting, context, viewModel) {
         if (!isExisting) {
             QuickCardTopBarActions(
@@ -3639,15 +3657,15 @@ internal fun QuickCardEditorScreen(
                     null
                 }
             )
-            OutlinedTextField(
+            Md2OutlinedField(
                 value = draft.note,
                 onValueChange = { viewModel.updateQuickCardDraft { old -> old.copy(note = it) } },
-                label = { Text("备注") },
+                label = "备注",
                 modifier = Modifier
                     .fillMaxWidth()
                     .onFocusChanged { noteFocused = it.isFocused },
+                singleLine = false,
                 maxLines = 3,
-                shape = Md2ControlShape,
                 trailingIcon = if (noteFocused && draft.note.isNotEmpty()) {
                     {
                         Md2ClearFieldButton {
@@ -3656,14 +3674,7 @@ internal fun QuickCardEditorScreen(
                     }
                 } else {
                     null
-                },
-                colors = TextFieldDefaults.outlinedTextFieldColors(
-                    focusedBorderColor = MaterialTheme.colorScheme.primary,
-                    unfocusedBorderColor = MaterialTheme.colorScheme.outline,
-                    focusedLabelColor = MaterialTheme.colorScheme.primary,
-                    unfocusedLabelColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                    cursorColor = MaterialTheme.colorScheme.primary
-                )
+                }
             )
             Md2OutlinedField(
                 value = draft.link,
@@ -3690,7 +3701,6 @@ internal fun QuickCardEditorScreen(
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(UiTokens.Radius))
                     .clickable {
-                        syncThemePickerFromHex(draft.themeColor)
                         showThemeColorDialog = true
                     }
                     .padding(horizontal = 4.dp, vertical = 6.dp),
@@ -3706,7 +3716,7 @@ internal fun QuickCardEditorScreen(
                 Column(modifier = Modifier.weight(1f)) {
                     Text("当前主题色", fontWeight = FontWeight.SemiBold)
                     Text(
-                        draft.themeColor.uppercase(Locale.US),
+                        formatColorHexAndNameZhCn(quickCardThemeColor(draft.themeColor).toArgb()),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -3771,7 +3781,7 @@ internal fun QuickCardEditorScreen(
     }
 
     if (showDeleteConfirm) {
-        AlertDialog(
+        KigttsAlertDialog(
             onDismissRequest = { showDeleteConfirm = false },
             title = { Text("删除名片") },
             text = { Text("确定删除当前名片吗？") },
@@ -3803,12 +3813,12 @@ internal fun QuickCardEditorScreen(
     }
 
     if (showExitConfirm) {
-        AlertDialog(
+        KigttsAlertDialog(
             onDismissRequest = { showExitConfirm = false },
-            title = { Text("名片已编辑") },
+            title = { Text("保存本次修改？") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("是否保存名片后再退出编辑？")
+                    Text("名片内容已修改，退出前是否保存？")
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -3817,7 +3827,7 @@ internal fun QuickCardEditorScreen(
                             checked = exitConfirmAutoSaveChecked,
                             onCheckedChange = { exitConfirmAutoSaveChecked = it }
                         )
-                        Text("下次退出编辑时自动保存")
+                        Text("以后退出时自动保存")
                     }
                 }
             },
@@ -3852,151 +3862,13 @@ internal fun QuickCardEditorScreen(
     }
 
     if (showThemeColorDialog) {
-        AlertDialog(
+        ThemeColorPickerDialog(
+            title = "名片主题色",
+            initialColor = quickCardThemeColor(draft.themeColor),
             onDismissRequest = { showThemeColorDialog = false },
-            title = { Text("名片主题色") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    val preview = hslToComposeColor(themeHue, themeSat, themeLight)
-                    Text(
-                        text = "候选主题色",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Row(
-                        modifier = Modifier.horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        presetColors.forEach { hex ->
-                            val c = quickCardThemeColor(hex)
-                            Box(
-                                modifier = Modifier
-                                    .size(30.dp)
-                                    .clip(CircleShape)
-                                    .background(c)
-                                    .clickable {
-                                        syncThemePickerFromHex(hex)
-                                    }
-                            )
-                        }
-                    }
-                    val hueGradient = Brush.horizontalGradient(
-                        listOf(
-                            hslToComposeColor(0f, 1f, 0.5f),
-                            hslToComposeColor(60f, 1f, 0.5f),
-                            hslToComposeColor(120f, 1f, 0.5f),
-                            hslToComposeColor(180f, 1f, 0.5f),
-                            hslToComposeColor(240f, 1f, 0.5f),
-                            hslToComposeColor(300f, 1f, 0.5f),
-                            hslToComposeColor(360f, 1f, 0.5f)
-                        )
-                    )
-                    val satGradient = remember(themeHue, themeLight) {
-                        Brush.horizontalGradient(
-                            listOf(
-                                hslToComposeColor(themeHue, 0f, themeLight),
-                                hslToComposeColor(themeHue, 1f, themeLight)
-                            )
-                        )
-                    }
-                    val lightGradient = remember(themeHue, themeSat) {
-                        Brush.horizontalGradient(
-                            listOf(
-                                hslToComposeColor(themeHue, themeSat, 0f),
-                                hslToComposeColor(themeHue, themeSat, 0.5f),
-                                hslToComposeColor(themeHue, themeSat, 1f)
-                            )
-                        )
-                    }
-                    HslGradientSlider(
-                        label = "色相",
-                        value = themeHue,
-                        valueRange = 0f..360f,
-                        gradient = hueGradient,
-                        onValueChange = {
-                            themeHue = it
-                            themeHexInput = colorToHexRgb(hslToComposeColor(themeHue, themeSat, themeLight))
-                        }
-                    )
-                    HslGradientSlider(
-                        label = "饱和度",
-                        value = themeSat,
-                        valueRange = 0f..1f,
-                        gradient = satGradient,
-                        onValueChange = {
-                            themeSat = it
-                            themeHexInput = colorToHexRgb(hslToComposeColor(themeHue, themeSat, themeLight))
-                        }
-                    )
-                    HslGradientSlider(
-                        label = "亮度",
-                        value = themeLight,
-                        valueRange = 0f..1f,
-                        gradient = lightGradient,
-                        onValueChange = {
-                            themeLight = it
-                            themeHexInput = colorToHexRgb(hslToComposeColor(themeHue, themeSat, themeLight))
-                        },
-                    )
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(48.dp)
-                            .clip(RoundedCornerShape(UiTokens.Radius))
-                            .background(preview)
-                    )
-                    OutlinedTextField(
-                        value = themeHexInput,
-                        onValueChange = {
-                            themeHexInput = it
-                            val normalized = normalizeHexOrNull(it)
-                            if (normalized != null) {
-                                val hsl = composeColorToHsl(quickCardThemeColor(normalized))
-                                themeHue = hsl[0]
-                                themeSat = hsl[1]
-                                themeLight = hsl[2]
-                            }
-                        },
-                        singleLine = true,
-                        label = { Text("HEX（#RRGGBB）") },
-                        modifier = Modifier.fillMaxWidth(),
-                        keyboardOptions = KeyboardOptions(
-                            capitalization = KeyboardCapitalization.Characters,
-                            keyboardType = KeyboardType.Ascii,
-                            imeAction = ImeAction.Done
-                        ),
-                        shape = Md2ControlShape,
-                        colors = TextFieldDefaults.outlinedTextFieldColors(
-                            focusedBorderColor = MaterialTheme.colorScheme.primary,
-                            unfocusedBorderColor = MaterialTheme.colorScheme.outline,
-                            focusedLabelColor = MaterialTheme.colorScheme.primary,
-                            unfocusedLabelColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                            cursorColor = MaterialTheme.colorScheme.primary
-                        )
-                    )
-                    Text(
-                        text = "拖动三条滑条设置色相、饱和度和亮度",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            },
-            confirmButton = {
-                Md2TextButton(
-                    onClick = {
-                        val normalized = normalizeHexOrNull(themeHexInput)
-                        if (normalized == null) {
-                            toast(context, "HEX 格式错误")
-                        } else {
-                            viewModel.updateQuickCardDraft { old -> old.copy(themeColor = normalized) }
-                            showThemeColorDialog = false
-                        }
-                    }
-                ) { Text("应用") }
-            },
-            dismissButton = {
-                Md2TextButton(onClick = { showThemeColorDialog = false }) { Text("取消") }
+            onColorSelected = { color ->
+                viewModel.updateQuickCardDraft { old -> old.copy(themeColor = colorToHexRgb(color)) }
+                showThemeColorDialog = false
             }
         )
     }
@@ -4056,71 +3928,6 @@ internal fun QuickCardImagePathRow(
     }
 }
 
-internal fun composeColorToHsl(color: Color): FloatArray {
-    val hsl = FloatArray(3)
-    ColorUtils.colorToHSL(color.toArgb(), hsl)
-    return hsl
-}
-
-internal fun hslToComposeColor(h: Float, s: Float, l: Float): Color {
-    val hue = ((h % 360f) + 360f) % 360f
-    val sat = s.coerceIn(0f, 1f)
-    val light = l.coerceIn(0f, 1f)
-    return Color(ColorUtils.HSLToColor(floatArrayOf(hue, sat, light)))
-}
-
-internal fun colorToHexRgb(color: Color): String {
-    val argb = color.toArgb()
-    val rgb = argb and 0x00FFFFFF
-    return String.format(Locale.US, "#%06x", rgb)
-}
-
-@Composable
-internal fun HslGradientSlider(
-    label: String,
-    value: Float,
-    valueRange: ClosedFloatingPointRange<Float>,
-    gradient: Brush,
-    onValueChange: (Float) -> Unit
-) {
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(24.dp)
-        ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(4.dp)
-                    .align(Alignment.Center)
-                    .background(gradient, RectangleShape)
-            )
-            Slider(
-                value = value,
-                onValueChange = onValueChange,
-                valueRange = valueRange,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .align(Alignment.Center),
-                colors = SliderDefaults.colors(
-                    thumbColor = Color.White,
-                    activeTrackColor = Color.Transparent,
-                    inactiveTrackColor = Color.Transparent,
-                    activeTickColor = Color.Transparent,
-                    inactiveTickColor = Color.Transparent
-                )
-            )
-        }
-    }
-}
-
-
 internal const val QUICK_CARD_ASPECT_PORTRAIT = 9f / 16f
 internal const val QUICK_CARD_ASPECT_LANDSCAPE = 16f / 9f
 internal const val QUICK_CARD_LANDSCAPE_CARD_WIDTH_FRACTION = 0.94f
@@ -4147,8 +3954,19 @@ internal fun quickCardPagerPageMarginDp(landscape: Boolean, ultraSmallAdaptiveWi
 internal fun quickCardDisplayAspect(landscape: Boolean): Float =
     if (landscape) QUICK_CARD_ASPECT_LANDSCAPE else QUICK_CARD_ASPECT_PORTRAIT
 
+internal fun quickCardNoteMaxLines(
+    regionHeightDp: Float,
+    hasTitle: Boolean
+): Int {
+    val titleHeightDp = if (hasTitle) 30f else 0f
+    val noteLineHeightDp = 16f
+    return kotlin.math.floor((regionHeightDp - titleHeightDp) / noteLineHeightDp)
+        .toInt()
+        .coerceAtLeast(1)
+}
+
 internal fun quickCardThemeColor(hex: String): Color {
-    return runCatching { Color(android.graphics.Color.parseColor(hex)) }.getOrElse { UiTokens.Primary }
+    return parseHexColor(hex)
 }
 
 internal fun quickCardThemeOnColor(bg: Color): Color {
@@ -4187,14 +4005,15 @@ internal fun buildQuickCardShareText(card: QuickCard): String {
 internal fun openQuickCardLink(context: Context, rawLink: String) {
     val normalized = normalizeQrTextToWebUrl(rawLink)
     if (normalized.isNullOrBlank()) {
-        toast(context, "链接无效")
+        toast(context, "链接无效，请检查地址")
         return
     }
     try {
         val intent = Intent(Intent.ACTION_VIEW, Uri.parse(normalized))
         context.startActivity(intent)
     } catch (e: Exception) {
-        toast(context, "打开链接失败: ${e.message}")
+        AppLogger.e("open quick card link failed", e)
+        toast(context, "无法打开链接，请检查地址后重试")
     }
 }
 
@@ -4231,7 +4050,8 @@ internal fun shareQuickCard(context: Context, card: QuickCard, landscape: Boolea
         }
         context.startActivity(Intent.createChooser(textIntent, "分享名片"))
     } catch (e: Exception) {
-        toast(context, "分享失败: ${e.message}")
+        AppLogger.e("share quick card failed", e)
+        toast(context, "分享失败，请稍后重试")
     }
 }
 

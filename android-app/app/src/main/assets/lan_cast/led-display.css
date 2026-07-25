@@ -1,0 +1,230 @@
+.display-view {
+  --led-accent: var(--primary);
+  --led-control: #ffffff;
+  --led-panel: rgba(26, 27, 30, .95);
+  --led-panel-text: #f5f5f5;
+  --led-secondary: #b8bbc2;
+  --led-outline: #5d616a;
+  display: none;
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  color: var(--led-control);
+  background: #000;
+  touch-action: none;
+}
+body.display-page { overflow: hidden; background: #000; }
+body.display-page .display-view { display: block; }
+.display-view [hidden] { display: none !important; }
+#led-canvas, #adaptive-stage { position: absolute; inset: 0; width: 100%; height: 100%; }
+#adaptive-stage {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: clamp(18px, 4vw, 72px);
+}
+#adaptive-text {
+  width: 100%;
+  max-height: 100%;
+  overflow: hidden;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.16;
+  transition: opacity 120ms ease;
+}
+.led-preview-cursor {
+  display: inline-block;
+  width: max(3px, .045em);
+  height: .96em;
+  margin: 0 1px;
+  vertical-align: -.08em;
+  background: var(--led-accent);
+  animation: led-cursor-blink 1s step-end infinite;
+}
+@keyframes led-cursor-blink { 50% { opacity: 0; } }
+.text-changing { animation: led-text-fade 220ms ease; }
+@keyframes led-text-fade { from { opacity: 0; } to { opacity: 1; } }
+
+.display-toolbar {
+  position: absolute;
+  z-index: 5;
+  inset: max(8px, env(safe-area-inset-top)) 8px auto;
+  display: flex;
+  gap: 4px;
+  transition: opacity 240ms ease;
+}
+.led-bottom-actions {
+  position: absolute;
+  z-index: 5;
+  right: max(8px, env(safe-area-inset-right));
+  bottom: max(8px, env(safe-area-inset-bottom));
+  display: grid;
+  gap: 2px;
+  transition: opacity 240ms ease;
+}
+.led-lock-button {
+  position: absolute;
+  z-index: 6;
+  left: max(8px, env(safe-area-inset-left));
+  bottom: max(8px, env(safe-area-inset-bottom));
+  transition: opacity 240ms ease;
+}
+.display-view .led-control { color: var(--led-control); background: transparent; }
+.display-view .led-control:hover,
+.display-view .led-control:focus-visible { background: color-mix(in srgb, var(--led-control) 13%, transparent); }
+.display-view.controls-dimmed .led-control { opacity: .38; }
+.display-view.controls-dimmed .led-control:focus-visible { opacity: 1; }
+.display-view.led-locked .led-unlocked-control { visibility: hidden; opacity: 0; pointer-events: none; }
+
+.led-guide {
+  position: absolute;
+  z-index: 7;
+  inset: auto 0 0;
+  height: 42%;
+  border: 0;
+  padding: 0 54px max(24px, env(safe-area-inset-bottom));
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  color: rgba(255,255,255,.9);
+  background: linear-gradient(to bottom, transparent, rgba(0,0,0,.72));
+  font-size: 14px;
+  cursor: pointer;
+  transition: opacity 220ms ease, visibility 220ms ease;
+}
+.led-guide.hidden { opacity: 0; visibility: hidden; pointer-events: none; }
+.led-panel-scrim {
+  position: absolute;
+  z-index: 8;
+  inset: 0;
+  visibility: hidden;
+  opacity: 0;
+  background: rgba(0,0,0,.28);
+  transition: opacity 120ms ease, visibility 120ms ease;
+}
+.led-panel-scrim.active { visibility: visible; opacity: 1; }
+.led-panel {
+  z-index: 9;
+  color: var(--led-panel-text);
+  background: var(--led-panel);
+  box-shadow: 0 8px 24px rgba(0,0,0,.5);
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
+  transition: transform 220ms cubic-bezier(.4,0,.2,1), opacity 150ms ease, visibility 220ms;
+}
+.led-panel.active { visibility: visible; opacity: 1; pointer-events: auto; transform: translate(0,0); }
+.led-input-panel {
+  position: absolute;
+  inset: auto 0 0;
+  min-height: 64px;
+  padding: 8px 10px max(8px, env(safe-area-inset-bottom));
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  transform: translateY(100%);
+}
+.led-input-panel .icon-button { flex: 0 0 44px; width: 44px; height: 44px; color: var(--led-panel-text); }
+.led-input-field { position: relative; flex: 1 1 auto; min-width: 80px; }
+.led-input-field input {
+  width: 100%;
+  height: 48px;
+  border: 1px solid var(--led-outline);
+  border-radius: 4px;
+  padding: 0 48px 0 12px;
+  color: var(--led-panel-text);
+  caret-color: var(--led-accent);
+  background: transparent;
+  outline: 0;
+}
+.led-input-field input:focus { border: 2px solid var(--led-accent); padding-left: 11px; }
+#led-input-clear { position: absolute; right: 2px; top: 2px; display: none; }
+#led-input-clear.visible { display: grid; }
+
+.led-side-panel {
+  position: absolute;
+  inset: 0 0 0 auto;
+  width: clamp(280px, 40vw, 460px);
+  border-radius: 4px 0 0 4px;
+  transform: translateX(100%);
+}
+.led-panel-header { height: 56px; padding: 0 6px 0 12px; display: flex; align-items: center; border-bottom: 1px solid rgba(93,97,106,.72); }
+.led-panel-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+.led-panel-header .icon-button { color: var(--led-panel-text); }
+.led-quick-layout { height: calc(100% - 56px); display: grid; grid-template-columns: minmax(0,1fr) 50px; }
+.led-quick-list, .led-group-rail, .led-settings-scroll { overflow: auto; overscroll-behavior: contain; }
+.led-quick-item {
+  width: 100%;
+  min-height: 68px;
+  border: 0;
+  border-bottom: 1px solid rgba(93,97,106,.4);
+  padding: 8px 12px;
+  color: var(--led-panel-text);
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+.led-add-current { text-align: center; color: var(--led-secondary); }
+.led-group-rail { border-left: 1px solid rgba(93,97,106,.72); }
+.led-group-button { width: 50px; height: 50px; border: 0; color: var(--led-secondary); background: transparent; }
+.led-group-button.active { color: var(--led-accent); background: color-mix(in srgb, var(--led-accent) 22%, transparent); }
+.led-quick-list.switching, .led-panel-title.switching { animation: led-group-switch 200ms ease; }
+@keyframes led-group-switch { from { opacity: 0; transform: translateX(10px); } to { opacity: 1; transform: none; } }
+
+.led-settings-scroll { height: calc(100% - 56px); padding: 12px 16px 24px; }
+.led-settings-scroll h2 { margin: 4px 0 8px; color: var(--led-secondary); font-size: 15px; font-weight: 500; }
+.led-setting-row, .led-slider-row { min-height: 48px; display: flex; align-items: center; gap: 12px; }
+.led-setting-row > span, .led-slider-row > span { flex: 1; }
+.led-slider-row { min-height: 70px; flex-direction: column; align-items: stretch; gap: 0; }
+.led-slider-row > span { display: flex; justify-content: space-between; align-items: center; }
+.led-slider-row output { color: var(--led-secondary); }
+.led-settings-panel input[type="checkbox"] {
+  appearance: none;
+  -webkit-appearance: none;
+  position: relative;
+  width: 36px;
+  height: 14px;
+  flex: 0 0 36px;
+  border: 0;
+  border-radius: 7px;
+  background: rgba(184, 187, 194, .42);
+  cursor: pointer;
+}
+.led-settings-panel input[type="checkbox"]::before {
+  content: "";
+  position: absolute;
+  top: -3px;
+  left: -1px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--led-secondary);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, .52);
+  transition: transform 150ms ease, background 150ms ease;
+}
+.led-settings-panel input[type="checkbox"]:checked { background: color-mix(in srgb, var(--led-accent) 48%, transparent); }
+.led-settings-panel input[type="checkbox"]:checked::before { transform: translateX(18px); background: var(--led-accent); }
+.led-settings-panel input[type="range"] { width: 100%; accent-color: var(--led-accent); }
+.led-color-input { width: 34px; height: 34px; border: 1px solid var(--led-outline); border-radius: 50%; padding: 0; overflow: hidden; background: transparent; }
+.led-setting-block { padding: 5px 0 10px; }
+.led-setting-segments { margin-top: 8px; display: flex; gap: 4px; }
+.led-setting-segments button { flex: 1; height: 42px; border: 1px solid var(--led-outline); border-radius: 4px; color: var(--led-secondary); background: transparent; }
+.led-setting-segments button.active { border-color: var(--led-accent); color: var(--led-accent); background: color-mix(in srgb, var(--led-accent) 24%, transparent); }
+.led-reset-button { width: 100%; min-height: 48px; margin-top: 8px; border: 0; display: flex; align-items: center; justify-content: center; gap: 8px; color: var(--led-panel-text); background: transparent; }
+
+.led-dialog { position: absolute; z-index: 12; inset: 0; display: none; align-items: center; justify-content: center; padding: 20px; background: rgba(0,0,0,.62); }
+.led-dialog.active { display: flex; }
+.led-dialog-card { width: min(360px,100%); padding: 22px; border-radius: 4px; color: var(--led-panel-text); background: #292a2e; box-shadow: 0 12px 32px rgba(0,0,0,.58); }
+.led-dialog-card h2 { margin: 0 0 14px; font-size: 20px; }
+.led-dialog-card p { color: var(--led-secondary); }
+.led-dialog-card > div { display: flex; justify-content: flex-end; gap: 8px; }
+.led-dialog-card button { min-width: 72px; min-height: 40px; border: 0; color: var(--led-accent); background: transparent; }
+
+.display-view button:focus-visible,
+.display-view input:focus-visible { outline: 3px solid var(--led-accent); outline-offset: 2px; }
+.display-view.led-brightness-filter { filter: brightness(var(--led-brightness,1)); }
+@media (max-width: 600px) {
+  .led-side-panel { width: min(90vw,460px); }
+  .led-input-panel { flex-wrap: wrap; }
+  .led-input-field { order: -1; flex-basis: calc(100% - 4px); }
+}

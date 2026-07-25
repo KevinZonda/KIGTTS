@@ -95,6 +95,8 @@
 - `GPT-SoVITS 蒸馏` 的教师推理设备是单独设置的，默认可选 `cuda`。
 - `VoxCPM2 蒸馏` 的推理设备也是单独设置的，默认可选 `cuda`，并可勾选允许回退 CPU。
 - 运行时安装时会自动测速镜像并择优换源；安装和下载过程中，`开始训练语音包` 会被禁用。
+- 如果检测到 RTX 50 系显卡，训练器会优先使用 CUDA 12.8 / RTX 50 专用运行时包。
+- 需要手动测试时，可用环境变量 `KIGTTS_PIPER_CUDA_VARIANT=cu128` 或 `KIGTTS_VOXCPM_RUNTIME_VARIANT=cu128` 强制选择 50 系运行时包位。
 
 ### 3.4 在线下载位置
 
@@ -108,14 +110,16 @@
 
 ```text
 %LOCALAPPDATA%\kgtts-trainer\runtimes\piper_env_cuda
+%LOCALAPPDATA%\kgtts-trainer\runtimes\piper_env_cuda128
 %LOCALAPPDATA%\kgtts-trainer\runtimes\voxcpm_env
+%LOCALAPPDATA%\kgtts-trainer\runtimes\voxcpm_env_cuda128
 %LOCALAPPDATA%\kgtts-trainer\models\voxcpm2
 ```
 
 说明：
 
-- `Piper CUDA 运行时` 由内置 micromamba 在线创建。
-- `VoxCPM2 运行时` 也由内置 micromamba 在线创建。
+- `Piper CUDA 运行时` 和 `VoxCPM2 运行时` 通过 7z 运行时包下载并解压安装。
+- RTX 50 系机器会自动优先下载 `piper_env_cuda128.7z` 和 `voxcpm_env_cuda128.7z`。
 - `VoxCPM2` 主模型和 denoiser 会从 ModelScope 下载到用户数据目录。
 - 打包产物不会把这些在线下载的运行时和权重一起打进去。
 

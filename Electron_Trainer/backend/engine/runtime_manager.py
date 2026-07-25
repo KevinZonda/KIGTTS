@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
 import threading
 import time
+import urllib.error
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
@@ -132,9 +134,17 @@ VOXCPM_PIP_PACKAGES = (
 META_FILENAME = "runtime_meta.json"
 PIPER_RUNTIME_META_FILENAME = "piper_runtime_meta.json"
 ENV_NAME = "piper_env_cuda"
+PIPER_CUDA128_ENV_NAME = "piper_env_cuda128"
+PIPER_CUDA128_META_FILENAME = "runtime_cuda128_meta.json"
 PIPER_RUNTIME_ENV_NAME = "piper_env"
 VOXCPM_ENV_NAME = "voxcpm_env"
+VOXCPM_CUDA128_ENV_NAME = "voxcpm_env_cuda128"
 VOXCPM_META_FILENAME = "voxcpm_runtime_meta.json"
+VOXCPM_CUDA128_META_FILENAME = "voxcpm_runtime_cuda128_meta.json"
+PIPER_CUDA_SOURCE_KEY = "piper_cuda_runtime"
+PIPER_CUDA128_SOURCE_KEY = "piper_cuda_runtime_cu128"
+VOXCPM_SOURCE_KEY = "voxcpm_runtime"
+VOXCPM_CUDA128_SOURCE_KEY = "voxcpm_runtime_cu128"
 VOXCPM_MAIN_REPO = "OpenBMB/VoxCPM2"
 VOXCPM_DENOISER_REPO = "iic/speech_zipenhancer_ans_multiloss_16k_base"
 RUNTIME_ARCHIVE_SOURCES_FILE = "runtime_archive_sources.json"
@@ -147,10 +157,14 @@ TRAINER_RESOURCES_LABEL = "训练资源包"
 TRAINER_RESOURCES_META_FILENAME = "trainer_resources_meta.json"
 TRAINER_RESOURCES_MANIFEST_NAME = "kigtts_resource_manifest.json"
 TRAINER_RESOURCES_MANIFEST_SCHEMA = 1
+RUNTIME_STORAGE_CONFIG_FILE = "runtime_storage.json"
+MIN_RUNTIME_EXTRACT_FREE_BYTES = 8 * 1024 * 1024 * 1024
 ARCHIVE_SOURCE_GROUP_LABELS = {
     "piper_runtime": "Piper 基础运行时",
     "piper_cuda_runtime": "Piper CUDA 运行时",
+    "piper_cuda_runtime_cu128": "Piper CUDA 12.8 / RTX 50 运行时",
     "voxcpm_runtime": "VoxCPM2 运行时",
+    "voxcpm_runtime_cu128": "VoxCPM2 CUDA 12.8 / RTX 50 运行时",
     TRAINER_RESOURCES_SOURCE_KEY: "训练资源包",
 }
 
@@ -173,12 +187,116 @@ def _user_data_dir() -> Path:
     return Path.home() / ".kgtts-trainer"
 
 
-def _runtime_root() -> Path:
+def _default_runtime_root() -> Path:
     return _user_data_dir() / "runtimes"
+
+
+def _runtime_storage_config_path() -> Path:
+    return _user_data_dir() / RUNTIME_STORAGE_CONFIG_FILE
+
+
+def _path_exists(path: Path) -> bool:
+    try:
+        return path.exists()
+    except OSError:
+        return False
+
+
+def _read_runtime_storage_config() -> Dict[str, Any]:
+    config_path = _runtime_storage_config_path()
+    if not _path_exists(config_path):
+        return {}
+    try:
+        data = json.loads(config_path.read_text(encoding="utf-8-sig"))
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
+def _configured_runtime_root() -> Optional[Path]:
+    env_dir = os.environ.get("KGTTS_RUNTIME_ROOT")
+    if env_dir:
+        return Path(env_dir).expanduser()
+    configured = str(_read_runtime_storage_config().get("runtime_root") or "").strip()
+    if configured:
+        return Path(configured).expanduser()
+    return None
+
+
+def _runtime_root() -> Path:
+    return _configured_runtime_root() or _default_runtime_root()
+
+
+def _disk_usage_payload(path: Path) -> Dict[str, Any]:
+    probe = path
+    while not probe.exists() and probe.parent != probe:
+        probe = probe.parent
+    try:
+        usage = shutil.disk_usage(probe)
+        free_gb = round(usage.free / (1024**3), 2)
+        total_gb = round(usage.total / (1024**3), 2)
+        return {
+            "free_bytes": usage.free,
+            "total_bytes": usage.total,
+            "free_gb": free_gb,
+            "total_gb": total_gb,
+        }
+    except Exception:
+        return {
+            "free_bytes": 0,
+            "total_bytes": 0,
+            "free_gb": 0,
+            "total_gb": 0,
+        }
+
+
+def describe_runtime_storage() -> Dict[str, Any]:
+    configured = _configured_runtime_root()
+    runtime_root = _runtime_root()
+    payload: Dict[str, Any] = {
+        "ok": True,
+        "runtime_root": str(runtime_root),
+        "default_runtime_root": str(_default_runtime_root()),
+        "configured_runtime_root": str(configured) if configured else "",
+        "configured": configured is not None,
+        "config_path": str(_runtime_storage_config_path()),
+    }
+    payload.update(_disk_usage_payload(runtime_root))
+    payload["message"] = (
+        f"运行时目录：{runtime_root}，可用空间约 {payload['free_gb']} GB。"
+        if payload["free_bytes"]
+        else f"运行时目录：{runtime_root}。"
+    )
+    return payload
+
+
+def save_runtime_storage(payload: Dict[str, Any]) -> Dict[str, Any]:
+    raw_path = str(payload.get("runtime_root") or "").strip()
+    config_path = _runtime_storage_config_path()
+    if not raw_path:
+        config_path.unlink(missing_ok=True)
+        return describe_runtime_storage()
+
+    root = Path(raw_path).expanduser()
+    if not root.is_absolute():
+        raise RuntimeError("运行时目录必须使用完整路径。")
+    root.mkdir(parents=True, exist_ok=True)
+    usage = _disk_usage_payload(root)
+    if usage["free_bytes"] and usage["free_bytes"] < MIN_RUNTIME_EXTRACT_FREE_BYTES:
+        raise RuntimeError(
+            f"选择的磁盘可用空间约 {usage['free_gb']} GB，建议至少预留 8 GB 后再安装运行时。"
+        )
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    config_path.write_text(json.dumps({"runtime_root": str(root)}, ensure_ascii=False, indent=2), encoding="utf-8")
+    return describe_runtime_storage()
 
 
 def _cuda_env_dir() -> Path:
     return _runtime_root() / ENV_NAME
+
+
+def _cuda128_env_dir() -> Path:
+    return _runtime_root() / PIPER_CUDA128_ENV_NAME
 
 
 def _piper_env_dir() -> Path:
@@ -187,6 +305,10 @@ def _piper_env_dir() -> Path:
 
 def _voxcpm_env_dir() -> Path:
     return _runtime_root() / VOXCPM_ENV_NAME
+
+
+def _voxcpm_cuda128_env_dir() -> Path:
+    return _runtime_root() / VOXCPM_CUDA128_ENV_NAME
 
 
 def _mamba_root_dir() -> Path:
@@ -201,12 +323,20 @@ def _runtime_meta_path() -> Path:
     return _runtime_root() / META_FILENAME
 
 
+def _runtime_cuda128_meta_path() -> Path:
+    return _runtime_root() / PIPER_CUDA128_META_FILENAME
+
+
 def _piper_runtime_meta_path() -> Path:
     return _runtime_root() / PIPER_RUNTIME_META_FILENAME
 
 
 def _voxcpm_runtime_meta_path() -> Path:
     return _runtime_root() / VOXCPM_META_FILENAME
+
+
+def _voxcpm_cuda128_runtime_meta_path() -> Path:
+    return _runtime_root() / VOXCPM_CUDA128_META_FILENAME
 
 
 def _trainer_resources_meta_path() -> Path:
@@ -219,6 +349,12 @@ def _cuda_python_path() -> Path:
     return _cuda_env_dir() / "bin" / "python3"
 
 
+def _cuda128_python_path() -> Path:
+    if os.name == "nt":
+        return _cuda128_env_dir() / "python.exe"
+    return _cuda128_env_dir() / "bin" / "python3"
+
+
 def _piper_python_path() -> Path:
     if os.name == "nt":
         return _piper_env_dir() / "python.exe"
@@ -229,6 +365,12 @@ def _voxcpm_python_path() -> Path:
     if os.name == "nt":
         return _voxcpm_env_dir() / "python.exe"
     return _voxcpm_env_dir() / "bin" / "python3"
+
+
+def _voxcpm_cuda128_python_path() -> Path:
+    if os.name == "nt":
+        return _voxcpm_cuda128_env_dir() / "python.exe"
+    return _voxcpm_cuda128_env_dir() / "bin" / "python3"
 
 
 def _models_root() -> Path:
@@ -268,6 +410,7 @@ def _bundled_7za_candidates() -> list[Path]:
     app_dir = _app_dir()
     node_modules = app_dir / "node_modules"
     return [
+        app_dir.parent / "tools" / "7za.exe",
         app_dir / "tools" / "7za.exe",
         app_dir / "build" / "7zip" / "7za.exe",
         node_modules / "7zip-bin" / "win" / "x64" / "7za.exe",
@@ -342,6 +485,22 @@ def _write_meta(payload: Dict[str, Any]) -> None:
     meta_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
+def _read_cuda128_meta() -> Dict[str, Any]:
+    meta_path = _runtime_cuda128_meta_path()
+    if not meta_path.exists():
+        return {}
+    try:
+        return json.loads(meta_path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def _write_cuda128_meta(payload: Dict[str, Any]) -> None:
+    meta_path = _runtime_cuda128_meta_path()
+    meta_path.parent.mkdir(parents=True, exist_ok=True)
+    meta_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
 def _read_piper_runtime_meta() -> Dict[str, Any]:
     meta_path = _piper_runtime_meta_path()
     if not meta_path.exists():
@@ -370,6 +529,22 @@ def _read_voxcpm_meta() -> Dict[str, Any]:
 
 def _write_voxcpm_meta(payload: Dict[str, Any]) -> None:
     meta_path = _voxcpm_runtime_meta_path()
+    meta_path.parent.mkdir(parents=True, exist_ok=True)
+    meta_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def _read_voxcpm_cuda128_meta() -> Dict[str, Any]:
+    meta_path = _voxcpm_cuda128_runtime_meta_path()
+    if not meta_path.exists():
+        return {}
+    try:
+        return json.loads(meta_path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def _write_voxcpm_cuda128_meta(payload: Dict[str, Any]) -> None:
+    meta_path = _voxcpm_cuda128_runtime_meta_path()
     meta_path.parent.mkdir(parents=True, exist_ok=True)
     meta_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
@@ -566,11 +741,19 @@ def _piper_runtime_archive_sources() -> list[dict[str, str]]:
 
 
 def _piper_cuda_runtime_archive_sources() -> list[dict[str, str]]:
-    return _runtime_archive_sources("piper_cuda_runtime")
+    return _runtime_archive_sources(PIPER_CUDA_SOURCE_KEY)
+
+
+def _piper_cuda128_runtime_archive_sources() -> list[dict[str, str]]:
+    return _runtime_archive_sources(PIPER_CUDA128_SOURCE_KEY)
 
 
 def _voxcpm_runtime_archive_sources() -> list[dict[str, str]]:
-    return _runtime_archive_sources("voxcpm_runtime")
+    return _runtime_archive_sources(VOXCPM_SOURCE_KEY)
+
+
+def _voxcpm_cuda128_runtime_archive_sources() -> list[dict[str, str]]:
+    return _runtime_archive_sources(VOXCPM_CUDA128_SOURCE_KEY)
 
 
 def _trainer_resources_archive_sources() -> list[dict[str, str]]:
@@ -775,16 +958,67 @@ def _probe_nvidia_smi() -> Dict[str, str]:
         return {}
     if code != 0:
         return {}
-    first_line = next((line.strip() for line in output.splitlines() if line.strip()), "")
+    lines = [line.strip() for line in output.splitlines() if line.strip()]
+    first_line = lines[0] if lines else ""
     if not first_line:
         return {}
     parts = [part.strip() for part in first_line.split(",")]
+    gpu_names = []
+    for line in lines:
+        item_parts = [part.strip() for part in line.split(",")]
+        if len(item_parts) > 1 and item_parts[1]:
+            gpu_names.append(item_parts[1])
     return {
         "nvidia_smi_path": nvidia_smi,
         "driver_version": parts[0] if len(parts) > 0 else "",
         "gpu_name": parts[1] if len(parts) > 1 else "",
+        "gpu_names": " / ".join(gpu_names),
         "gpu_memory": parts[2] if len(parts) > 2 else "",
     }
+
+
+def _is_rtx50_gpu_name(gpu_name: str) -> bool:
+    normalized = re.sub(r"[\s_-]+", " ", gpu_name.lower()).strip()
+    if not normalized:
+        return False
+    if "blackwell" in normalized or "rtx 50 series" in normalized:
+        return True
+    return re.search(r"\brtx\s*(5090|5080|5070|5060|5050)\b", normalized) is not None
+
+
+def _detect_rtx50_gpu() -> tuple[bool, Dict[str, str]]:
+    info = _probe_nvidia_smi()
+    names = [info.get("gpu_name", ""), *(info.get("gpu_names", "") or "").split(" / ")]
+    return any(_is_rtx50_gpu_name(name) for name in names), info
+
+
+def _runtime_variant_override(env_name: str) -> Optional[str]:
+    value = os.environ.get(env_name, "").strip().lower()
+    aliases = {
+        "cuda128": "cu128",
+        "cuda12.8": "cu128",
+        "12.8": "cu128",
+        "50": "cu128",
+        "rtx50": "cu128",
+        "default": "legacy",
+        "normal": "legacy",
+    }
+    value = aliases.get(value, value)
+    if value in {"legacy", "cu128"}:
+        return value
+    return None
+
+
+def _select_piper_cuda_variant() -> tuple[str, str, bool, Dict[str, str]]:
+    rtx50_detected, gpu_info = _detect_rtx50_gpu()
+    recommended = "cu128" if rtx50_detected else "legacy"
+    return _runtime_variant_override("KIGTTS_PIPER_CUDA_VARIANT") or recommended, recommended, rtx50_detected, gpu_info
+
+
+def _select_voxcpm_runtime_variant() -> tuple[str, str, bool, Dict[str, str]]:
+    rtx50_detected, gpu_info = _detect_rtx50_gpu()
+    recommended = "cu128" if rtx50_detected else "legacy"
+    return _runtime_variant_override("KIGTTS_VOXCPM_RUNTIME_VARIANT") or recommended, recommended, rtx50_detected, gpu_info
 
 
 def _probe_python_import(
@@ -870,6 +1104,7 @@ torch_cuda_version = None
 pytorch_lightning_version = ""
 piper_train_path = ""
 torch_available = False
+onnx_version = ""
 
 if import_training_stack or check_cuda:
     import piper_train
@@ -885,6 +1120,9 @@ else:
     require_spec("pytorch_lightning")
     require_spec("torch")
     torch_available = True
+
+onnx = importlib.import_module("onnx")
+onnx_version = getattr(onnx, "__version__", "")
 
 if check_cuda:
     cuda_available = bool(torch.cuda.is_available())
@@ -909,6 +1147,8 @@ payload = {{
     "cuda_probe_skipped": not check_cuda,
     "torchaudio_version": torchaudio_version,
     "torchaudio_available": torchaudio_available,
+    "onnx_version": onnx_version,
+    "onnx_available": bool(onnx_version),
     "pytorch_lightning_version": pytorch_lightning_version,
     "piper_train_path": piper_train_path,
     "training_stack_import_skipped": not import_training_stack,
@@ -957,29 +1197,75 @@ def _download_file_with_progress(
     label: str,
 ) -> None:
     target_path.parent.mkdir(parents=True, exist_ok=True)
-    request = urllib.request.Request(source_url, headers={"User-Agent": "KIGTTS-Trainer/1.0"})
-    with urllib.request.urlopen(request, timeout=120) as response:  # noqa: S310
-        total = int(response.headers.get("Content-Length") or 0)
-        written = 0
-        next_heartbeat = time.monotonic()
-        with target_path.open("wb") as handle:
-            while True:
-                chunk = response.read(1024 * 1024)
-                if not chunk:
-                    break
-                handle.write(chunk)
-                written += len(chunk)
-                now = time.monotonic()
-                if progress and (total > 0 or now >= next_heartbeat):
-                    ratio = (written / total) if total > 0 else 0.0
-                    value = start_value + (end_value - start_value) * min(1.0, max(0.0, ratio))
-                    size_text = f"{written / (1024 * 1024):.1f} MiB"
-                    if total > 0:
-                        size_text += f" / {total / (1024 * 1024):.1f} MiB"
-                    _stage(progress, value, f"{label}（{size_text}）")
-                    next_heartbeat = now + 1.0
-    if progress:
-        _stage(progress, end_value, f"{label}完成")
+    if target_path.exists() and target_path.stat().st_size > 0:
+        _stage(progress, end_value, f"{label}已下载，继续安装")
+        return
+
+    partial_path = target_path.with_name(f"{target_path.name}.part")
+    last_error = ""
+    max_attempts = 6
+    for attempt in range(1, max_attempts + 1):
+        resume_from = partial_path.stat().st_size if partial_path.exists() else 0
+        headers = {"User-Agent": "KIGTTS-Trainer/1.0"}
+        if resume_from > 0:
+            headers["Range"] = f"bytes={resume_from}-"
+            _stage(progress, start_value, f"{label}从 {resume_from / (1024 * 1024):.1f} MiB 继续下载")
+        request = urllib.request.Request(source_url, headers=headers)
+        try:
+            with urllib.request.urlopen(request, timeout=120) as response:  # noqa: S310
+                status = getattr(response, "status", 200)
+                if resume_from > 0 and status != 206:
+                    partial_path.unlink(missing_ok=True)
+                    resume_from = 0
+
+                content_range = response.headers.get("Content-Range") or ""
+                total = 0
+                if "/" in content_range:
+                    try:
+                        total = int(content_range.rsplit("/", 1)[1])
+                    except ValueError:
+                        total = 0
+                if total <= 0:
+                    total = resume_from + int(response.headers.get("Content-Length") or 0)
+
+                written = resume_from
+                next_heartbeat = time.monotonic()
+                mode = "ab" if resume_from > 0 else "wb"
+                with partial_path.open(mode) as handle:
+                    while True:
+                        chunk = response.read(1024 * 1024)
+                        if not chunk:
+                            break
+                        handle.write(chunk)
+                        written += len(chunk)
+                        now = time.monotonic()
+                        if progress and (total > 0 or now >= next_heartbeat):
+                            ratio = (written / total) if total > 0 else 0.0
+                            value = start_value + (end_value - start_value) * min(1.0, max(0.0, ratio))
+                            size_text = f"{written / (1024 * 1024):.1f} MiB"
+                            if total > 0:
+                                size_text += f" / {total / (1024 * 1024):.1f} MiB"
+                            _stage(progress, value, f"{label}（{size_text}）")
+                            next_heartbeat = now + 1.0
+
+                final_size = partial_path.stat().st_size if partial_path.exists() else 0
+                if total > 0 and final_size < total:
+                    raise RuntimeError(f"下载未完成：{final_size} / {total} bytes")
+                partial_path.replace(target_path)
+                _stage(progress, end_value, f"{label}完成")
+                return
+        except urllib.error.HTTPError as exc:
+            if exc.code == 416 and partial_path.exists():
+                partial_path.unlink(missing_ok=True)
+                last_error = "服务器拒绝断点续传，已重新开始下载"
+            else:
+                last_error = str(exc)
+        except Exception as exc:
+            last_error = str(exc)
+        if attempt < max_attempts:
+            _stage(progress, start_value, f"{label}下载中断，正在重试（{attempt + 1}/{max_attempts}）")
+            time.sleep(min(2.0 * attempt, 8.0))
+    raise RuntimeError(f"{label}下载失败：{last_error or '网络连接中断'}")
 
 
 def _extract_7z_archive(
@@ -1125,7 +1411,7 @@ def _install_python_runtime_archive(
     local_archive_path: Optional[Path] = None,
 ) -> tuple[Dict[str, Any], list[dict[str, str]], str, str, Dict[str, Any]]:
     archive_sources = _runtime_archive_sources(source_key)
-    local_archive = local_archive_path.expanduser().resolve() if local_archive_path else None
+    local_archive = Path(local_archive_path).expanduser().resolve() if local_archive_path else None
     if local_archive is not None:
         if not local_archive.exists() or not local_archive.is_file():
             raise RuntimeError(f"找不到选择的本地安装包：{local_archive}")
@@ -1151,7 +1437,7 @@ def _install_python_runtime_archive(
             )
 
     _runtime_root().mkdir(parents=True, exist_ok=True)
-    if force and env_dir.exists():
+    if force and _path_exists(env_dir):
         _stage(progress, 0.12, f"清理旧的 {runtime_label}...")
         shutil.rmtree(env_dir, ignore_errors=True)
 
@@ -1170,8 +1456,6 @@ def _install_python_runtime_archive(
             else:
                 archive_path = download_dir / archive_filename
                 _stage(progress, 0.12, f"准备从 {source_label} 下载 {runtime_label}...")
-                if archive_path.exists():
-                    archive_path.unlink()
                 _download_file_with_progress(
                     source_url,
                     archive_path,
@@ -1180,6 +1464,7 @@ def _install_python_runtime_archive(
                     end_value=0.62,
                     label=f"下载 {runtime_label}：{source_label}",
                 )
+            _ensure_runtime_extract_space(archive_path, runtime_label)
             _extract_7z_archive(archive_path, extract_root, progress=progress, progress_value=0.72)
             used_manifest = _validate_runtime_archive_manifest(
                 extract_root,
@@ -1188,30 +1473,86 @@ def _install_python_runtime_archive(
                 runtime_label=runtime_label,
             )
             python_parent = _locate_extracted_python_root(extract_root, env_dir.name)
-            if env_dir.exists():
+            if _path_exists(env_dir):
                 shutil.rmtree(env_dir, ignore_errors=True)
             source_root = python_parent.parent if python_parent.name.lower() == "bin" else python_parent
             shutil.move(str(source_root), str(env_dir))
-            if extract_root.exists():
+            if _path_exists(extract_root):
                 shutil.rmtree(extract_root, ignore_errors=True)
+            _ensure_runtime_python_files_readable(env_dir, runtime_label)
             used_source_id = str(source_id)
             used_source_label = str(source_label)
             break
         except Exception as exc:
-            last_error = str(exc)
-            if extract_root.exists():
+            last_error = _friendly_runtime_install_error(str(exc), runtime_label)
+            if _path_exists(extract_root):
                 shutil.rmtree(extract_root, ignore_errors=True)
-            if source_id != "local" and archive_path.exists():
+            if _path_exists(env_dir):
+                shutil.rmtree(env_dir, ignore_errors=True)
+            if source_id != "local" and _path_exists(archive_path) and not _should_keep_runtime_archive(last_error):
                 archive_path.unlink(missing_ok=True)
             _stage(progress, 0.2, f"{source_label} 暂时不可用，正在尝试下一个下载源...")
     else:
         raise RuntimeError(last_error or f"{runtime_label} 下载失败")
 
     python_path = env_dir / "python.exe" if os.name == "nt" else env_dir / "bin" / "python3"
-    if not python_path.exists():
+    if not _path_exists(python_path):
         raise RuntimeError(f"{runtime_label}解压完成，但没有找到可启动的运行环境。请重新下载后再试。")
     probe = probe_python(python_path)
+    if used_source_id != "local" and _path_exists(archive_path):
+        try:
+            _stage(progress, 0.98, f"清理 {runtime_label} 安装包缓存...")
+            archive_path.unlink(missing_ok=True)
+        except OSError:
+            pass
     return probe, archive_sources, used_source_id, used_source_label, used_manifest
+
+
+def _should_keep_runtime_archive(error_text: str) -> bool:
+    return "缺少解压组件" in error_text or "磁盘空间不足" in error_text or "空间不足" in error_text
+
+
+def _friendly_runtime_install_error(error_text: str, runtime_label: str) -> str:
+    if _looks_like_no_space_error(error_text):
+        storage = describe_runtime_storage()
+        return (
+            f"{runtime_label}解压失败：当前运行时目录所在磁盘空间不足。"
+            f"当前目录：{storage['runtime_root']}，可用空间约 {storage['free_gb']} GB。"
+            "请在“设置 / 运行时存储目录”中选择空间更大的磁盘，或清理磁盘后重试。"
+        )
+    return error_text
+
+
+def _looks_like_no_space_error(error_text: str) -> bool:
+    lowered = error_text.lower()
+    return any(
+        marker in lowered
+        for marker in (
+            "no space left",
+            "not enough space",
+            "there is not enough space",
+            "disk full",
+            "cannot set length",
+            "空间不足",
+            "磁盘空间不足",
+            "ռ䲻",
+        )
+    )
+
+
+def _ensure_runtime_extract_space(archive_path: Path, runtime_label: str) -> None:
+    if not archive_path.exists():
+        return
+    archive_size = archive_path.stat().st_size
+    required = max(MIN_RUNTIME_EXTRACT_FREE_BYTES, int(archive_size * 4))
+    usage = _disk_usage_payload(_runtime_root())
+    free = int(usage.get("free_bytes") or 0)
+    if free and free < required:
+        required_gb = round(required / (1024**3), 2)
+        raise RuntimeError(
+            f"{runtime_label}解压前检查未通过：当前运行时目录所在磁盘可用空间约 {usage['free_gb']} GB，"
+            f"建议至少预留 {required_gb} GB。请在“设置 / 运行时存储目录”中选择空间更大的磁盘，或清理磁盘后重试。"
+        )
 
 
 def _locate_extracted_python_root(extract_root: Path, env_name: str) -> Path:
@@ -1236,6 +1577,41 @@ def _locate_extracted_python_root(extract_root: Path, env_name: str) -> Path:
     for candidate in extract_root.rglob("python.exe" if os.name == "nt" else "python3"):
         return candidate.parent
     raise RuntimeError("运行时包内容不完整：没有找到可启动的 Python 环境。")
+
+
+def _torch_distributed_integrity_roots(env_dir: Path) -> list[Path]:
+    roots = [env_dir / "Lib" / "site-packages" / "torch" / "distributed"]
+    lib_dir = env_dir / "lib"
+    if _path_exists(lib_dir):
+        for site_packages in lib_dir.glob("python*/site-packages"):
+            roots.append(site_packages / "torch" / "distributed")
+    return roots
+
+
+def _ensure_runtime_python_files_readable(env_dir: Path, runtime_label: str) -> None:
+    bad_files: list[str] = []
+    for root in _torch_distributed_integrity_roots(env_dir):
+        if not _path_exists(root):
+            continue
+        for path in root.rglob("*.py"):
+            try:
+                if path.stat().st_size <= 0:
+                    continue
+                data = path.read_bytes()
+            except OSError as exc:
+                bad_files.append(f"{path}: {exc}")
+                if len(bad_files) >= 5:
+                    break
+                continue
+            if data and all(byte == 0 for byte in data):
+                bad_files.append(str(path))
+                if len(bad_files) >= 5:
+                    break
+        if len(bad_files) >= 5:
+            break
+    if bad_files:
+        sample = "；".join(bad_files)
+        raise RuntimeError(f"{runtime_label}安装包内容异常：检测到损坏的 Python 文件（{sample}）。")
 
 
 def _probe_voxcpm_env_python(python_path: Path) -> Dict[str, Any]:
@@ -1271,26 +1647,44 @@ def _build_status(
     status: str,
     message: str,
     extra: Optional[Dict[str, Any]] = None,
+    env_dir: Optional[Path] = None,
+    python_path: Optional[Path] = None,
+    archive_sources: Optional[list[dict[str, str]]] = None,
+    meta: Optional[Dict[str, Any]] = None,
+    runtime_variant: str = "legacy",
+    recommended_runtime_variant: str = "legacy",
+    rtx50_detected: bool = False,
+    runtime_label: str = "Piper CUDA 运行时",
+    effective_source_key: str = PIPER_CUDA_SOURCE_KEY,
+    gpu_info: Optional[Dict[str, str]] = None,
 ) -> Dict[str, Any]:
+    env_dir = env_dir or _cuda_env_dir()
+    python_path = python_path or _cuda_python_path()
+    archive_sources = archive_sources if archive_sources is not None else _piper_cuda_runtime_archive_sources()
     payload: Dict[str, Any] = {
         "ok": True,
         "available": available,
         "status": status,
         "message": message,
         "runtime_root": str(_runtime_root()),
-        "env_path": str(_cuda_env_dir()),
-        "python_path": str(_cuda_python_path()),
+        "env_path": str(env_dir),
+        "python_path": str(python_path),
         "micromamba_path": str(_micromamba_cache_path()),
         "bundled_micromamba_path": str(_resolve_bundled_micromamba() or ""),
         "requirements_path": str(_requirements_path()),
         "piper_train_wheel": str(_find_piper_train_wheel() or ""),
         "local_wheel_dirs": [str(path) for path in _existing_local_wheel_dirs()],
         "archive_source_config": str(_archive_source_config_path()),
-        "archive_sources_configured": len(_piper_cuda_runtime_archive_sources()),
+        "archive_sources_configured": len(archive_sources),
+        "runtime_variant": runtime_variant,
+        "runtime_label": runtime_label,
+        "recommended_runtime_variant": recommended_runtime_variant,
+        "rtx50_detected": rtx50_detected,
+        "effective_source_key": effective_source_key,
         "seven_zip_path": str(_resolve_7za() or ""),
     }
-    payload.update(_read_meta())
-    payload.update(_probe_nvidia_smi())
+    payload.update(meta if meta is not None else _read_meta())
+    payload.update(gpu_info if gpu_info is not None else _probe_nvidia_smi())
     if extra:
         payload.update(extra)
     return payload
@@ -1327,26 +1721,158 @@ def _build_voxcpm_runtime_status(
     status: str,
     message: str,
     extra: Optional[Dict[str, Any]] = None,
+    env_dir: Optional[Path] = None,
+    python_path: Optional[Path] = None,
+    archive_sources: Optional[list[dict[str, str]]] = None,
+    meta: Optional[Dict[str, Any]] = None,
+    runtime_variant: str = "legacy",
+    recommended_runtime_variant: str = "legacy",
+    rtx50_detected: bool = False,
+    runtime_label: str = "VoxCPM2 运行时",
+    effective_source_key: str = VOXCPM_SOURCE_KEY,
+    gpu_info: Optional[Dict[str, str]] = None,
 ) -> Dict[str, Any]:
+    env_dir = env_dir or _voxcpm_env_dir()
+    python_path = python_path or _voxcpm_python_path()
+    archive_sources = archive_sources if archive_sources is not None else _voxcpm_runtime_archive_sources()
     payload: Dict[str, Any] = {
         "ok": True,
         "available": available,
         "status": status,
         "message": message,
         "runtime_root": str(_runtime_root()),
-        "env_path": str(_voxcpm_env_dir()),
-        "python_path": str(_voxcpm_python_path()),
+        "env_path": str(env_dir),
+        "python_path": str(python_path),
         "micromamba_path": str(_micromamba_cache_path()),
         "bundled_micromamba_path": str(_resolve_bundled_micromamba() or ""),
         "archive_source_config": str(_archive_source_config_path()),
-        "archive_sources_configured": len(_voxcpm_runtime_archive_sources()),
+        "archive_sources_configured": len(archive_sources),
+        "runtime_variant": runtime_variant,
+        "runtime_label": runtime_label,
+        "recommended_runtime_variant": recommended_runtime_variant,
+        "rtx50_detected": rtx50_detected,
+        "effective_source_key": effective_source_key,
         "seven_zip_path": str(_resolve_7za() or ""),
     }
-    payload.update(_read_voxcpm_meta())
-    payload.update(_probe_nvidia_smi())
+    payload.update(meta if meta is not None else _read_voxcpm_meta())
+    payload.update(gpu_info if gpu_info is not None else _probe_nvidia_smi())
     if extra:
         payload.update(extra)
     return payload
+
+
+def _piper_cuda_variant_config(variant: str) -> Dict[str, Any]:
+    if variant == "cu128":
+        return {
+            "variant": "cu128",
+            "source_key": PIPER_CUDA128_SOURCE_KEY,
+            "runtime_label": "Piper CUDA 12.8 / RTX 50 运行时",
+            "env_dir": _cuda128_env_dir(),
+            "python_path": _cuda128_python_path(),
+            "archive_filename": "piper_env_cuda128.7z",
+            "extract_dirname": "piper_env_cuda128_extract",
+            "archive_sources": _piper_cuda128_runtime_archive_sources(),
+            "read_meta": _read_cuda128_meta,
+            "write_meta": _write_cuda128_meta,
+        }
+    return {
+        "variant": "legacy",
+        "source_key": PIPER_CUDA_SOURCE_KEY,
+        "runtime_label": "Piper CUDA 运行时",
+        "env_dir": _cuda_env_dir(),
+        "python_path": _cuda_python_path(),
+        "archive_filename": "piper_env_cuda.7z",
+        "extract_dirname": "piper_env_cuda_extract",
+        "archive_sources": _piper_cuda_runtime_archive_sources(),
+        "read_meta": _read_meta,
+        "write_meta": _write_meta,
+    }
+
+
+def _voxcpm_variant_config(variant: str) -> Dict[str, Any]:
+    if variant == "cu128":
+        return {
+            "variant": "cu128",
+            "source_key": VOXCPM_CUDA128_SOURCE_KEY,
+            "runtime_label": "VoxCPM2 CUDA 12.8 / RTX 50 运行时",
+            "env_dir": _voxcpm_cuda128_env_dir(),
+            "python_path": _voxcpm_cuda128_python_path(),
+            "archive_filename": "voxcpm_env_cuda128.7z",
+            "extract_dirname": "voxcpm_env_cuda128_extract",
+            "archive_sources": _voxcpm_cuda128_runtime_archive_sources(),
+            "read_meta": _read_voxcpm_cuda128_meta,
+            "write_meta": _write_voxcpm_cuda128_meta,
+        }
+    return {
+        "variant": "legacy",
+        "source_key": VOXCPM_SOURCE_KEY,
+        "runtime_label": "VoxCPM2 运行时",
+        "env_dir": _voxcpm_env_dir(),
+        "python_path": _voxcpm_python_path(),
+        "archive_filename": "voxcpm_env.7z",
+        "extract_dirname": "voxcpm_env_extract",
+        "archive_sources": _voxcpm_runtime_archive_sources(),
+        "read_meta": _read_voxcpm_meta,
+        "write_meta": _write_voxcpm_meta,
+    }
+
+
+def _piper_cuda_status_payload(
+    config: Dict[str, Any],
+    *,
+    available: bool,
+    status: str,
+    message: str,
+    recommended_runtime_variant: str,
+    rtx50_detected: bool,
+    gpu_info: Dict[str, str],
+    extra: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    return _build_status(
+        available=available,
+        status=status,
+        message=message,
+        extra=extra,
+        env_dir=config["env_dir"],
+        python_path=config["python_path"],
+        archive_sources=config["archive_sources"],
+        meta=config["read_meta"](),
+        runtime_variant=config["variant"],
+        recommended_runtime_variant=recommended_runtime_variant,
+        rtx50_detected=rtx50_detected,
+        runtime_label=config["runtime_label"],
+        effective_source_key=config["source_key"],
+        gpu_info=gpu_info,
+    )
+
+
+def _voxcpm_status_payload(
+    config: Dict[str, Any],
+    *,
+    available: bool,
+    status: str,
+    message: str,
+    recommended_runtime_variant: str,
+    rtx50_detected: bool,
+    gpu_info: Dict[str, str],
+    extra: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    return _build_voxcpm_runtime_status(
+        available=available,
+        status=status,
+        message=message,
+        extra=extra,
+        env_dir=config["env_dir"],
+        python_path=config["python_path"],
+        archive_sources=config["archive_sources"],
+        meta=config["read_meta"](),
+        runtime_variant=config["variant"],
+        recommended_runtime_variant=recommended_runtime_variant,
+        rtx50_detected=rtx50_detected,
+        runtime_label=config["runtime_label"],
+        effective_source_key=config["source_key"],
+        gpu_info=gpu_info,
+    )
 
 
 def _ensure_micromamba(progress: Optional[ProgressCallback]) -> Path:
@@ -1368,45 +1894,61 @@ def _ensure_micromamba(progress: Optional[ProgressCallback]) -> Path:
 
 
 def describe_piper_cuda_runtime() -> Dict[str, Any]:
-    python_path = _cuda_python_path()
-    if not python_path.exists():
-        archive_sources = _piper_cuda_runtime_archive_sources()
-        message = "Piper CUDA 运行时未安装。"
+    variant, recommended, rtx50_detected, gpu_info = _select_piper_cuda_variant()
+    config = _piper_cuda_variant_config(variant)
+    python_path = config["python_path"]
+    archive_sources = config["archive_sources"]
+    if not _path_exists(python_path):
+        message = f"{config['runtime_label']}未安装。"
+        if rtx50_detected and variant == "cu128":
+            message = "检测到 RTX 50 系显卡，需要安装 Piper CUDA 12.8 / RTX 50 运行时。"
         if not archive_sources:
             message += " 请在“下载源设置”中填写链接，或使用本地安装。"
-        return _build_status(
+        return _piper_cuda_status_payload(
+            config,
             available=False,
             status="missing",
             message=message,
+            recommended_runtime_variant=recommended,
+            rtx50_detected=rtx50_detected,
+            gpu_info=gpu_info,
             extra={"archive_sources": archive_sources},
         )
 
     try:
         probe = _probe_env_python(python_path, check_cuda=True)
     except Exception as exc:
-        return _build_status(
+        return _piper_cuda_status_payload(
+            config,
             available=False,
             status="error",
-            message=f"Piper CUDA 运行时安装不完整或无法启动：{exc}",
-            extra={"archive_sources": _piper_cuda_runtime_archive_sources()},
+            message=f"{config['runtime_label']}安装不完整或无法启动：{exc}",
+            recommended_runtime_variant=recommended,
+            rtx50_detected=rtx50_detected,
+            gpu_info=gpu_info,
+            extra={"archive_sources": archive_sources},
         )
 
     cuda_available = bool(probe.get("cuda_available"))
     if cuda_available:
-        message = "Piper CUDA 运行时已就绪。"
+        message = f"{config['runtime_label']}已就绪。"
     else:
-        message = "Piper CUDA 运行时已安装，但当前机器未检测到可用 CUDA。"
-    return _build_status(
+        message = f"{config['runtime_label']}已安装，但当前机器未检测到可用 CUDA。"
+    return _piper_cuda_status_payload(
+        config,
         available=True,
         status="ready",
         message=message,
-        extra={**probe, "archive_sources": _piper_cuda_runtime_archive_sources()},
+        recommended_runtime_variant=recommended,
+        rtx50_detected=rtx50_detected,
+        gpu_info=gpu_info,
+        extra={**probe, "archive_sources": archive_sources},
     )
 
 
 def describe_piper_runtime() -> Dict[str, Any]:
     python_path = _piper_python_path()
-    if not python_path.exists():
+    if not _path_exists(python_path):
         archive_sources = _piper_runtime_archive_sources()
         message = "Piper 基础运行时未安装。"
         if not archive_sources:
@@ -1444,36 +1986,52 @@ def describe_piper_runtime() -> Dict[str, Any]:
 
 
 def describe_voxcpm_runtime() -> Dict[str, Any]:
-    python_path = _voxcpm_python_path()
-    if not python_path.exists():
-        archive_sources = _voxcpm_runtime_archive_sources()
-        message = "VoxCPM2 运行时未安装。"
+    variant, recommended, rtx50_detected, gpu_info = _select_voxcpm_runtime_variant()
+    config = _voxcpm_variant_config(variant)
+    python_path = config["python_path"]
+    archive_sources = config["archive_sources"]
+    if not _path_exists(python_path):
+        message = f"{config['runtime_label']}未安装。"
+        if rtx50_detected and variant == "cu128":
+            message = "检测到 RTX 50 系显卡，需要安装 VoxCPM2 CUDA 12.8 / RTX 50 运行时。"
         if not archive_sources:
             message += " 请在“下载源设置”中填写链接，或使用本地安装。"
-        return _build_voxcpm_runtime_status(
+        return _voxcpm_status_payload(
+            config,
             available=False,
             status="missing",
             message=message,
+            recommended_runtime_variant=recommended,
+            rtx50_detected=rtx50_detected,
+            gpu_info=gpu_info,
             extra={"archive_sources": archive_sources},
         )
 
     try:
         probe = _probe_voxcpm_env_python(python_path)
     except Exception as exc:
-        return _build_voxcpm_runtime_status(
+        return _voxcpm_status_payload(
+            config,
             available=False,
             status="error",
-            message=f"VoxCPM2 运行时安装不完整或无法启动：{exc}",
-            extra={"archive_sources": _voxcpm_runtime_archive_sources()},
+            message=f"{config['runtime_label']}安装不完整或无法启动：{exc}",
+            recommended_runtime_variant=recommended,
+            rtx50_detected=rtx50_detected,
+            gpu_info=gpu_info,
+            extra={"archive_sources": archive_sources},
         )
 
     cuda_available = bool(probe.get("cuda_available"))
-    message = "VoxCPM2 运行时已就绪。" if cuda_available else "VoxCPM2 运行时已安装，但当前机器未检测到可用 CUDA，CPU 推理会非常慢。"
-    return _build_voxcpm_runtime_status(
+    message = f"{config['runtime_label']}已就绪。" if cuda_available else f"{config['runtime_label']}已安装，但当前机器未检测到可用 CUDA，CPU 推理会非常慢。"
+    return _voxcpm_status_payload(
+        config,
         available=True,
         status="ready",
         message=message,
-        extra={**probe, "archive_sources": _voxcpm_runtime_archive_sources()},
+        recommended_runtime_variant=recommended,
+        rtx50_detected=rtx50_detected,
+        gpu_info=gpu_info,
+        extra={**probe, "archive_sources": archive_sources},
     )
 
 
@@ -1562,7 +2120,8 @@ def describe_trainer_resources() -> Dict[str, Any]:
 
 
 def resolve_cuda_python() -> Optional[Path]:
-    python_path = _cuda_python_path()
+    variant, _, _, _ = _select_piper_cuda_variant()
+    python_path = _piper_cuda_variant_config(variant)["python_path"]
     if not python_path.exists():
         return None
     return python_path
@@ -1576,7 +2135,8 @@ def resolve_piper_runtime_python() -> Optional[Path]:
 
 
 def resolve_voxcpm_python() -> Optional[Path]:
-    python_path = _voxcpm_python_path()
+    variant, _, _, _ = _select_voxcpm_runtime_variant()
+    python_path = _voxcpm_variant_config(variant)["python_path"]
     if not python_path.exists():
         return None
     try:
@@ -1587,26 +2147,26 @@ def resolve_voxcpm_python() -> Optional[Path]:
 
 
 def get_voxcpm_python_path() -> Optional[Path]:
-    python_path = _voxcpm_python_path()
+    variant, _, _, _ = _select_voxcpm_runtime_variant()
+    python_path = _voxcpm_variant_config(variant)["python_path"]
     return python_path if python_path.exists() else None
 
 
-def _remove_existing_env() -> None:
-    env_dir = _cuda_env_dir()
+def _remove_env_dir(env_dir: Path) -> None:
     if env_dir.exists():
         shutil.rmtree(env_dir, ignore_errors=True)
+
+
+def _remove_existing_env() -> None:
+    _remove_env_dir(_cuda_env_dir())
 
 
 def _remove_existing_piper_env() -> None:
-    env_dir = _piper_env_dir()
-    if env_dir.exists():
-        shutil.rmtree(env_dir, ignore_errors=True)
+    _remove_env_dir(_piper_env_dir())
 
 
 def _remove_existing_voxcpm_env() -> None:
-    env_dir = _voxcpm_env_dir()
-    if env_dir.exists():
-        shutil.rmtree(env_dir, ignore_errors=True)
+    _remove_env_dir(_voxcpm_env_dir())
 
 
 def _run_micromamba_create_env(
@@ -1839,41 +2399,48 @@ def install_piper_cuda_runtime(
     force: bool = False,
     local_archive_path: Optional[Path] = None,
 ) -> Dict[str, Any]:
+    variant, recommended, rtx50_detected, gpu_info = _select_piper_cuda_variant()
+    config = _piper_cuda_variant_config(variant)
     status = describe_piper_cuda_runtime()
     if status.get("available") and not force and local_archive_path is None:
         return status
 
     try:
         probe, archive_sources, used_source_id, used_source_label, manifest = _install_python_runtime_archive(
-            source_key="piper_cuda_runtime",
-            runtime_label="Piper CUDA 运行时",
-            env_dir=_cuda_env_dir(),
-            archive_filename="piper_env_cuda.7z",
-            extract_dirname="piper_env_cuda_extract",
+            source_key=config["source_key"],
+            runtime_label=config["runtime_label"],
+            env_dir=config["env_dir"],
+            archive_filename=config["archive_filename"],
+            extract_dirname=config["extract_dirname"],
             progress=progress,
             force=force,
             probe_python=lambda python_path: _probe_env_python(python_path, check_cuda=True),
             local_archive_path=local_archive_path,
         )
-        _write_meta(
+        config["write_meta"](
             {
                 "source": used_source_id,
                 "source_label": used_source_label,
                 "installed_with": "downloaded_7z",
-                "archive_name": "piper_env_cuda.7z",
-                "installed_env_path": str(_cuda_env_dir()),
+                "archive_name": config["archive_filename"],
+                "installed_env_path": str(config["env_dir"]),
+                "runtime_variant": config["variant"],
                 "runtime_manifest": manifest,
             }
         )
-        _stage(progress, 1.0, "Piper CUDA 运行时已准备完成。")
-        return _build_status(
+        _stage(progress, 1.0, f"{config['runtime_label']}已准备完成。")
+        return _piper_cuda_status_payload(
+            config,
             available=True,
             status="ready",
-            message="Piper CUDA 运行时已准备完成。",
+            message=f"{config['runtime_label']}已准备完成。",
+            recommended_runtime_variant=recommended,
+            rtx50_detected=rtx50_detected,
+            gpu_info=gpu_info,
             extra={**probe, "source": used_source_id, "source_label": used_source_label, "archive_sources": archive_sources},
         )
     except Exception:
-        _remove_existing_env()
+        _remove_env_dir(config["env_dir"])
         raise
 
 
@@ -1883,41 +2450,48 @@ def install_voxcpm_runtime(
     force: bool = False,
     local_archive_path: Optional[Path] = None,
 ) -> Dict[str, Any]:
+    variant, recommended, rtx50_detected, gpu_info = _select_voxcpm_runtime_variant()
+    config = _voxcpm_variant_config(variant)
     status = describe_voxcpm_runtime()
     if status.get("available") and not force and local_archive_path is None:
         return status
 
     try:
         probe, archive_sources, used_source_id, used_source_label, manifest = _install_python_runtime_archive(
-            source_key="voxcpm_runtime",
-            runtime_label="VoxCPM2 运行时",
-            env_dir=_voxcpm_env_dir(),
-            archive_filename="voxcpm_env.7z",
-            extract_dirname="voxcpm_env_extract",
+            source_key=config["source_key"],
+            runtime_label=config["runtime_label"],
+            env_dir=config["env_dir"],
+            archive_filename=config["archive_filename"],
+            extract_dirname=config["extract_dirname"],
             progress=progress,
             force=force,
             probe_python=_probe_voxcpm_env_python,
             local_archive_path=local_archive_path,
         )
-        _write_voxcpm_meta(
+        config["write_meta"](
             {
                 "source": used_source_id,
                 "source_label": used_source_label,
                 "installed_with": "downloaded_7z",
-                "archive_name": "voxcpm_env.7z",
-                "installed_env_path": str(_voxcpm_env_dir()),
+                "archive_name": config["archive_filename"],
+                "installed_env_path": str(config["env_dir"]),
+                "runtime_variant": config["variant"],
                 "runtime_manifest": manifest,
             }
         )
-        _stage(progress, 1.0, "VoxCPM2 运行时已准备完成。")
-        return _build_voxcpm_runtime_status(
+        _stage(progress, 1.0, f"{config['runtime_label']}已准备完成。")
+        return _voxcpm_status_payload(
+            config,
             available=True,
             status="ready",
-            message="VoxCPM2 运行时已准备完成。",
+            message=f"{config['runtime_label']}已准备完成。",
+            recommended_runtime_variant=recommended,
+            rtx50_detected=rtx50_detected,
+            gpu_info=gpu_info,
             extra={**probe, "source": used_source_id, "source_label": used_source_label, "archive_sources": archive_sources},
         )
     except Exception:
-        _remove_existing_voxcpm_env()
+        _remove_env_dir(config["env_dir"])
         raise
 
 
@@ -1932,7 +2506,7 @@ def install_trainer_resources(
         return status
 
     archive_sources = _trainer_resources_archive_sources()
-    local_archive = local_archive_path.expanduser().resolve() if local_archive_path else None
+    local_archive = Path(local_archive_path).expanduser().resolve() if local_archive_path else None
     if local_archive is not None:
         if not local_archive.exists() or not local_archive.is_file():
             raise RuntimeError(f"找不到选择的本地资源包：{local_archive}")
@@ -1974,8 +2548,6 @@ def install_trainer_resources(
             else:
                 archive_path = download_dir / TRAINER_RESOURCES_ARCHIVE_NAME
                 _stage(progress, 0.12, f"准备从 {source_label} 下载 {TRAINER_RESOURCES_LABEL}...")
-                if archive_path.exists():
-                    archive_path.unlink()
                 _download_file_with_progress(
                     source_url,
                     archive_path,
@@ -2001,7 +2573,7 @@ def install_trainer_resources(
             last_error = str(exc)
             if extract_root.exists():
                 shutil.rmtree(extract_root, ignore_errors=True)
-            if source_id != "local" and archive_path.exists():
+            if source_id != "local" and archive_path.exists() and "缺少解压组件" not in last_error:
                 archive_path.unlink(missing_ok=True)
             _stage(progress, 0.2, f"{source_label} 暂时不可用，正在尝试下一个下载源...")
     else:

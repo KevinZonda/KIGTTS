@@ -25,13 +25,17 @@
         android:maxSdkVersion="32" />
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
     <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
+    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.POST_PROMOTED_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <uses-permission android:name="android.permission.HIDE_OVERLAY_WINDOWS" />
 
     <application
         android:allowBackup="true"
@@ -45,8 +49,19 @@
             android:exported="true"
             android:theme="@style/Theme.KGTTS.Cropper" />
         <activity
+            android:name=".overlay.LockScreenOverlayHostActivity"
+            android:configChanges="orientation|screenSize|smallestScreenSize|uiMode"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:launchMode="singleTask"
+            android:screenOrientation="user"
+            android:showWhenLocked="true"
+            android:taskAffinity=""
+            android:theme="@style/Theme.KGTTS.LockScreenOverlayHost" />
+        <activity
             android:name=".ui.MainActivity"
-            android:exported="true">
+            android:exported="true"
+            android:theme="@style/Theme.KGTTS.Starting">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
@@ -110,6 +125,14 @@
             android:name=".service.RealtimeHostService"
             android:exported="false" />
         <service
+            android:name=".lan.LanCastService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="local_network_subtitle_display_and_remote_control" />
+        </service>
+        <service
             android:name=".service.VolumeHotkeyService"
             android:exported="false"
             android:foregroundServiceType="specialUse">
@@ -140,6 +163,9 @@
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="floating_overlay_ui" />
         </service>
+        <service
+            android:name=".overlay.LockScreenFloatingOverlayService"
+            android:exported="false" />
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"

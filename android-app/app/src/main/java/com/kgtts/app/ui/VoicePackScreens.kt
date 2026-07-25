@@ -360,11 +360,8 @@ fun ModelScreen(state: UiState) {
             elevation = UiTokens.CardElevation
         ) {
             Column(modifier = Modifier.padding(12.dp)) {
-                Text("ASR 模型由语音识别资源包管理", fontWeight = FontWeight.SemiBold)
-                Text("当前 Android 版本不再内置 ASR / 语音增强模型，请在“设置 - 识别”安装语音识别资源包。")
-                Spacer(Modifier.height(8.dp))
-                Text("当前 ASR 路径：", style = MaterialTheme.typography.labelSmall)
-                Text(state.asrDir?.absolutePath ?: "未导入")
+                Text("语音识别资源", fontWeight = FontWeight.SemiBold)
+                Text("语音识别资源请在“设置 > 识别”中管理。")
             }
         }
         Card(
@@ -374,17 +371,8 @@ fun ModelScreen(state: UiState) {
             elevation = UiTokens.CardElevation
         ) {
             Column(modifier = Modifier.padding(12.dp)) {
-                Text("语音包导入已迁移", fontWeight = FontWeight.SemiBold)
-                Text("请前往“语音包”页面顶部文件夹按钮导入语音包。")
-                Spacer(Modifier.height(8.dp))
-                Text("当前语音包路径：", style = MaterialTheme.typography.labelSmall)
-                Text(
-                    when {
-                        isSystemTtsVoiceDir(state.voiceDir) -> SYSTEM_TTS_DEFAULT_LABEL
-                        state.voiceDir != null -> state.voiceDir.absolutePath
-                        else -> "未选择"
-                    }
-                )
+                Text("导入语音包", fontWeight = FontWeight.SemiBold)
+                Text("语音包现在从“语音包”页面右上角的导入按钮添加。")
             }
         }
         Text("状态：${state.status}")
@@ -453,6 +441,8 @@ internal fun VoicePackAvatarPlaceholder(
 @Composable
 fun VoicePackScreen(viewModel: MainViewModel, state: UiState) {
     val context = LocalContext.current
+    val cropToolbarColor = MaterialTheme.colorScheme.primary.toArgb()
+    val cropToolbarContentColor = MaterialTheme.colorScheme.onPrimary.toArgb()
     var detailPackPath by remember { mutableStateOf<String?>(null) }
     var detailName by remember { mutableStateOf("") }
     var detailRemark by remember { mutableStateOf("") }
@@ -473,7 +463,7 @@ fun VoicePackScreen(viewModel: MainViewModel, state: UiState) {
             if (uri != null) {
                 viewModel.updateVoiceAvatar(target, uri)
             } else {
-                toast(context, "裁剪失败：无输出")
+                toast(context, "没有生成裁剪后的图片，请重试")
             }
         } else {
             toast(context, "裁剪失败")
@@ -486,13 +476,13 @@ fun VoicePackScreen(viewModel: MainViewModel, state: UiState) {
             aspectRatioY = 1,
             activityTitle = "裁剪头像",
             cropMenuCropButtonTitle = "确认",
-            activityMenuIconColor = 0xFFFFFFFF.toInt(),
-            activityMenuTextColor = 0xFFFFFFFF.toInt(),
+            activityMenuIconColor = cropToolbarContentColor,
+            activityMenuTextColor = cropToolbarContentColor,
             activityBackgroundColor = 0xFF121212.toInt(),
-            toolbarColor = 0xFF038387.toInt(),
-            toolbarTitleColor = 0xFFFFFFFF.toInt(),
-            toolbarBackButtonColor = 0xFFFFFFFF.toInt(),
-            toolbarTintColor = 0xFFFFFFFF.toInt(),
+            toolbarColor = cropToolbarColor,
+            toolbarTitleColor = cropToolbarContentColor,
+            toolbarBackButtonColor = cropToolbarContentColor,
+            toolbarTintColor = cropToolbarContentColor,
             outputCompressFormat = android.graphics.Bitmap.CompressFormat.PNG,
             outputCompressQuality = 100,
             outputRequestWidth = 400,
@@ -528,7 +518,7 @@ fun VoicePackScreen(viewModel: MainViewModel, state: UiState) {
                         modifier = Modifier.fillMaxSize()
                     ) {
                         Spacer(Modifier.height(UiTokens.PageTopBlank))
-                        Text("暂无语音包，请点击主标题栏导入按钮。")
+                        Text("还没有语音包。点击右上角的导入按钮添加。")
                         Spacer(Modifier.height(pageBottomBlankPadding()))
                     }
                 }
@@ -567,14 +557,14 @@ fun VoicePackScreen(viewModel: MainViewModel, state: UiState) {
             File(detailPack.dir, detailPack.meta.avatar)
         }
         val avatarBitmap = rememberAvatarBitmap(avatarFile)
-        AlertDialog(
+        KigttsAlertDialog(
             onDismissRequest = { detailPackPath = null },
             title = {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text("语音包详细信息", modifier = Modifier.weight(1f))
+                    Text("语音包信息", modifier = Modifier.weight(1f))
                     Md2IconButton(
                         icon = if (detailEditing) "check" else "edit",
                         contentDescription = if (detailEditing) "完成编辑" else "编辑",
@@ -611,7 +601,6 @@ fun VoicePackScreen(viewModel: MainViewModel, state: UiState) {
                                 val remarkText = detailPack.meta.remark.ifBlank { "无" }
                                 Text("备注：$remarkText", style = MaterialTheme.typography.bodySmall)
                             } else {
-                                Text("文件名：${detailPack.dir.name}", style = MaterialTheme.typography.bodySmall)
                             }
                         }
                         if (detailEditing) {
@@ -641,7 +630,6 @@ fun VoicePackScreen(viewModel: MainViewModel, state: UiState) {
                             label = "备注"
                         )
                     } else {
-                        Text("文件名：${detailPack.dir.name}", style = MaterialTheme.typography.bodySmall)
                     }
                 }
             },
@@ -673,7 +661,7 @@ fun VoicePackScreen(viewModel: MainViewModel, state: UiState) {
 
     if (deletePack != null) {
         val deletingKokoro = deletePack?.let { isKokoroVoiceDir(it.dir) } == true
-        AlertDialog(
+        KigttsAlertDialog(
             onDismissRequest = { deletePack = null },
             title = { Text(if (deletingKokoro) "删除 Kokoro 离线语音" else "删除语音包") },
             text = {
@@ -1243,7 +1231,7 @@ internal fun VoicePackCardContent(
                     )
                     Md2IconButton(
                         icon = if (isKokoroPack) "settings" else "info",
-                        contentDescription = if (isKokoroPack) "Kokoro 设置" else "语音包详细信息",
+                        contentDescription = if (isKokoroPack) "Kokoro 设置" else "语音包信息",
                         onClick = onDetail,
                         enabled = !isSystemPack
                     )
@@ -1430,5 +1418,3 @@ internal fun resetVoicePackStaggerView(view: View) {
     view.alpha = 1f
     view.translationY = 0f
 }
-
-

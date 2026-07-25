@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <item name="overlay_font_excluded" type="id" />
+    <item name="overlay_font_requested_bold" type="id" />
+    <item name="overlay_font_original_include_padding" type="id" />
+    <item name="overlay_font_original_line_spacing_extra" type="id" />
+    <item name="overlay_font_original_line_spacing_multiplier" type="id" />
+    <item name="overlay_font_line_height_multiplier" type="id" />
+    <item name="overlay_font_line_height_listener" type="id" />
+</resources>

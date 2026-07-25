@@ -278,6 +278,12 @@ import com.lhtstudio.kigtts.app.util.ExternalShortcutCatalog
 import com.lhtstudio.kigtts.app.util.ExternalShortcutChoice
 import com.lhtstudio.kigtts.app.util.LauncherMenuShortcuts
 import com.lhtstudio.kigtts.app.util.LiveSubtitleNotificationBridge
+import com.lhtstudio.kigtts.app.lan.LanCastLedStyle
+import com.lhtstudio.kigtts.app.lan.LanCastPresentationState
+import com.lhtstudio.kigtts.app.lan.LanCastQuickTextGroup
+import com.lhtstudio.kigtts.app.lan.LanCastRuntime
+import com.lhtstudio.kigtts.app.lan.LanCastThemeRoles
+import com.lhtstudio.kigtts.app.theme.ThemeColorResolver
 import com.lhtstudio.kigtts.app.util.QqScannerSupport
 import com.lhtstudio.kigtts.app.util.QuickCardRenderCache
 import com.lhtstudio.kigtts.app.util.VolumeHotkeyActionSpec
@@ -349,24 +355,31 @@ import kotlin.math.roundToInt
 fun AppScaffold(viewModel: MainViewModel) {
     val pageQuickSubtitle = 0
     val pageOverlay = 1
-    val pageQuickCard = 2
-    val pageVoicePack = 3
-    val pageDrawing = 4
-    val pageSoundboard = 5
-    val pageSettings = 6
+    val pageLanCast = 2
+    val pageQuickCard = 3
+    val pageVoicePack = 4
+    val pageDrawing = 5
+    val pageSoundboard = 6
+    val pageSettings = 7
 
     var page by rememberSaveable { mutableStateOf(pageQuickSubtitle) }
     var drawingFullscreen by rememberSaveable { mutableStateOf(false) }
+    var drawingPaletteEditorOpen by rememberSaveable { mutableStateOf(false) }
     var quickSubtitleFullscreen by rememberSaveable { mutableStateOf(false) }
+    var overlayGestureSettingsOpen by rememberSaveable { mutableStateOf(false) }
     var runningStripCollapsed by rememberSaveable { mutableStateOf(true) }
     var logTopBarActions by remember { mutableStateOf<LogTopBarActions?>(null) }
+    var fontTopBarActions by remember { mutableStateOf<FontTopBarActions?>(null) }
     var quickCardTopBarActions by remember { mutableStateOf<QuickCardTopBarActions?>(null) }
     var quickSubtitleEditorBatchTopBarActions by remember { mutableStateOf<EditorBatchTopBarActions?>(null) }
     var soundboardEditorBatchTopBarActions by remember { mutableStateOf<EditorBatchTopBarActions?>(null) }
+    var drawingPaletteTopBarActions by remember { mutableStateOf<DrawingPaletteTopBarActions?>(null) }
     var quickSubtitlePresetExportDialog by remember { mutableStateOf(false) }
     var soundboardPresetExportDialog by remember { mutableStateOf(false) }
+    var quickCardPackageExportDialog by remember { mutableStateOf(false) }
     var showBuiltinQuickSubtitlePresetPicker by remember { mutableStateOf(false) }
     var showBuiltinSoundboardPresetPicker by remember { mutableStateOf(false) }
+    var showBuiltinQuickCardPackagePicker by remember { mutableStateOf(false) }
     var showBuiltinRecognitionResourcePicker by remember { mutableStateOf(false) }
     var showBuiltinKokoroVoicePicker by remember { mutableStateOf(false) }
     var recognitionResourceSourceDialog by remember { mutableStateOf(false) }
@@ -412,9 +425,123 @@ fun AppScaffold(viewModel: MainViewModel) {
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     val isDarkTheme = currentAppDarkTheme()
-    val topBarColor = if (state.solidTopBar) md2CardContainerColor() else MaterialTheme.colorScheme.primary
-    val topBarContentColor = if (state.solidTopBar) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onPrimary
-    val hiddenDrawerScrimColor = MaterialTheme.colorScheme.onSurface.copy(
+    LanCastUiCommandEffect(viewModel)
+    val lanCastLightThemeRoles = remember(
+        state.themeColorArgb,
+        state.themeToneCorrectionEnabled
+    ) {
+        ThemeColorResolver.resolve(
+            state.themeColorArgb,
+            darkTheme = false,
+            toneCorrectionEnabled = state.themeToneCorrectionEnabled
+        )
+    }
+    val lanCastDarkThemeRoles = remember(
+        state.themeColorArgb,
+        state.themeToneCorrectionEnabled
+    ) {
+        ThemeColorResolver.resolve(
+            state.themeColorArgb,
+            darkTheme = true,
+            toneCorrectionEnabled = state.themeToneCorrectionEnabled
+        )
+    }
+    val lanCastFontFile = remember(state.appFontFamilySource, state.appFontWeight) {
+        state.appFontFamilySource?.files
+            ?.minByOrNull { kotlin.math.abs(it.weight - state.appFontWeight) }
+            ?.path
+            ?.let(::File)
+            ?.takeIf { it.isFile }
+    }
+    LaunchedEffect(
+        viewModel.quickSubtitleCurrentText,
+        viewModel.quickSubtitleInputText,
+        viewModel.quickSubtitleGroups,
+        viewModel.quickSubtitleSelectedGroupId,
+        state.quickSubtitleCompactControls,
+        viewModel.quickSubtitleBold,
+        viewModel.quickSubtitleCentered,
+        viewModel.quickSubtitleRotated180,
+        viewModel.quickSubtitleFontSizeSp,
+        state.quickSubtitleKeepInputPreview,
+        state.quickSubtitleAutoFit,
+        state.themeColorArgb,
+        state.themeToneCorrectionEnabled,
+        state.appFontWeight,
+        state.lanCastDisplaySettings,
+        state.lanCastAudioOutputMode,
+        isDarkTheme,
+        lanCastFontFile?.absolutePath,
+        lanCastFontFile?.lastModified()
+    ) {
+        val led = state.lanCastDisplaySettings
+        LanCastRuntime.updatePresentation(
+            state = LanCastPresentationState(
+                text = viewModel.quickSubtitleCurrentText,
+                inputText = viewModel.quickSubtitleInputText,
+                keepInputPreview = state.quickSubtitleKeepInputPreview,
+                bold = viewModel.quickSubtitleBold,
+                centered = viewModel.quickSubtitleCentered,
+                autoFit = state.quickSubtitleAutoFit,
+                fontSizeSp = viewModel.quickSubtitleFontSizeSp,
+                fontWeight = state.appFontWeight,
+                fontRevision = lanCastFontFile?.lastModified() ?: 0L,
+                rotated180 = viewModel.quickSubtitleRotated180,
+                themeColorArgb = state.themeColorArgb,
+                darkTheme = isDarkTheme,
+                themeToneCorrectionEnabled = state.themeToneCorrectionEnabled,
+                lightThemeRoles = LanCastThemeRoles(
+                    primaryArgb = lanCastLightThemeRoles.primaryArgb,
+                    onPrimaryArgb = lanCastLightThemeRoles.onPrimaryArgb,
+                    accentTextArgb = lanCastLightThemeRoles.accentTextArgb
+                ),
+                darkThemeRoles = LanCastThemeRoles(
+                    primaryArgb = lanCastDarkThemeRoles.primaryArgb,
+                    onPrimaryArgb = lanCastDarkThemeRoles.onPrimaryArgb,
+                    accentTextArgb = lanCastDarkThemeRoles.accentTextArgb
+                ),
+                running = state.running,
+                playbackProgress = viewModel.realtimePlaybackProgress,
+                selectedGroupId = viewModel.quickSubtitleSelectedGroupId,
+                compactQuickText = state.quickSubtitleCompactControls,
+                groups = viewModel.quickSubtitleGroups.map { group ->
+                    LanCastQuickTextGroup(
+                        id = group.id,
+                        title = group.title,
+                        icon = group.icon,
+                        items = group.items
+                    )
+                },
+                led = LanCastLedStyle(
+                    colorArgb = led.ledColorArgb,
+                    backgroundArgb = led.backgroundColorArgb,
+                    dotMatrix = led.dotMatrixEnabled,
+                    dotShape = led.dotShape,
+                    dotDensity = led.dotDensity,
+                    dotSize = 4f + led.dotDensity * 8f,
+                    dotGap = 1f + (1f - led.dotDensity) * 5f,
+                    glowEnabled = led.glowEnabled,
+                    glowStrength = led.glowStrength,
+                    displayHeightFraction = led.displayHeightFraction,
+                    adaptiveMultiLine = led.adaptiveMultiLine,
+                    speed = led.scrollSpeedDpPerSecond,
+                    direction = led.scrollDirection,
+                    quickSwipeOpensQuickText = led.quickSwipeOpensQuickText,
+                    loopGap = led.loopGapDp,
+                    shortTextAlignment = led.shortTextAlignment,
+                    keepScreenOn = led.keepScreenOn,
+                    followSystemBrightness = led.followSystemBrightness,
+                    screenBrightness = led.screenBrightness
+                ),
+                playOnSend = viewModel.quickSubtitlePlayOnSend,
+                audioOutputMode = state.lanCastAudioOutputMode
+            ),
+            fontFile = lanCastFontFile
+        )
+    }
+    val topBarColor = if (state.solidTopBar) MaterialTheme.colorScheme.primary else md2CardContainerColor()
+    val topBarContentColor = if (state.solidTopBar) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
+    val hiddenDrawerScrimColor = Color.Black.copy(
         alpha = if (isDarkTheme) 0.56f else 0.32f
     )
     LaunchedEffect(
@@ -506,12 +633,32 @@ fun AppScaffold(viewModel: MainViewModel) {
     val usePermanentDrawer =
         isLandscape && !ultraSmallAdaptiveWindow && state.landscapeDrawerMode == UserPrefs.DRAWER_MODE_PERMANENT
     val basePage = page
+    val quickSubtitleGuideAnchorBounds = remember {
+        mutableStateMapOf<QuickSubtitleGuideAnchor, Rect>()
+    }
+    val recordQuickSubtitleGuideAnchor =
+        { anchor: QuickSubtitleGuideAnchor, bounds: Rect ->
+            quickSubtitleGuideAnchorBounds[anchor] = bounds
+        }
+    LaunchedEffect(
+        basePage,
+        quickSubtitleRoute,
+        state.quickSubtitleCompactControls,
+        isLandscape,
+        forceLandscapeContentLayout
+    ) {
+        quickSubtitleGuideAnchorBounds.clear()
+    }
     val quickSubtitleEditorOpen =
         basePage == pageQuickSubtitle && quickSubtitleRoute == QuickSubtitleRoutes.Editor
     val quickSubtitleHistoryOpen =
         basePage == pageQuickSubtitle && quickSubtitleRoute == QuickSubtitleRoutes.History
+    val quickSubtitleLedOpen =
+        basePage == pageQuickSubtitle && quickSubtitleRoute == QuickSubtitleRoutes.Led
     val quickSubtitleSubPageOpen =
         basePage == pageQuickSubtitle && quickSubtitleRoute != QuickSubtitleRoutes.Main
+    val overlayGestureSubPageOpen = basePage == pageOverlay && overlayGestureSettingsOpen
+    val drawingPaletteSubPageOpen = basePage == pageDrawing && drawingPaletteEditorOpen
     val soundboardEditorOpen =
         basePage == pageSoundboard && soundboardRoute == SoundboardRoutes.Editor
     val soundboardSubPageOpen =
@@ -532,15 +679,20 @@ fun AppScaffold(viewModel: MainViewModel) {
         basePage == pageQuickCard && quickCardRoute != QuickCardRoutes.Main
     val settingsLogOpen =
         basePage == pageSettings && settingsRoute == SettingsRoutes.Log
+    val settingsFontsOpen =
+        basePage == pageSettings && settingsRoute == SettingsRoutes.Fonts
     val settingsLicensesOpen =
         basePage == pageSettings && settingsRoute == SettingsRoutes.Licenses
     val settingsPrivacyOpen =
         basePage == pageSettings && settingsRoute == SettingsRoutes.Privacy
     val settingsAgreementOpen =
         basePage == pageSettings && settingsRoute == SettingsRoutes.Agreement
+    LaunchedEffect(basePage) {
+        if (basePage != pageOverlay) overlayGestureSettingsOpen = false
+    }
     var lastTopBarBackClickAtMs by remember { mutableLongStateOf(0L) }
     var drawerExpanded by rememberSaveable { mutableStateOf(false) }
-    val runningStripEligible = !(drawingFullscreen && basePage == pageDrawing)
+    val runningStripEligible = !(drawingFullscreen && basePage == pageDrawing) && !quickSubtitleLedOpen
     val showRunningStripButton = runningStripEligible
     val showRunningStripPanel = runningStripEligible && !runningStripCollapsed
     val topMicLevel = viewModel.realtimeInputLevel
@@ -551,6 +703,7 @@ fun AppScaffold(viewModel: MainViewModel) {
         DrawerItem(pageDrawing, "画板", "draw"),
         DrawerItem(pageSoundboard, "音效板", "library_music"),
         DrawerItem(pageOverlay, "悬浮窗与热键", "open_in_new"),
+        DrawerItem(pageLanCast, "投屏与遥控", "cast"),
         DrawerItem(pageVoicePack, "语音包", "record_voice_over"),
         DrawerItem(pageSettings, "设置", "tune")
     )
@@ -624,6 +777,9 @@ fun AppScaffold(viewModel: MainViewModel) {
         when (request.target) {
             OverlayBridge.TARGET_OPEN_OVERLAY -> {
                 page = pageOverlay
+            }
+            OverlayBridge.TARGET_OPEN_LAN_CAST -> {
+                page = pageLanCast
             }
             OverlayBridge.TARGET_OPEN_QUICK_CARD -> {
                 page = pageQuickCard
@@ -725,7 +881,11 @@ fun AppScaffold(viewModel: MainViewModel) {
         }
     }
     LaunchedEffect(page) {
-        if (page != pageDrawing) drawingFullscreen = false
+        if (page != pageDrawing) {
+            drawingFullscreen = false
+            drawingPaletteEditorOpen = false
+            drawingPaletteTopBarActions = null
+        }
         if (page != pageQuickSubtitle) quickSubtitleFullscreen = false
     }
     LaunchedEffect(drawingFullscreen, page) {
@@ -741,6 +901,11 @@ fun AppScaffold(viewModel: MainViewModel) {
     LaunchedEffect(basePage, settingsLogOpen) {
         if (!settingsLogOpen) {
             logTopBarActions = null
+        }
+    }
+    LaunchedEffect(basePage, settingsFontsOpen) {
+        if (!settingsFontsOpen) {
+            fontTopBarActions = null
         }
     }
     LaunchedEffect(basePage, quickSubtitleRoute) {
@@ -784,13 +949,21 @@ fun AppScaffold(viewModel: MainViewModel) {
         if (now - lastTopBarBackClickAtMs < 280L) return
         lastTopBarBackClickAtMs = now
         when {
+            drawingPaletteSubPageOpen -> {
+                val handledByEditor = drawingPaletteTopBarActions?.onBackRequest != null
+                drawingPaletteTopBarActions?.onBackRequest?.invoke()
+                if (!handledByEditor) drawingPaletteEditorOpen = false
+            }
+            overlayGestureSubPageOpen -> {
+                overlayGestureSettingsOpen = false
+            }
             quickSubtitleSubPageOpen -> {
                 quickSubtitleNavController.popBackStack(QuickSubtitleRoutes.Main, inclusive = false)
             }
             soundboardSubPageOpen -> {
                 soundboardNavController.popBackStack(SoundboardRoutes.Main, inclusive = false)
             }
-            settingsLogOpen || settingsLicensesOpen || settingsPrivacyOpen || settingsAgreementOpen -> {
+            settingsFontsOpen || settingsLogOpen || settingsLicensesOpen || settingsPrivacyOpen || settingsAgreementOpen -> {
                 settingsNavController.popBackStack(SettingsRoutes.Main, inclusive = false)
             }
             quickCardEditorOpen -> {
@@ -837,6 +1010,9 @@ fun AppScaffold(viewModel: MainViewModel) {
         if (basePage != pageQuickSubtitle || quickSubtitleRoute != QuickSubtitleRoutes.Main) {
             clearFocusAndHideIme("leave_quick_subtitle_main")
         }
+    }
+    LaunchedEffect(quickSubtitleLedOpen) {
+        if (quickSubtitleLedOpen) runningStripCollapsed = true
     }
     LaunchedEffect(basePage, quickSubtitleRoute, quickSubtitleEditorOpen, inMultiWindowMode) {
         val mode = activity?.window?.attributes?.softInputMode ?: 0
@@ -914,6 +1090,9 @@ fun AppScaffold(viewModel: MainViewModel) {
     val soundboardPresetPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri != null) viewModel.importSoundboardPresetPackage(uri) else toast(context, "未选择文件")
     }
+    val quickCardPackagePicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        if (uri != null) viewModel.prepareQuickCardPackageImport(uri) else toast(context, "未选择文件")
+    }
     val recognitionResourcePicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri != null) viewModel.installRecognitionResources(uri) else toast(context, "未选择文件")
     }
@@ -924,6 +1103,7 @@ fun AppScaffold(viewModel: MainViewModel) {
     val voicePackageFileExtensions = remember { setOf("zip", "kigvpk") }
     val quickSubtitlePresetFileExtensions = remember { setOf("kigtpk", "zip", "json") }
     val soundboardPresetFileExtensions = remember { setOf("kigspk", "zip", "json") }
+    val quickCardPackageFileExtensions = remember { setOf("kigcard") }
     val recognitionResourceFileExtensions = remember { setOf("7z", "zip") }
     val kokoroVoiceFileExtensions = remember { setOf("zip", "tar", "bz2", "tbz2") }
     val openFileManagerAfterPermission = rememberFileManagerPermissionGate()
@@ -1088,6 +1268,21 @@ fun AppScaffold(viewModel: MainViewModel) {
             }
         )
     }
+    if (showBuiltinQuickCardPackagePicker) {
+        BuiltinFilePickerDialog(
+            title = "选择快捷名片包",
+            allowedExtensions = quickCardPackageFileExtensions,
+            onDismiss = { showBuiltinQuickCardPackagePicker = false },
+            onPicked = { uri ->
+                showBuiltinQuickCardPackagePicker = false
+                viewModel.prepareQuickCardPackageImport(uri)
+            },
+            onOpenSystemPicker = {
+                showBuiltinQuickCardPackagePicker = false
+                quickCardPackagePicker.launch("*/*")
+            }
+        )
+    }
     if (showBuiltinRecognitionResourcePicker) {
         BuiltinFilePickerDialog(
             title = "选择语音识别资源包",
@@ -1198,6 +1393,29 @@ fun AppScaffold(viewModel: MainViewModel) {
             }
         )
     }
+    if (quickCardPackageExportDialog) {
+        PresetGroupExportDialog(
+            title = "导出快捷名片",
+            groups = viewModel.quickCards.map { it.id to it.title.ifBlank { "未命名名片" } },
+            prompt = "选择需要导出的名片",
+            confirmLabel = "导出",
+            onDismiss = { quickCardPackageExportDialog = false },
+            onConfirm = { ids ->
+                quickCardPackageExportDialog = false
+                viewModel.exportQuickCardPackage(ids)
+            }
+        )
+    }
+    if (viewModel.quickCardPackageImportVisible) {
+        PresetGroupExportDialog(
+            title = "导入快捷名片",
+            groups = viewModel.quickCardPackageImportCandidates.map { it.id to it.title },
+            prompt = "选择需要导入的名片；同名名片会作为新名片添加",
+            confirmLabel = "导入",
+            onDismiss = viewModel::dismissQuickCardPackageImport,
+            onConfirm = viewModel::importPreparedQuickCardPackage
+        )
+    }
     var realtimePttDragTarget by remember { mutableStateOf(PttConfirmDragTarget.DefaultSend) }
     val realtimeConfirmOverlayEnabled = false
     val realtimeShowPttConfirmOverlay =
@@ -1259,7 +1477,11 @@ fun AppScaffold(viewModel: MainViewModel) {
     }
 
     val topBar: @Composable ((() -> Unit)) -> Unit = { onNavClick ->
-        val currentTitle = if (quickSubtitleEditorOpen) {
+        val currentTitle = if (overlayGestureSubPageOpen) {
+            "手势触发快捷文本"
+        } else if (drawingPaletteSubPageOpen) {
+            "编辑调色板"
+        } else if (quickSubtitleEditorOpen) {
             "编辑便捷字幕"
         } else if (soundboardEditorOpen) {
             "编辑音效板"
@@ -1275,6 +1497,8 @@ fun AppScaffold(viewModel: MainViewModel) {
             "二维码结果"
         } else if (quickCardWebOpen) {
             "二维码网页"
+        } else if (settingsFontsOpen) {
+            "字体"
         } else if (settingsLogOpen) {
             "日志"
         } else if (settingsLicensesOpen) {
@@ -1287,6 +1511,7 @@ fun AppScaffold(viewModel: MainViewModel) {
             when (basePage) {
                 pageQuickSubtitle -> "便捷字幕"
                 pageOverlay -> "悬浮窗与热键"
+                pageLanCast -> "投屏与遥控"
                 pageQuickCard -> "快捷名片"
                 pageVoicePack -> "语音包"
                 pageDrawing -> "画板"
@@ -1344,11 +1569,16 @@ fun AppScaffold(viewModel: MainViewModel) {
                                 micLevel = topMicLevel,
                                 playbackProgress = topPlaybackProgress,
                                 expanded = !runningStripCollapsed,
+                                recognitionResourceInstalled = state.recognitionResourceInstalled,
                                 pushToTalkMode = state.pushToTalkMode,
                                 pushToTalkPressed = state.pushToTalkPressed,
                                 ttsDisabled = state.ttsDisabled,
                                 contentColor = topBarContentColor,
-                                onToggle = { runningStripCollapsed = !runningStripCollapsed }
+                                onToggle = { runningStripCollapsed = !runningStripCollapsed },
+                                modifier = Modifier.quickSubtitleGuideAnchor(
+                                    QuickSubtitleGuideAnchor.TopBarStatus,
+                                    recordQuickSubtitleGuideAnchor
+                                )
                             )
                         }
                     }
@@ -1356,9 +1586,11 @@ fun AppScaffold(viewModel: MainViewModel) {
                 navigationIcon = {
                     AnimatedContent(
                         targetState = when {
+                            drawingPaletteSubPageOpen -> 6
+                            overlayGestureSubPageOpen -> 5
                             quickSubtitleSubPageOpen -> 1
                             soundboardSubPageOpen -> 2
-                            settingsLogOpen || settingsLicensesOpen || settingsPrivacyOpen || settingsAgreementOpen -> 3
+                            settingsFontsOpen || settingsLogOpen || settingsLicensesOpen || settingsPrivacyOpen || settingsAgreementOpen -> 3
                             quickCardSubPageOpen -> 4
                             else -> 0
                         },
@@ -1374,14 +1606,20 @@ fun AppScaffold(viewModel: MainViewModel) {
                         },
                         label = "topbar_nav_switch"
                     ) { navMode ->
-                        if (navMode == 1 || navMode == 2 || navMode == 3 || navMode == 4) {
+                        if (navMode in 1..6) {
                             KigttsIconButton(onClick = {
                                 popSecondaryPageSafely()
                             }) {
                                 MsIcon("arrow_back", contentDescription = "返回")
                             }
                         } else {
-                            KigttsIconButton(onClick = onNavClick) {
+                            KigttsIconButton(
+                                onClick = onNavClick,
+                                modifier = Modifier.quickSubtitleGuideAnchor(
+                                    QuickSubtitleGuideAnchor.TopBarMenu,
+                                    recordQuickSubtitleGuideAnchor
+                                )
+                            ) {
                                 MsIcon("menu", contentDescription = "打开菜单")
                             }
                         }
@@ -1389,6 +1627,7 @@ fun AppScaffold(viewModel: MainViewModel) {
                 },
                 actions = {
                     val quickCardActions = quickCardTopBarActions
+                    val drawingPaletteActions = drawingPaletteTopBarActions
                     val showQuickSubtitleActions =
                         basePage == pageQuickSubtitle && quickSubtitleRoute == QuickSubtitleRoutes.Main
                     val quickSubtitleEffectiveLandscape = isLandscape || forceLandscapeContentLayout
@@ -1424,12 +1663,15 @@ fun AppScaffold(viewModel: MainViewModel) {
                                 quickCardRoute == QuickCardRoutes.Sort
                     val showQuickCardWebActions =
                         basePage == pageQuickCard && quickCardRoute == QuickCardRoutes.Web
-                    val showDrawingActions = basePage == pageDrawing
+                    val showDrawingActions = basePage == pageDrawing && !drawingPaletteSubPageOpen
+                    val showDrawingPaletteActions = drawingPaletteSubPageOpen
                     val showVoicePackActions = basePage == pageVoicePack
                     val showSettingsEntryActions =
                         basePage == pageSettings && settingsRoute == SettingsRoutes.Main
+                    val showSettingsFontActions = basePage == pageSettings && settingsFontsOpen
                     val showSettingsLogActions = basePage == pageSettings && settingsLogOpen
                     val settingsActions = logTopBarActions
+                    val fontActions = fontTopBarActions
 
                     val quickSubtitleAlpha by animateFloatAsState(
                         targetValue = if (showQuickSubtitleActions) 1f else 0f,
@@ -1455,6 +1697,11 @@ fun AppScaffold(viewModel: MainViewModel) {
                         targetValue = if (showDrawingActions) 1f else 0f,
                         animationSpec = tween(130, easing = FastOutSlowInEasing),
                         label = "topbar_drawing_actions_alpha"
+                    )
+                    val drawingPaletteAlpha by animateFloatAsState(
+                        targetValue = if (showDrawingPaletteActions) 1f else 0f,
+                        animationSpec = tween(130, easing = FastOutSlowInEasing),
+                        label = "topbar_drawing_palette_actions_alpha"
                     )
                     val quickCardMainAlpha by animateFloatAsState(
                         targetValue = if (showQuickCardMainActions) 1f else 0f,
@@ -1491,16 +1738,23 @@ fun AppScaffold(viewModel: MainViewModel) {
                         animationSpec = tween(130, easing = FastOutSlowInEasing),
                         label = "topbar_settings_log_actions_alpha"
                     )
+                    val settingsFontAlpha by animateFloatAsState(
+                        targetValue = if (showSettingsFontActions) 1f else 0f,
+                        animationSpec = tween(130, easing = FastOutSlowInEasing),
+                        label = "topbar_settings_font_actions_alpha"
+                    )
                     val actionsWidthTarget = when {
                         showSettingsLogActions -> 144.dp
+                        showSettingsFontActions -> 96.dp
                         showQuickSubtitleEditorBatchActions || showSoundboardEditorBatchActions -> 144.dp
                         showQuickSubtitleEditorActions || showSoundboardEditorActions -> 96.dp
                         showQuickSubtitleCompactEditorAction -> 96.dp
                         showQuickCardMainActions || showQuickCardEditorActions -> 96.dp
                         showQuickCardSortActions ->
-                            if (quickCardActions?.canClose == true) 96.dp else 48.dp
+                            if (quickCardActions?.canClose == true) 96.dp else 144.dp
                         showQuickCardWebActions -> 48.dp
                         showDrawingActions -> 144.dp
+                        showDrawingPaletteActions -> 96.dp
                         showQuickSubtitleActions ||
                             showSoundboardActions ||
                             showVoicePackActions ||
@@ -1531,7 +1785,11 @@ fun AppScaffold(viewModel: MainViewModel) {
                                         onClick = {
                                             quickSubtitleNavController.navigate(QuickSubtitleRoutes.Editor)
                                         },
-                                        enabled = showQuickSubtitleActions
+                                        enabled = showQuickSubtitleActions,
+                                        modifier = Modifier.quickSubtitleGuideAnchor(
+                                            QuickSubtitleGuideAnchor.TopBarEdit,
+                                            recordQuickSubtitleGuideAnchor
+                                        )
                                     ) {
                                         MsIcon(
                                             name = "edit",
@@ -1541,7 +1799,11 @@ fun AppScaffold(viewModel: MainViewModel) {
                                 }
                                 KigttsIconButton(
                                     onClick = { quickSubtitleFullscreen = !quickSubtitleFullscreen },
-                                    enabled = showQuickSubtitleActions
+                                    enabled = showQuickSubtitleActions,
+                                    modifier = Modifier.quickSubtitleGuideAnchor(
+                                        QuickSubtitleGuideAnchor.TopBarFullscreen,
+                                        recordQuickSubtitleGuideAnchor
+                                    )
                                 ) {
                                     MsIcon(
                                         name = if (quickSubtitleFullscreen) "fullscreen_exit" else "fullscreen",
@@ -1565,7 +1827,7 @@ fun AppScaffold(viewModel: MainViewModel) {
                                         onClick = quickSubtitleBatchActions.onMove,
                                         enabled = showQuickSubtitleEditorActions && quickSubtitleBatchActions.canMove
                                     ) {
-                                        MsIcon("drive_file_move", contentDescription = "移动到其它分组")
+                                        MsIcon("drive_file_move", contentDescription = "移动快捷文本")
                                     }
                                     KigttsIconButton(
                                         onClick = quickSubtitleBatchActions.onDelete,
@@ -1618,7 +1880,7 @@ fun AppScaffold(viewModel: MainViewModel) {
                                         onClick = soundboardBatchActions.onMove,
                                         enabled = showSoundboardEditorActions && soundboardBatchActions.canMove
                                     ) {
-                                        MsIcon("drive_file_move", contentDescription = "移动到其它分组")
+                                        MsIcon("drive_file_move", contentDescription = "移动音效")
                                     }
                                     KigttsIconButton(
                                         onClick = soundboardBatchActions.onDelete,
@@ -1721,6 +1983,32 @@ fun AppScaffold(viewModel: MainViewModel) {
                             }
                         }
 
+                        key("topbar_drawing_palette_actions_layer") {
+                            Row(
+                                modifier = Modifier
+                                    .align(Alignment.CenterEnd)
+                                    .graphicsLayer { alpha = drawingPaletteAlpha }
+                                    .zIndex(if (showDrawingPaletteActions) 2f else 0f),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.End
+                            ) {
+                                KigttsIconButton(
+                                    onClick = { drawingPaletteActions?.onAdd?.invoke() },
+                                    enabled = showDrawingPaletteActions &&
+                                        drawingPaletteActions?.canAdd == true
+                                ) {
+                                    MsIcon("add", contentDescription = "新增调色板颜色")
+                                }
+                                KigttsIconButton(
+                                    onClick = { drawingPaletteActions?.onConfirm?.invoke() },
+                                    enabled = showDrawingPaletteActions &&
+                                        drawingPaletteActions?.canConfirm == true
+                                ) {
+                                    MsIcon("check", contentDescription = "保存调色板")
+                                }
+                            }
+                        }
+
                         key("topbar_quick_card_main_actions_layer") {
                             Row(
                                 modifier = Modifier
@@ -1792,6 +2080,26 @@ fun AppScaffold(viewModel: MainViewModel) {
                                         MsIcon("close", contentDescription = "结束选择模式")
                                     }
                                 } else {
+                                    KigttsIconButton(
+                                        onClick = {
+                                            openFileManagerAfterPermission(quickCardPackageFileExtensions) {
+                                                if (state.useBuiltinFileManager) {
+                                                    showBuiltinQuickCardPackagePicker = true
+                                                } else {
+                                                    quickCardPackagePicker.launch("*/*")
+                                                }
+                                            }
+                                        },
+                                        enabled = showQuickCardSortActions
+                                    ) {
+                                        MsIcon("folder_open", contentDescription = "导入快捷名片")
+                                    }
+                                    KigttsIconButton(
+                                        onClick = { quickCardPackageExportDialog = true },
+                                        enabled = showQuickCardSortActions && viewModel.quickCards.isNotEmpty()
+                                    ) {
+                                        MsIcon("share", contentDescription = "导出快捷名片")
+                                    }
                                     KigttsIconButton(
                                         onClick = { quickCardActions?.onConfirm?.invoke() },
                                         enabled = showQuickCardSortActions && quickCardActions?.canConfirm == true
@@ -1964,6 +2272,30 @@ fun AppScaffold(viewModel: MainViewModel) {
                                 }
                             }
                         }
+
+                        key("topbar_settings_font_actions_layer") {
+                            Row(
+                                modifier = Modifier
+                                    .align(Alignment.CenterEnd)
+                                    .graphicsLayer { alpha = settingsFontAlpha }
+                                    .zIndex(if (showSettingsFontActions) 2f else 0f),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.End
+                            ) {
+                                KigttsIconButton(
+                                    onClick = { fontActions?.onImport?.invoke() },
+                                    enabled = showSettingsFontActions && fontActions != null
+                                ) {
+                                    MsIcon("folder_open", contentDescription = "导入字体")
+                                }
+                                KigttsIconButton(
+                                    onClick = { fontActions?.onDownload?.invoke() },
+                                    enabled = showSettingsFontActions && fontActions != null
+                                ) {
+                                    MsIcon("download", contentDescription = "下载字体")
+                                }
+                            }
+                        }
                     }
                 },
                 backgroundColor = Color.Transparent,
@@ -1996,35 +2328,71 @@ fun AppScaffold(viewModel: MainViewModel) {
                 label = "page_switch"
             ) { current ->
                 when (current) {
-                    pageOverlay -> FloatingOverlayScreen(
-                        viewModel = viewModel,
-                        state = state,
-                        onOpenMainSettings = {
-                            page = pageSettings
-                            if (settingsRoute != SettingsRoutes.Main) {
-                                settingsNavController.popBackStack(SettingsRoutes.Main, inclusive = false)
-                            }
-                        }
-                    )
-                    pageQuickSubtitle -> QuickSubtitleNavHost(
-                        navController = quickSubtitleNavController,
-                        viewModel = viewModel,
-                        state = state,
-                        onToggleMic = onToggleRun,
-                        onPushToTalkPressStart = onPushToTalkPressStart,
-                        onPushToTalkPressEnd = onPushToTalkPressEnd,
-                        pttConfirmOwnedByMainPanel = pttConfirmOwnedByMainPanel,
-                        onFloatingInputPreviewChange = { quickSubtitleFloatingInputPreview = it },
-                        onOpenHistory = {
-                            quickSubtitleNavController.navigate(QuickSubtitleRoutes.History) {
-                                launchSingleTop = true
-                            }
+                    pageOverlay -> AnimatedContent(
+                        targetState = overlayGestureSettingsOpen,
+                        transitionSpec = {
+                            ContentTransform(
+                                targetContentEnter = fadeIn(animationSpec = tween(180)) +
+                                    slideInHorizontally(
+                                        initialOffsetX = { width -> if (targetState) width / 5 else -width / 5 },
+                                        animationSpec = tween(220, easing = FastOutSlowInEasing)
+                                    ),
+                                initialContentExit = fadeOut(animationSpec = tween(120)) +
+                                    slideOutHorizontally(
+                                        targetOffsetX = { width -> if (targetState) -width / 5 else width / 5 },
+                                        animationSpec = tween(180, easing = FastOutSlowInEasing)
+                                    )
+                            )
                         },
-                        onEditorBatchTopBarActionsChange = { quickSubtitleEditorBatchTopBarActions = it },
-                        fullscreenMode = quickSubtitleFullscreen && !quickSubtitleSubPageOpen,
-                        forceLandscapeLayout = forceLandscapeContentLayout,
-                        ultraSmallAdaptiveWindow = ultraSmallAdaptiveWindow
+                        label = "overlay_gesture_settings"
+                    ) { gestureSettingsOpen ->
+                        if (gestureSettingsOpen) {
+                            QuickTextGestureSettingsScreen(viewModel = viewModel, state = state)
+                        } else {
+                            FloatingOverlayScreen(
+                                viewModel = viewModel,
+                                state = state,
+                                onOpenMainSettings = {
+                                    page = pageSettings
+                                    if (settingsRoute != SettingsRoutes.Main) {
+                                        settingsNavController.popBackStack(SettingsRoutes.Main, inclusive = false)
+                                    }
+                                },
+                                onOpenQuickTextGestureSettings = {
+                                    overlayGestureSettingsOpen = true
+                                }
+                            )
+                        }
+                    }
+                    pageLanCast -> LanCastScreen(
+                        viewModel = viewModel,
+                        state = state
                     )
+                    pageQuickSubtitle -> CompositionLocalProvider(
+                        LocalQuickSubtitleGuideAnchorRecorder provides recordQuickSubtitleGuideAnchor
+                    ) {
+                        QuickSubtitleNavHost(
+                            navController = quickSubtitleNavController,
+                            viewModel = viewModel,
+                            state = state,
+                            onToggleMic = onToggleRun,
+                            onPushToTalkPressStart = onPushToTalkPressStart,
+                            onPushToTalkPressEnd = onPushToTalkPressEnd,
+                            pttConfirmOwnedByMainPanel = pttConfirmOwnedByMainPanel,
+                            onFloatingInputPreviewChange = { quickSubtitleFloatingInputPreview = it },
+                            onOpenHistory = {
+                                quickSubtitleNavController.navigate(QuickSubtitleRoutes.History) {
+                                    launchSingleTop = true
+                                }
+                            },
+                            onEditorBatchTopBarActionsChange = {
+                                quickSubtitleEditorBatchTopBarActions = it
+                            },
+                            fullscreenMode = quickSubtitleFullscreen && !quickSubtitleSubPageOpen,
+                            forceLandscapeLayout = forceLandscapeContentLayout,
+                            ultraSmallAdaptiveWindow = ultraSmallAdaptiveWindow
+                        )
+                    }
                     pageQuickCard -> QuickCardNavHost(
                         navController = quickCardNavController,
                         viewModel = viewModel,
@@ -2034,12 +2402,42 @@ fun AppScaffold(viewModel: MainViewModel) {
                         ultraSmallAdaptiveWindow = ultraSmallAdaptiveWindow
                     )
                     pageVoicePack -> VoicePackScreen(viewModel, state)
-                    pageDrawing -> DrawingBoardScreen(
-                        viewModel = viewModel,
-                        fullscreen = drawingFullscreen,
-                        onToggleFullscreen = { drawingFullscreen = !drawingFullscreen },
-                        forceLandscapeLayout = forceLandscapeContentLayout
-                    )
+                    pageDrawing -> AnimatedContent(
+                        targetState = drawingPaletteEditorOpen,
+                        transitionSpec = {
+                            ContentTransform(
+                                targetContentEnter = fadeIn(tween(180)) + slideInHorizontally(
+                                    initialOffsetX = { full -> full / 8 },
+                                    animationSpec = tween(180, easing = FastOutSlowInEasing)
+                                ),
+                                initialContentExit = fadeOut(tween(100)) + slideOutHorizontally(
+                                    targetOffsetX = { full -> -full / 8 },
+                                    animationSpec = tween(120, easing = FastOutSlowInEasing)
+                                )
+                            )
+                        },
+                        label = "drawing_palette_page"
+                    ) { editorOpen ->
+                        if (editorOpen) {
+                            DrawingPaletteEditorScreen(
+                                savedPalette = state.drawingPalette,
+                                onSave = viewModel::saveDrawingPalette,
+                                onClose = { drawingPaletteEditorOpen = false },
+                                onTopBarActionsChange = { drawingPaletteTopBarActions = it }
+                            )
+                        } else {
+                            DrawingBoardScreen(
+                                viewModel = viewModel,
+                                fullscreen = drawingFullscreen,
+                                onToggleFullscreen = { drawingFullscreen = !drawingFullscreen },
+                                onOpenPaletteEditor = {
+                                    drawingFullscreen = false
+                                    drawingPaletteEditorOpen = true
+                                },
+                                forceLandscapeLayout = forceLandscapeContentLayout
+                            )
+                        }
+                    }
                     pageSoundboard -> SoundboardNavHost(
                         navController = soundboardNavController,
                         viewModel = viewModel,
@@ -2053,6 +2451,7 @@ fun AppScaffold(viewModel: MainViewModel) {
                         viewModel = viewModel,
                         state = state,
                         onTopBarActionsChange = { logTopBarActions = it },
+                        onFontTopBarActionsChange = { fontTopBarActions = it },
                         onOpenRecognitionResourceSources = { recognitionResourceSourceDialog = true },
                         onPickRecognitionResourcePackage = {
                             openFileManagerAfterPermission(recognitionResourceFileExtensions) {
@@ -2118,14 +2517,15 @@ fun AppScaffold(viewModel: MainViewModel) {
                 RunningStatusTopStrip(
                     viewModel = viewModel,
                     status = state.status,
-                            pushToTalkMode = state.pushToTalkMode,
-                            pushToTalkPressed = state.pushToTalkPressed,
-                            ttsDisabled = state.ttsDisabled,
-                            playbackGainPercent = state.playbackGainPercent,
-                            preferredInputType = state.preferredInputType,
-                            preferredOutputType = state.preferredOutputType,
-                            inputDeviceLabel = state.inputDeviceLabel,
-                            outputDeviceLabel = state.outputDeviceLabel,
+                    recognitionResourceInstalled = state.recognitionResourceInstalled,
+                    pushToTalkMode = state.pushToTalkMode,
+                    pushToTalkPressed = state.pushToTalkPressed,
+                    ttsDisabled = state.ttsDisabled,
+                    playbackGainPercent = state.playbackGainPercent,
+                    preferredInputType = state.preferredInputType,
+                    preferredOutputType = state.preferredOutputType,
+                    inputDeviceLabel = state.inputDeviceLabel,
+                    outputDeviceLabel = state.outputDeviceLabel,
                     onToggleCollapsed = { runningStripCollapsed = !runningStripCollapsed },
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -2186,15 +2586,22 @@ fun AppScaffold(viewModel: MainViewModel) {
         }
     }
 
-    val drawingImmersive = drawingFullscreen && basePage == pageDrawing
+    val drawingImmersive = drawingFullscreen && basePage == pageDrawing && !drawingPaletteSubPageOpen
     val quickSubtitleImmersive =
         quickSubtitleFullscreen && basePage == pageQuickSubtitle && !quickSubtitleSubPageOpen
-    val fullScreenImmersive = drawingImmersive || quickSubtitleImmersive
+    val ledSubtitleImmersive = quickSubtitleLedOpen
+    val fullScreenImmersive = drawingImmersive || quickSubtitleImmersive || ledSubtitleImmersive
     BackHandler(enabled = drawingImmersive) {
         drawingFullscreen = false
     }
     BackHandler(enabled = quickSubtitleImmersive) {
         quickSubtitleFullscreen = false
+    }
+    BackHandler(enabled = overlayGestureSubPageOpen) {
+        overlayGestureSettingsOpen = false
+    }
+    BackHandler(enabled = drawingPaletteSubPageOpen) {
+        popSecondaryPageSafely()
     }
     LaunchedEffect(fullScreenImmersive) {
         if (fullScreenImmersive) {
@@ -2202,16 +2609,23 @@ fun AppScaffold(viewModel: MainViewModel) {
             drawerState.close()
         }
     }
-    LaunchedEffect(drawingImmersive, inMultiWindowMode) {
+    LaunchedEffect(drawingImmersive, ledSubtitleImmersive, inMultiWindowMode) {
         val window = activity?.window ?: return@LaunchedEffect
         val controller = WindowCompat.getInsetsController(window, window.decorView)
-        if (drawingImmersive && !inMultiWindowMode) {
+        if ((drawingImmersive || ledSubtitleImmersive) && !inMultiWindowMode) {
             controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-            controller.hide(WindowInsetsCompat.Type.statusBars())
-            AppLogger.i("AppScaffold.statusBars=hidden drawingImmersive=true")
+            if (ledSubtitleImmersive) {
+                controller.hide(WindowInsetsCompat.Type.systemBars())
+            } else {
+                controller.hide(WindowInsetsCompat.Type.statusBars())
+                controller.show(WindowInsetsCompat.Type.navigationBars())
+            }
+            AppLogger.i(
+                "AppScaffold.systemBars=hidden drawing=$drawingImmersive led=$ledSubtitleImmersive"
+            )
         } else {
-            controller.show(WindowInsetsCompat.Type.statusBars())
-            AppLogger.i("AppScaffold.statusBars=shown drawingImmersive=false")
+            controller.show(WindowInsetsCompat.Type.systemBars())
+            AppLogger.i("AppScaffold.systemBars=shown immersive=false")
         }
     }
     val topBarVisible = !fullScreenImmersive
@@ -2221,10 +2635,15 @@ fun AppScaffold(viewModel: MainViewModel) {
         label = "permanent_drawer_rail_width"
     )
     val animatedContentStartPadding by animateDpAsState(
-        targetValue = if (fullScreenImmersive) landscapeCutoutStart else 0.dp,
+        targetValue = if (fullScreenImmersive && !ledSubtitleImmersive) {
+            landscapeCutoutStart
+        } else {
+            0.dp
+        },
         animationSpec = tween(durationMillis = 160, easing = FastOutSlowInEasing),
         label = "content_start_padding"
     )
+    val ledAwareContentEndPadding = if (ledSubtitleImmersive) 0.dp else landscapeChromeEndInset
     Box(modifier = Modifier.fillMaxSize()) {
         if (usePermanentDrawer) {
             Scaffold(
@@ -2285,7 +2704,10 @@ fun AppScaffold(viewModel: MainViewModel) {
                                 .fillMaxHeight()
                                 .graphicsLayer { clip = true }
                                 .zIndex(0f)
-                                .padding(start = animatedContentStartPadding, end = landscapeChromeEndInset)
+                                .padding(
+                                    start = animatedContentStartPadding,
+                                    end = ledAwareContentEndPadding
+                                )
                         )
                     }
 
@@ -2351,7 +2773,11 @@ fun AppScaffold(viewModel: MainViewModel) {
                 drawerState = drawerState,
                 gesturesEnabled = basePage != pageDrawing &&
                         !state.pushToTalkPressed &&
-                        !quickCardMainOpen,
+                        !quickCardMainOpen &&
+                        !quickSubtitleLedOpen &&
+                        !(basePage == pageQuickSubtitle &&
+                            quickSubtitleRoute == QuickSubtitleRoutes.Main &&
+                            state.quickTextGestureSettings.enabled),
                 drawerShape = RectangleShape,
                 drawerBackgroundColor = Color.Transparent,
                 drawerElevation = 0.dp,
@@ -2422,7 +2848,10 @@ fun AppScaffold(viewModel: MainViewModel) {
                             Modifier
                                 .fillMaxSize()
                                 .padding(innerPadding)
-                                .padding(start = landscapeChromeStartInset, end = landscapeChromeEndInset)
+                                .padding(
+                                    start = if (ledSubtitleImmersive) 0.dp else landscapeChromeStartInset,
+                                    end = ledAwareContentEndPadding
+                                )
                         )
                     }
                 }
@@ -2447,6 +2876,21 @@ fun AppScaffold(viewModel: MainViewModel) {
             modifier = Modifier
                 .matchParentSize()
                 .zIndex(20f)
+        )
+        QuickSubtitleFirstRunGuideCoordinator(
+            visible = basePage == pageQuickSubtitle &&
+                quickSubtitleRoute == QuickSubtitleRoutes.Main &&
+                topBarVisible &&
+                state.settingsLoaded &&
+                state.onboardingCompleted &&
+                !state.quickSubtitleFirstRunGuideCompleted,
+            compactControls = state.quickSubtitleCompactControls,
+            anchorBounds = quickSubtitleGuideAnchorBounds,
+            onSelectCompactControls = viewModel::setQuickSubtitleCompactControls,
+            onComplete = viewModel::completeQuickSubtitleFirstRunGuide,
+            modifier = Modifier
+                .matchParentSize()
+                .zIndex(40f)
         )
     }
 }
@@ -2538,7 +2982,7 @@ internal fun QuickSubtitleFloatingInputPreviewOverlay(
                                 },
                                 textRotationZ = if (rotated) 180f else 0f,
                                 cursorIndex = cursorIndex,
-                                cursorColor = MaterialTheme.colorScheme.primary
+                                cursorColor = MaterialTheme.colorScheme.accentText
                             )
                         }
                     }

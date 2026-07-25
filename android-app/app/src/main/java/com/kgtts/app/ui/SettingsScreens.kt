@@ -255,6 +255,7 @@ import com.lhtstudio.kigtts.app.data.KOKORO_VOICE_NAME
 import com.lhtstudio.kigtts.app.data.SYSTEM_TTS_VOICE_NAME
 import com.lhtstudio.kigtts.app.data.VoicePackInfo
 import com.lhtstudio.kigtts.app.data.UserPrefs
+import com.lhtstudio.kigtts.app.theme.ThemeColorResolver
 import com.lhtstudio.kigtts.app.data.VoicePackMeta
 import com.lhtstudio.kigtts.app.data.defaultSoundboardGroups
 import com.lhtstudio.kigtts.app.data.isKokoroVoiceDir
@@ -343,6 +344,8 @@ import kotlin.math.atan2
 import kotlin.math.sin
 import kotlin.math.roundToInt
 
+private const val KIGTTS_OFFICIAL_WEBSITE = "https://kigtts.lhtstudio.com"
+
 
 @Composable
 internal fun SettingsNavHost(
@@ -350,6 +353,7 @@ internal fun SettingsNavHost(
     viewModel: MainViewModel,
     state: UiState,
     onTopBarActionsChange: (LogTopBarActions?) -> Unit,
+    onFontTopBarActionsChange: (FontTopBarActions?) -> Unit,
     onOpenRecognitionResourceSources: () -> Unit,
     onPickRecognitionResourcePackage: () -> Unit,
     onDownloadRecognitionResources: () -> Unit,
@@ -420,6 +424,9 @@ internal fun SettingsNavHost(
             SettingsScreen(
                 viewModel = viewModel,
                 state = state,
+                onOpenFonts = {
+                    navController.navigate(SettingsRoutes.Fonts) { launchSingleTop = true }
+                },
                 onOpenLicenses = {
                     navController.navigate(SettingsRoutes.Licenses) { launchSingleTop = true }
                 },
@@ -440,6 +447,9 @@ internal fun SettingsNavHost(
         }
         composable(SettingsRoutes.Log) {
             LogScreen(onTopBarActionsChange = onTopBarActionsChange)
+        }
+        composable(SettingsRoutes.Fonts) {
+            FontSettingsScreen(onTopBarActionsChange = onFontTopBarActionsChange)
         }
         composable(SettingsRoutes.Licenses) {
             LegalDocumentScreen(
@@ -464,6 +474,7 @@ internal fun SettingsNavHost(
 fun SettingsScreen(
     viewModel: MainViewModel,
     state: UiState,
+    onOpenFonts: () -> Unit,
     onOpenLicenses: () -> Unit,
     onOpenPrivacy: () -> Unit,
     onOpenAgreement: () -> Unit,
@@ -478,15 +489,6 @@ fun SettingsScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val scroll = rememberScrollState()
-    val liveSubtitleNotificationPermissionLauncher =
-        rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-            if (granted) {
-                viewModel.setLiveSubtitleNotificationEnabled(true)
-            } else {
-                toast(context, "未授予通知权限，实时通知无法显示")
-            }
-        }
-    var liveSubtitleNotificationPermissionPurposeOpen by remember { mutableStateOf(false) }
     var speakerEnrollPermissionPurposeOpen by remember { mutableStateOf(false) }
     var pendingSpeakerEnrollPermissionStep by remember { mutableIntStateOf(0) }
     val drawerModeOptions = listOf(
@@ -510,8 +512,8 @@ fun SettingsScreen(
     )
     val denoiserModeOptions = listOf(
         AudioDenoiserMode.OFF to "关闭",
-        AudioDenoiserMode.RNNOISE to "RNNoise 噪声抑制",
-        AudioDenoiserMode.SPEEX to "Speex 噪声抑制"
+        AudioDenoiserMode.RNNOISE to "智能语音降噪（RNNoise）",
+        AudioDenoiserMode.SPEEX to "兼容降噪（Speex）"
     )
     val themeModeOptions = listOf(
         UserPrefs.THEME_MODE_FOLLOW_SYSTEM to "跟随系统",
@@ -519,9 +521,9 @@ fun SettingsScreen(
         UserPrefs.THEME_MODE_DARK to "暗色"
     )
     val fontScaleBlockModeOptions = listOf(
-        UserPrefs.FONT_SCALE_BLOCK_NONE to "图标和字体跟随缩放",
-        UserPrefs.FONT_SCALE_BLOCK_ICONS_ONLY to "仅禁用图标大小缩放",
-        UserPrefs.FONT_SCALE_BLOCK_ALL to "禁用图标和字体大小缩放"
+        UserPrefs.FONT_SCALE_BLOCK_NONE to "字体和图标跟随系统",
+        UserPrefs.FONT_SCALE_BLOCK_ICONS_ONLY to "固定图标大小",
+        UserPrefs.FONT_SCALE_BLOCK_ALL to "固定字体和图标大小"
     )
     val audioFocusAvoidanceOptions = listOf(
         UserPrefs.AUDIO_FOCUS_AVOID_DUCK to "压低音量",
@@ -533,6 +535,8 @@ fun SettingsScreen(
     var themeModeExpanded by remember { mutableStateOf(false) }
     var overlayThemeModeExpanded by remember { mutableStateOf(false) }
     var fontScaleBlockModeExpanded by remember { mutableStateOf(false) }
+    var themeColorPickerVisible by remember { mutableStateOf(false) }
+    var themeToneCorrectionSuggestionVisible by remember { mutableStateOf(false) }
     var restoreQuickTextPresetDialogVisible by remember { mutableStateOf(false) }
     var restoreQuickTextSelectedGroupIds by rememberSaveable {
         mutableStateOf(defaultSelectedQuickSubtitlePresetGroupIds())
@@ -687,6 +691,54 @@ fun SettingsScreen(
 
     LaunchedEffect(selectedCategory) {
         scroll.animateScrollTo(0)
+    }
+
+    if (themeColorPickerVisible) {
+        ThemeColorPickerDialog(
+            title = "应用主题色",
+            initialColor = Color(state.themeColorArgb),
+            onDismissRequest = { themeColorPickerVisible = false },
+            onColorSelected = { color ->
+                val selectedArgb = color.toArgb()
+                viewModel.setThemeColorArgb(selectedArgb)
+                themeColorPickerVisible = false
+                themeToneCorrectionSuggestionVisible =
+                    !state.themeToneCorrectionEnabled &&
+                    ThemeColorResolver.shouldSuggestToneCorrection(selectedArgb)
+            }
+        )
+    }
+
+    if (themeToneCorrectionSuggestionVisible) {
+        val dialogActionColor = MaterialTheme.colorScheme.onSurface
+        KigttsAlertDialog(
+            onDismissRequest = { themeToneCorrectionSuggestionVisible = false },
+            title = { Text("主题色可能影响可读性") },
+            text = {
+                Text(
+                    "当前颜色在亮色或暗色界面中可能过亮或过暗。是否开启主题色色调修正，自动生成适合当前亮暗模式的控件色和强调文字色？"
+                )
+            },
+            confirmButton = {
+                Md2TextButton(
+                    onClick = {
+                        viewModel.setThemeToneCorrectionEnabled(true)
+                        themeToneCorrectionSuggestionVisible = false
+                    },
+                    contentColor = dialogActionColor
+                ) {
+                    Text("开启修正")
+                }
+            },
+            dismissButton = {
+                Md2TextButton(
+                    onClick = { themeToneCorrectionSuggestionVisible = false },
+                    contentColor = dialogActionColor
+                ) {
+                    Text("保持原色")
+                }
+            }
+        )
     }
 
     if (restoreQuickTextPresetDialogVisible) {
@@ -862,17 +914,17 @@ fun SettingsScreen(
                 context.packageManager.getPackageInfo(context.packageName, 0)
             }.getOrNull()
         }
-        @Suppress("DEPRECATION")
         val versionLabel = remember(packageInfo) {
             val versionName = packageInfo?.versionName ?: "未知版本"
-            val versionCode = packageInfo?.let {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                    it.longVersionCode
-                } else {
-                    it.versionCode.toLong()
-                }
-            } ?: 0L
-            "版本 $versionName ($versionCode)"
+            "版本 $versionName"
+        }
+        val openOfficialWebsite = rememberKigttsHapticClick {
+            if (
+                !openChromeCustomTab(context, KIGTTS_OFFICIAL_WEBSITE) &&
+                !openExternalBrowser(context, KIGTTS_OFFICIAL_WEBSITE)
+            ) {
+                toast(context, "无法打开官网")
+            }
         }
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Md2StaggeredFloatIn(index = 0) {
@@ -895,7 +947,13 @@ fun SettingsScreen(
                             contentDescription = "KIGTTS Logo",
                             modifier = Modifier
                                 .fillMaxWidth(0.82f)
-                                .height(50.dp),
+                                .height(50.dp)
+                                .clip(RoundedCornerShape(4.dp))
+                                .clickable(
+                                    interactionSource = remember { MutableInteractionSource() },
+                                    indication = rememberRipple(bounded = true),
+                                    onClick = openOfficialWebsite
+                                ),
                             contentScale = ContentScale.Fit
                         )
                         Text(
@@ -1020,7 +1078,7 @@ fun SettingsScreen(
                         )
                     } else {
                         Text(
-                            text = "资源包用于统一管理 ASR、Silero VAD、GTCRN/DPDFNet 语音增强模型；未安装时语音识别与 AI 语音增强不可用。",
+                            text = "安装后可使用语音识别、智能断句和语音降噪增强。",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -1070,46 +1128,46 @@ fun SettingsScreen(
             }
 
             Md2StaggeredFloatIn(index = 1) {
-                Md2SettingsCard(title = "识别与转换") {
+                Md2SettingsCard(title = "识别行为") {
                     Md2SettingSwitchRow(
-                        title = "识别结果自动上屏大字幕",
+                        title = "自动显示识别结果",
                         checked = state.asrSendToQuickSubtitle,
                         onCheckedChange = { viewModel.setAsrSendToQuickSubtitle(it) },
-                        supportingText = "开启后：语音识别结果会自动更新便捷字幕主文本"
+                        supportingText = "识别完成后，自动更新便捷字幕的大字幕内容。"
                     )
                     Md2SettingSwitchRow(
-                        title = "按住说话模式",
+                        title = "按住说话",
                         checked = state.pushToTalkMode,
                         onCheckedChange = { viewModel.setPushToTalkMode(it) },
-                        supportingText = "开启后：实时页 FAB 改为麦克风，按下开始收音，松开停止收音。"
+                        supportingText = "按住麦克风按钮开始收音，松开后完成识别。"
                     )
                     Md2SettingSwitchRow(
-                        title = "允许通过快捷文本触发音效板",
+                        title = "快捷文本联动音效板",
                         checked = state.allowQuickTextTriggerSoundboard,
                         onCheckedChange = { viewModel.setAllowQuickTextTriggerSoundboard(it) },
-                        supportingText = "关闭后：便捷字幕的快捷文本与输入框只更新字幕/TTS，不触发音效板关键词。"
+                        supportingText = "快捷文本中包含音效触发词时，同时播放对应音效。"
                     )
                     Md2SettingSwitchRow(
-                        title = "快捷文本打断当前语音",
+                        title = "新快捷文本优先朗读",
                         checked = state.quickSubtitleInterruptQueue,
                         onCheckedChange = { viewModel.setQuickSubtitleInterruptQueue(it) },
-                        supportingText = "开启后：便捷字幕和迷你便捷字幕点按快捷文本时，会打断当前朗读并优先播放新条目。"
+                        supportingText = "点击新条目时停止当前朗读并立即播放。"
                     )
                     Md2SettingSwitchRow(
-                        title = "按下输入文本确认",
+                        title = "按住说话确认模式",
                         checked = state.pushToTalkConfirmInputMode,
                         enabled = state.pushToTalkMode,
                         onCheckedChange = { viewModel.setPushToTalkConfirmInputMode(it) },
-                        supportingText = "开启后：按住说话时识别文本先显示在悬浮条中，松手可上屏；上滑可改为输入到文本框或取消发送。"
+                        supportingText = "松手前预览识别文字，也可转入输入框或取消。"
                     )
                     Md2SettingSwitchRow(
-                        title = "播放时屏蔽录音",
+                        title = "播放时暂停识别",
                         checked = state.muteWhilePlaying,
                         onCheckedChange = { viewModel.setMuteWhilePlaying(it) },
-                        supportingText = "开启后播放中不进行识别"
+                        supportingText = "朗读或播放音效期间暂时停止语音识别。"
                     )
                     Text(
-                        "屏蔽结束延迟：${String.format("%.1f", state.muteWhilePlayingDelaySec)}s",
+                        "恢复识别延迟：${String.format("%.1f", state.muteWhilePlayingDelaySec)} 秒",
                         style = MaterialTheme.typography.bodySmall
                     )
                     Slider(
@@ -1118,7 +1176,7 @@ fun SettingsScreen(
                         valueRange = 0f..5f
                     )
                     Text(
-                        "语音识别最低音量阈值：${state.minVolumePercent}%",
+                        "最低识别音量：${state.minVolumePercent}%",
                         style = MaterialTheme.typography.bodySmall
                     )
                     Slider(
@@ -1127,16 +1185,16 @@ fun SettingsScreen(
                         valueRange = 0f..100f
                     )
                     Md2SettingDropdownRow(
-                        title = "AI 语音增强",
+                        title = "语音降噪增强",
                         value = SpeechEnhancementMode.labelOf(state.speechEnhancementMode),
                         expanded = speechEnhancementExpanded,
                         onExpandedChange = { speechEnhancementExpanded = it },
                         supportingText = when (state.speechEnhancementMode) {
-                            SpeechEnhancementMode.GTCRN_OFFLINE -> "在一句话结束后先增强再识别与说话人验证，最稳但会增加少量延迟。"
-                            SpeechEnhancementMode.GTCRN_STREAMING -> "边收音边增强，适合实时字幕，资源占用较低。"
-                            SpeechEnhancementMode.DPDFNET2_STREAMING -> "流式增强，降噪更强，资源占用中等。"
-                            SpeechEnhancementMode.DPDFNET4_STREAMING -> "流式增强里效果更强，但更吃性能和电量。"
-                            else -> "关闭后仅使用原有降噪与 VAD。"
+                            SpeechEnhancementMode.GTCRN_OFFLINE -> "一句话结束后再处理，效果稳定，但会增加少量延迟。"
+                            SpeechEnhancementMode.GTCRN_STREAMING -> "边收音边降噪，适合实时字幕，资源占用较低。"
+                            SpeechEnhancementMode.DPDFNET2_STREAMING -> "实时增强降噪，效果更强，资源占用中等。"
+                            SpeechEnhancementMode.DPDFNET4_STREAMING -> "实时强力降噪，效果更好，但更耗性能和电量。"
+                            else -> "不使用额外的语音降噪增强。"
                         }
                     ) {
                         SpeechEnhancementMode.options.forEach { (value, label) ->
@@ -1150,14 +1208,14 @@ fun SettingsScreen(
                     }
                     val currentVadMode = VadMode.fromFlags(state.classicVadEnabled, state.sileroVadEnabled)
                     Md2SettingDropdownRow(
-                        title = "语音活动检测",
+                        title = "自动判断说话起止",
                         value = VadMode.labelOf(currentVadMode),
                         expanded = vadModeExpanded,
                         onExpandedChange = { vadModeExpanded = it },
                         supportingText = when (currentVadMode) {
-                            VadMode.SILERO -> "仅使用 SileroVAD 做语音活动检测，对轻声和彩噪更稳。"
-                            VadMode.HYBRID -> "同时使用阈值式VAD和 SileroVAD，兼顾静音门限与模型断句。"
-                            else -> "仅使用现有音量阈值、静音时长和 voiced ratio 断句。"
+                            VadMode.SILERO -> "使用智能模型判断说话起止，对轻声和持续噪声更稳定。"
+                            VadMode.HYBRID -> "结合音量和智能模型判断，兼顾响应速度与断句准确性。"
+                            else -> "根据音量和静音时长判断说话起止。"
                         }
                     ) {
                         VadMode.options.forEach { (value, label) ->
@@ -1171,7 +1229,7 @@ fun SettingsScreen(
                     }
                     val sileroVadControlsEnabled = state.sileroVadEnabled
                     Text(
-                        "Silero 触发阈值：${String.format("%.2f", state.sileroVadThreshold)}",
+                        "说话触发门槛：${String.format("%.2f", state.sileroVadThreshold)}",
                         style = MaterialTheme.typography.bodySmall,
                         color = LocalContentColor.current.copy(
                             alpha = if (sileroVadControlsEnabled) 1f else 0.38f
@@ -1196,7 +1254,7 @@ fun SettingsScreen(
                         )
                     )
                     Text(
-                        "Silero pre-roll：${state.sileroVadPreRollMs}ms",
+                        "保留触发前声音：${state.sileroVadPreRollMs} 毫秒",
                         style = MaterialTheme.typography.bodySmall,
                         color = LocalContentColor.current.copy(
                             alpha = if (sileroVadControlsEnabled) 1f else 0.38f
@@ -1215,18 +1273,18 @@ fun SettingsScreen(
                         )
                     )
                     Text(
-                        "触发前补入一小段录音，改善模型晚触发导致的首字被吞；过大可能带入更多环境音。",
+                        "保留开始说话前的一小段声音，减少首字缺失；时间过长可能带入更多环境音。",
                         style = MaterialTheme.typography.bodySmall,
                         color = LocalContentColor.current.copy(
                             alpha = if (sileroVadControlsEnabled) 0.74f else 0.38f
                         )
                     )
                     Md2SettingDropdownRow(
-                        title = "数字替换",
+                        title = "数字读法",
                         value = numberReplaceOptions.getOrElse(state.numberReplaceMode) { numberReplaceOptions[0] },
                         expanded = numberReplaceExpanded,
                         onExpandedChange = { numberReplaceExpanded = it },
-                        supportingText = "示例：2000 → 二零零零 / 两千"
+                        supportingText = "选择数字的朗读方式，例如“二零零零”或“两千”。"
                     ) {
                         numberReplaceOptions.forEachIndexed { idx, label ->
                             M2DropdownMenuItem(
@@ -1241,9 +1299,9 @@ fun SettingsScreen(
             }
 
             Md2StaggeredFloatIn(index = 2) {
-                Md2SettingsCard(title = "说话人验证") {
+                Md2SettingsCard(title = "指定说话人") {
                     Md2SettingSwitchRow(
-                        title = "说话人验证",
+                        title = "仅响应指定说话人",
                         checked = state.speakerVerifyEnabled,
                         onCheckedChange = { enabled ->
                             if (!enabled) {
@@ -1266,7 +1324,7 @@ fun SettingsScreen(
                                 showSpeakerEnrollDialog = true
                             }
                         },
-                        supportingText = "样本：${state.speakerProfiles.size}/3"
+                        supportingText = "已采集样本：${state.speakerProfiles.size}/3"
                     )
                     state.speakerProfiles.forEachIndexed { idx, profile ->
                         Card(
@@ -1295,7 +1353,7 @@ fun SettingsScreen(
                         }
                     }
                     Text(
-                        "验证阈值：${String.format("%.2f", state.speakerVerifyThreshold)}",
+                        "识别严格程度：${String.format("%.2f", state.speakerVerifyThreshold)}",
                         style = MaterialTheme.typography.bodySmall
                     )
                     Slider(
@@ -1305,7 +1363,7 @@ fun SettingsScreen(
                     )
                     if (state.speakerLastSimilarity >= 0f) {
                         Text(
-                            "最近相似度：${String.format("%.2f", state.speakerLastSimilarity)}",
+                            "最近一次匹配程度：${String.format("%.2f", state.speakerLastSimilarity)}",
                             style = MaterialTheme.typography.bodySmall
                         )
                     }
@@ -1337,7 +1395,7 @@ fun SettingsScreen(
                 }
             }
             Md2StaggeredFloatIn(index = 3) {
-                Md2SettingsCard(title = "设备监控") {
+                Md2SettingsCard(title = "音频设备状态") {
                     val realtimeInputLevel = viewModel.realtimeInputLevel
                     Text("输入音量", fontWeight = FontWeight.Bold)
                     LinearProgressIndicator(
@@ -1346,38 +1404,38 @@ fun SettingsScreen(
                             .fillMaxWidth()
                             .padding(top = 4.dp, bottom = 8.dp)
                     )
-                    Text("当前输入设备：${state.inputDeviceLabel}", style = MaterialTheme.typography.bodySmall)
-                    Text("当前输出设备：${state.outputDeviceLabel}", style = MaterialTheme.typography.bodySmall)
+                    Text("当前麦克风：${state.inputDeviceLabel}", style = MaterialTheme.typography.bodySmall)
+                    Text("当前播放设备：${state.outputDeviceLabel}", style = MaterialTheme.typography.bodySmall)
                 }
             }
 
             Md2StaggeredFloatIn(index = 4) {
                 Md2SettingsCard(title = "回声与降噪") {
                     Md2SettingSwitchRow(
-                        title = "回声抑制",
+                        title = "系统回声抑制",
                         checked = state.echoSuppression,
                         onCheckedChange = { viewModel.setEchoSuppression(it) },
-                        supportingText = "开启后使用通话录音源，可能有回声抑制/降噪效果"
+                        supportingText = "使用设备提供的回声和噪声抑制能力，效果因设备而异。"
                     )
                     Md2SettingSwitchRow(
-                        title = "通话模式降噪",
+                        title = "增强通话降噪",
                         checked = state.communicationMode,
                         onCheckedChange = { viewModel.setCommunicationMode(it) },
-                        supportingText = "开启后切换系统通话模式并统一播放属性"
+                        supportingText = "使用系统通话模式改善麦克风收音。"
                     )
                     Md2SettingSwitchRow(
-                        title = "AEC3 软件回声消除",
+                        title = "增强回声消除（AEC3）",
                         checked = state.aec3Enabled,
                         onCheckedChange = { viewModel.setAec3Enabled(it) },
-                        supportingText = "需渲染参考音频，可能与系统AEC冲突"
+                        supportingText = "减少外放声音被麦克风再次识别；出现声音异常时可关闭此项。"
                     )
                     Md2SettingDropdownRow(
-                        title = "软件噪声抑制",
+                        title = "降噪方式",
                         value = denoiserModeOptions.firstOrNull { it.first == state.denoiserMode }?.second
                             ?: denoiserModeOptions.first().second,
                         expanded = denoiserModeExpanded,
                         onExpandedChange = { denoiserModeExpanded = it },
-                        supportingText = "关闭时不做软件降噪；RNNoise 更偏语音场景，Speex 更偏传统预处理。"
+                        supportingText = "智能语音降噪效果更好；兼容降噪适合性能较弱的设备。"
                     ) {
                         denoiserModeOptions.forEach { (value, label) ->
                             M2DropdownMenuItem(
@@ -1388,20 +1446,19 @@ fun SettingsScreen(
                             ) { Text(label) }
                         }
                     }
-                    Text("AEC3 状态：${state.aec3Status}", style = MaterialTheme.typography.bodySmall)
-                    Text(state.aec3Diag, style = MaterialTheme.typography.bodySmall)
+                    Text("回声消除状态：${state.aec3Status}", style = MaterialTheme.typography.bodySmall)
                 }
             }
 
             Md2StaggeredFloatIn(index = 5) {
-                Md2SettingsCard(title = "设备路由") {
+                Md2SettingsCard(title = "音频设备选择") {
                     Md2SettingDropdownRow(
-                        title = "优先选择的音频输入设备类型",
+                        title = "首选麦克风",
                         value = inputTypeOptions.firstOrNull { it.first == state.preferredInputType }?.second
                             ?: inputTypeOptions.first().second,
                         expanded = inputTypeExpanded,
                         onExpandedChange = { inputTypeExpanded = it },
-                        supportingText = "适配内置、USB、蓝牙、有线等输入设备"
+                        supportingText = "连接多个录音设备时，优先使用此类型。"
                     ) {
                         inputTypeOptions.forEach { (value, label) ->
                             M2DropdownMenuItem(
@@ -1413,12 +1470,12 @@ fun SettingsScreen(
                         }
                     }
                     Md2SettingDropdownRow(
-                        title = "优先使用的音频输出类型",
+                        title = "首选播放设备",
                         value = outputTypeOptions.firstOrNull { it.first == state.preferredOutputType }?.second
                             ?: outputTypeOptions.first().second,
                         expanded = outputTypeExpanded,
                         onExpandedChange = { outputTypeExpanded = it },
-                        supportingText = "适配扬声器、听筒、蓝牙、USB、有线等输出设备"
+                        supportingText = "连接多个播放设备时，优先使用此类型。"
                     ) {
                         outputTypeOptions.forEach { (value, label) ->
                             M2DropdownMenuItem(
@@ -1492,7 +1549,7 @@ fun SettingsScreen(
                         }
                     }
                     Text(
-                        "用于测试当前麦克风收音和本地回放。回放会套用当前 AI 语音增强设置，不会进入识别或朗读队列。测试前请先停止主语音链路。",
+                        "用于测试当前麦克风收音和本地回放。回放会应用当前语音降噪设置，但不会触发识别或朗读。测试前请先停止正在进行的语音识别。",
                         style = MaterialTheme.typography.bodySmall
                     )
                 }
@@ -1505,9 +1562,9 @@ fun SettingsScreen(
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
 
             Md2StaggeredFloatIn(index = 0) {
-                Md2SettingsCard(title = "播放与合成") {
+                Md2SettingsCard(title = "语音合成与播放") {
                     Text(
-                        "当前朗读后端：${when {
+                        "当前语音合成引擎：${when {
                             isSystemTtsSelected -> SYSTEM_TTS_DEFAULT_LABEL
                             isKokoroTtsSelected -> "Kokoro"
                             else -> "语音包"
@@ -1515,12 +1572,12 @@ fun SettingsScreen(
                         style = MaterialTheme.typography.bodySmall
                     )
                     Md2SettingSwitchRow(
-                        title = "禁用TTS",
+                        title = "关闭语音朗读",
                         checked = state.ttsDisabled,
                         onCheckedChange = { viewModel.setTtsDisabled(it) },
-                        supportingText = "关闭后不会发声，但仍会上屏并可继续触发音效板。"
+                        supportingText = "开启后只显示字幕，不再朗读；音效板仍可使用。"
                     )
-                    Text("播放音量倍率：${state.playbackGainPercent}%", style = MaterialTheme.typography.bodySmall)
+                    Text("朗读与音效音量：${state.playbackGainPercent}%", style = MaterialTheme.typography.bodySmall)
                     Slider(
                         value = state.playbackGainPercent.toFloat(),
                         onValueChange = { viewModel.setPlaybackGainPercent(it.toInt()) },
@@ -1528,14 +1585,14 @@ fun SettingsScreen(
                     )
                     Text("100% 为原始音量，拖动接近 100% 时会自动吸附。", style = MaterialTheme.typography.bodySmall)
                     Md2SettingDropdownRow(
-                        title = "后台音乐播放器音频避让行为",
+                        title = "播放时如何处理其他应用的声音",
                         value = audioFocusAvoidanceOptions
                             .firstOrNull { it.first == state.audioFocusAvoidanceMode }
                             ?.second
                             ?: "无",
                         expanded = audioFocusAvoidanceExpanded,
                         onExpandedChange = { audioFocusAvoidanceExpanded = it },
-                        supportingText = "朗读或音效播放时向系统请求音频焦点；实际效果取决于后台播放器是否遵守系统音频焦点。"
+                        supportingText = "朗读或播放音效时，可降低、静音或暂停其他应用的声音。"
                     ) {
                         audioFocusAvoidanceOptions.forEach { (value, label) ->
                             M2DropdownMenuItem(
@@ -1548,7 +1605,7 @@ fun SettingsScreen(
                     }
                     if (isSystemTtsSelected) {
                         Text(
-                            "系统 TTS 使用设备已安装的语音引擎与音色。音色随机度等 Piper 专属参数在系统 TTS 下不生效。",
+                            "系统语音合成使用设备已安装的引擎和音色；部分语音包专属参数不会生效。",
                             style = MaterialTheme.typography.bodySmall
                         )
                         Md2Button(
@@ -1556,11 +1613,11 @@ fun SettingsScreen(
                                 viewModel.openSystemTtsSetup(context)
                             }
                         ) {
-                            Text("打开系统 TTS 设置")
+                            Text("打开系统语音合成设置")
                         }
                     } else if (isKokoroTtsSelected) {
                         Text(
-                            "Kokoro 使用独立音色编号。Piper 专属随机度参数在 Kokoro 下不生效。",
+                            "Kokoro 使用独立的声音编号；部分语音包专属参数不会生效。",
                             style = MaterialTheme.typography.bodySmall
                         )
                         Text(
@@ -1592,9 +1649,9 @@ fun SettingsScreen(
                     }
                     Text(
                         if (isSystemTtsSelected) {
-                            "系统语速倍率（越大越慢）：${String.format("%.3f", state.piperLengthScale)}"
+                            "语速（数值越大越慢）：${String.format("%.3f", state.piperLengthScale)}"
                         } else {
-                            "语速倍率（越大越慢）：${String.format("%.3f", state.piperLengthScale)}"
+                            "语速（数值越大越慢）：${String.format("%.3f", state.piperLengthScale)}"
                         },
                         style = MaterialTheme.typography.bodySmall
                     )
@@ -1605,9 +1662,9 @@ fun SettingsScreen(
                     )
                     Text(
                         if (isSystemTtsSelected) {
-                            "系统 TTS 句末停顿时长：${String.format("%.2f", state.piperSentenceSilence)}s"
+                            "句末停顿：${String.format("%.2f", state.piperSentenceSilence)} 秒"
                         } else {
-                            "句末停顿时长：${String.format("%.2f", state.piperSentenceSilence)}s"
+                            "句末停顿：${String.format("%.2f", state.piperSentenceSilence)} 秒"
                         },
                         style = MaterialTheme.typography.bodySmall
                     )
@@ -1620,7 +1677,7 @@ fun SettingsScreen(
             }
 
             Md2StaggeredFloatIn(index = 1) {
-                Md2SettingsCard(title = "Kokoro 离线语音") {
+                Md2SettingsCard(title = "Kokoro 离线朗读") {
                     Text(
                         text = state.kokoroStatus,
                         style = MaterialTheme.typography.bodyMedium
@@ -1676,14 +1733,14 @@ fun SettingsScreen(
 
 
             Md2StaggeredFloatIn(index = 2) {
-                Md2SettingsCard(title = "设备路由") {
+                Md2SettingsCard(title = "音频设备选择") {
                     Md2SettingDropdownRow(
-                        title = "优先选择的音频输入设备类型",
+                        title = "首选麦克风",
                         value = inputTypeOptions.firstOrNull { it.first == state.preferredInputType }?.second
                             ?: inputTypeOptions.first().second,
                         expanded = inputTypeExpanded,
                         onExpandedChange = { inputTypeExpanded = it },
-                        supportingText = "适配内置、USB、蓝牙、有线等输入设备"
+                        supportingText = "连接多个录音设备时，优先使用此类型。"
                     ) {
                         inputTypeOptions.forEach { (value, label) ->
                             M2DropdownMenuItem(
@@ -1695,12 +1752,12 @@ fun SettingsScreen(
                         }
                     }
                     Md2SettingDropdownRow(
-                        title = "优先使用的音频输出类型",
+                        title = "首选播放设备",
                         value = outputTypeOptions.firstOrNull { it.first == state.preferredOutputType }?.second
                             ?: outputTypeOptions.first().second,
                         expanded = outputTypeExpanded,
                         onExpandedChange = { outputTypeExpanded = it },
-                        supportingText = "适配扬声器、听筒、蓝牙、USB、有线等输出设备"
+                        supportingText = "连接多个播放设备时，优先使用此类型。"
                     ) {
                         outputTypeOptions.forEach { (value, label) ->
                             M2DropdownMenuItem(
@@ -1739,13 +1796,39 @@ fun SettingsScreen(
                             ) { Text(label) }
                         }
                     }
+                    ThemeColorSettingRow(
+                        colorArgb = state.themeColorArgb,
+                        onClick = { themeColorPickerVisible = true }
+                    )
+                    FontSettingEntryRow(
+                        usingSystemFont = state.appFontId == "system",
+                        onClick = onOpenFonts
+                    )
+                    Md2SettingSwitchRow(
+                        title = "使用系统文本编辑菜单",
+                        checked = state.useSystemTextToolbar,
+                        onCheckedChange = { viewModel.setUseSystemTextToolbar(it) },
+                        supportingText = "复制、粘贴等操作使用 Android 默认样式；弹窗始终使用系统菜单。"
+                    )
+                    Md2SettingSwitchRow(
+                        title = "悬浮窗使用默认字体",
+                        checked = state.floatingOverlayUseSystemFont,
+                        onCheckedChange = { viewModel.setFloatingOverlayUseSystemFont(it) },
+                        supportingText = "开启后，悬浮窗不再使用应用内选择的自定义字体。"
+                    )
+                    Md2SettingSwitchRow(
+                        title = "自动优化主题色",
+                        checked = state.themeToneCorrectionEnabled,
+                        onCheckedChange = { viewModel.setThemeToneCorrectionEnabled(it) },
+                        supportingText = "自动调整过亮或过暗的颜色，让文字和按钮保持清晰。"
+                    )
                     Md2SettingDropdownRow(
-                        title = "悬浮窗主题模式",
+                        title = "悬浮窗外观",
                         value = themeModeOptions.firstOrNull { it.first == state.overlayThemeMode }?.second
                             ?: themeModeOptions.first().second,
                         expanded = overlayThemeModeExpanded,
                         onExpandedChange = { overlayThemeModeExpanded = it },
-                        supportingText = "默认跟随系统，可单独控制悬浮窗亮暗色。"
+                        supportingText = "单独选择悬浮窗使用亮色、暗色或跟随系统。"
                     ) {
                         themeModeOptions.forEach { (value, label) ->
                             M2DropdownMenuItem(
@@ -1757,13 +1840,13 @@ fun SettingsScreen(
                         }
                     }
                     Md2SettingDropdownRow(
-                        title = "系统字体大小屏蔽",
+                        title = "字体与图标缩放",
                         value = fontScaleBlockModeOptions
                             .firstOrNull { it.first == state.fontScaleBlockMode }?.second
                             ?: fontScaleBlockModeOptions[1].second,
                         expanded = fontScaleBlockModeExpanded,
                         onExpandedChange = { fontScaleBlockModeExpanded = it },
-                        supportingText = "默认只固定 Material Symbol 图标大小；选择全部禁用时，主界面和悬浮窗文字也不会跟随系统字体大小缩放。"
+                        supportingText = "控制应用字体和图标是否跟随系统显示大小。"
                     ) {
                         fontScaleBlockModeOptions.forEach { (value, label) ->
                             M2DropdownMenuItem(
@@ -1775,28 +1858,28 @@ fun SettingsScreen(
                         }
                     }
                     Md2SettingSwitchRow(
-                        title = "使用纯色顶栏",
+                        title = "使用主题色顶栏",
                         checked = state.solidTopBar,
                         onCheckedChange = { viewModel.setSolidTopBar(it) },
-                        supportingText = "开启后顶栏与状态栏颜色改为卡片同款自适应配色。"
+                        supportingText = "让顶栏和状态栏使用当前主题配色。"
                     )
                 }
             }
             Md2StaggeredFloatIn(index = 1) {
                 Md2SettingsCard(title = "布局与交互") {
                     Md2SettingSwitchRow(
-                        title = "按键震动反馈",
+                        title = "触感反馈",
                         checked = state.hapticFeedbackEnabled,
                         onCheckedChange = { viewModel.setHapticFeedbackEnabled(it) },
-                        supportingText = "开启后主界面和悬浮窗按键、快捷字幕分组滑动切换会调用系统原生按键触感反馈。"
+                        supportingText = "操作按钮或切换快捷字幕分组时提供轻微振动。"
                     )
                     Md2SettingDropdownRow(
-                        title = "横屏抽屉模式",
+                        title = "横屏侧栏样式",
                         value = drawerModeOptions.firstOrNull { it.first == state.landscapeDrawerMode }?.second
                             ?: drawerModeOptions.first().second,
                         expanded = drawerModeExpanded,
                         onExpandedChange = { drawerModeExpanded = it },
-                        supportingText = "竖屏始终为隐藏式；该选项仅影响横屏布局。"
+                        supportingText = "选择横屏时侧栏保持隐藏，或常驻并支持折叠。"
                     ) {
                         drawerModeOptions.forEach { (value, label) ->
                             M2DropdownMenuItem(
@@ -1808,32 +1891,18 @@ fun SettingsScreen(
                         }
                     }
                     Md2SettingSwitchRow(
-                        title = "手机横屏使用全宽分组 Tab",
+                        title = "横屏显示完整分组名称",
                         checked = state.forceFullWidthTabsOnPhone,
                         onCheckedChange = { viewModel.setForceFullWidthTabsOnPhone(it) },
-                        supportingText = "默认仅平板横屏显示图标和名称；开启后手机横屏的便捷字幕列表和音效板分组 Tab 也使用固定宽度的图标加名称样式。"
+                        supportingText = "在手机横屏时，便捷字幕和音效板的分组同时显示图标与名称。"
                     )
                     Md2SettingSwitchRow(
-                        title = "音效板宫格全宽显示",
+                        title = "音效板网格铺满屏幕",
                         checked = state.soundboardGridFullWidth,
                         onCheckedChange = { viewModel.setSoundboardGridFullWidth(it) },
-                        supportingText = "开启后音效板处于宫格模式时会取消平板适配的左右宽度限制；列表模式仍保持安全区和宽度限制。"
+                        supportingText = "网格模式使用全部可用宽度；列表模式不受影响。"
                     )
                 }
-            }
-            if (false) {
-            Md2StaggeredFloatIn(index = 2) {
-                Md2SettingsCard(title = "外部网页") {
-                    Md2SettingSwitchRow(
-                        title = "启用内置 WebView",
-                        checked = state.internalWebViewEnabled,
-                        onCheckedChange = { _ ->
-                            // Internal WebView always enabled
-                        },
-                        supportingText = "默认关闭。开启后，内置 WebView 也仅允许访问 lhtstudio.com 及其子域名；其它网页链接仍会优先使用 Chrome Custom Tabs 或外部浏览器。"
-                    )
-                }
-            }
             }
             Md2StaggeredFloatIn(index = 3) {
                 Md2SettingsCard(title = "便捷字幕显示") {
@@ -1853,7 +1922,7 @@ fun SettingsScreen(
                         MsIcon(
                             name = "restore",
                             contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary
+                            tint = MaterialTheme.colorScheme.accentText
                         )
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
@@ -1873,68 +1942,40 @@ fun SettingsScreen(
                         )
                     }
                     Md2SettingSwitchRow(
-                        title = "便捷字幕字体大小自适应",
+                        title = "文字过多时自动缩小",
                         checked = state.quickSubtitleAutoFit,
                         onCheckedChange = { viewModel.setQuickSubtitleAutoFit(it) },
-                        supportingText = "开启后：主界面与悬浮窗的便捷字幕大字幕和弹窗预览会在内容过多时自动缩小字号，尽量避免需要上下滑动。"
+                        supportingText = "内容较多时自动缩小大字幕和预览文字，尽量完整显示。"
                     )
                     Md2SettingSwitchRow(
-                        title = "允许使用更大的大字幕字体",
+                        title = "开放超大字幕字号",
                         checked = state.quickSubtitleAllowLargeFont,
                         onCheckedChange = { viewModel.setQuickSubtitleAllowLargeFont(it) },
-                        supportingText = "开启后主界面便捷字幕大字幕字号最高可调至 800sp；关闭时超过 96sp 的字号会自动回收到 96sp。"
+                        supportingText = "允许将便捷字幕调到更大的尺寸；关闭后使用常规字号范围。"
                     )
                     Md2SettingSwitchRow(
-                        title = "使用更紧凑的快捷文本控件",
+                        title = "紧凑快捷文本布局",
                         checked = state.quickSubtitleCompactControls,
                         onCheckedChange = { viewModel.setQuickSubtitleCompactControls(it) },
-                        supportingText = "影响主界面竖屏和横屏便捷字幕。开启后会改为紧凑快捷文本区，并把编辑入口移到顶栏。"
+                        supportingText = "缩小快捷文本区域，并将编辑入口移到顶栏。"
                     )
                     Md2SettingSwitchRow(
-                        title = "输入框内容保持预览",
+                        title = "收起键盘后保留输入预览",
                         checked = state.quickSubtitleKeepInputPreview,
                         onCheckedChange = { viewModel.setQuickSubtitleKeepInputPreview(it) },
-                        supportingText = "开启后输入框有内容时，键盘收起后大字幕仍显示输入预览；直到下一次语音或快捷文本提交前保持。"
+                        supportingText = "键盘收起后，大字幕继续显示尚未发送的输入内容。"
                     )
                 }
             }
             Md2StaggeredFloatIn(index = 4) {
-                Md2SettingsCard(title = "通知与外部显示") {
-                    Md2SettingSwitchRow(
-                        title = "蓝牙媒体标题字幕",
-                        checked = state.bluetoothMediaTitleSubtitle,
-                        onCheckedChange = { viewModel.setBluetoothMediaTitleSubtitle(it) },
-                        supportingText = "实验性兼容模式。开启后会在前台、后台或息屏时把当前上屏大字幕写入系统媒体会话标题，用于蓝牙歌词屏、车机或小屏显示；可能覆盖其它媒体标题，关闭后停止同步。"
-                    )
-                    Md2SettingSwitchRow(
-                        title = "实时通知",
-                        checked = state.liveSubtitleNotificationEnabled,
-                        onCheckedChange = { enabled ->
-                            if (enabled &&
-                                Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
-                                ContextCompat.checkSelfPermission(
-                                    context,
-                                    Manifest.permission.POST_NOTIFICATIONS
-                                ) != PackageManager.PERMISSION_GRANTED
-                            ) {
-                                liveSubtitleNotificationPermissionPurposeOpen = true
-                            } else {
-                                viewModel.setLiveSubtitleNotificationEnabled(enabled)
-                            }
-                        },
-                        supportingText = "开启后会在前台、后台或锁屏时通过系统通知显示当前上屏大字幕和短状态，并提供播放文本、打开便捷字幕和关闭实时通知操作；关闭后停止更新。"
-                    )
-                }
-            }
-            Md2StaggeredFloatIn(index = 5) {
                 Md2SettingsCard(title = "文件与保存") {
                     Text("画板保存路径（相册）", fontWeight = FontWeight.Bold)
                     Text(state.drawingSaveRelativePath, style = MaterialTheme.typography.bodySmall)
                     Md2SettingSwitchRow(
-                        title = "将画板画布方向保持设备方向",
+                        title = "旋转设备时保持画布朝向",
                         checked = state.drawingKeepCanvasOrientationToDevice,
                         onCheckedChange = { viewModel.setDrawingKeepCanvasOrientationToDevice(it) },
-                        supportingText = "开启后设备旋转时画布会自动反向旋转以保持原有朝向；手动旋转会继续叠加。"
+                        supportingText = "设备旋转时自动调整画布，保持原有观看方向；手动旋转仍会保留。"
                     )
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
@@ -1966,32 +2007,38 @@ fun SettingsScreen(
             Md2StaggeredFloatIn(index = 7) {
                 Md2SettingsCard(title = "文件选择") {
                     Md2SettingSwitchRow(
-                        title = "使用内建文件管理器",
+                        title = "使用应用内文件管理器",
                         checked = state.useBuiltinFileManager,
                         onCheckedChange = { viewModel.setUseBuiltinFileManager(it) },
-                        supportingText = "关闭时使用系统文件选择器。"
+                        supportingText = "关闭后改用系统文件选择器。"
                     )
                     Md2SettingSwitchRow(
-                        title = "使用内建图库",
+                        title = "使用应用内图库",
                         checked = state.useBuiltinGallery,
                         onCheckedChange = { viewModel.setUseBuiltinGallery(it) },
-                        supportingText = "关闭时使用系统图库选择器。"
+                        supportingText = "关闭后改用系统图库选择器。"
                     )
                 }
             }
             Md2StaggeredFloatIn(index = 8) {
-                Md2SettingsCard(title = "启动器快捷方式补全") {
+                Md2SettingsCard(title = "常用应用快捷操作") {
                     Md2SettingSwitchRow(
-                        title = "使用内嵌列表补全第三方快捷方式",
+                        title = "补全常用应用快捷操作",
                         checked = state.floatingOverlayHardcodedShortcutSupplement,
                         onCheckedChange = { viewModel.setFloatingOverlayHardcodedShortcutSupplement(it) },
-                        supportingText = "默认关闭。开启后，悬浮窗启动器里第三方应用的长按菜单会用内置国内常用应用列表补齐缺失项；微信“扫一扫”始终保留。"
+                        supportingText = "为悬浮窗启动器补充扫一扫等常用操作。"
                     )
                     Text(
-                        "运行时能正常查询到的系统快捷方式不受影响；该开关只控制写死列表的额外增补。",
+                        "仅补充系统未提供的常用操作，不会影响已经能够获取的快捷方式。",
                         style = MaterialTheme.typography.bodySmall
                     )
                 }
+            }
+            Md2StaggeredFloatIn(index = 9) {
+                AppConfigBackupSettingsCard(
+                    viewModel = viewModel,
+                    state = state
+                )
             }
         }
     }
@@ -2116,7 +2163,7 @@ fun SettingsScreen(
 
     if (showSpeakerEnrollDialog) {
         val canDismiss = !(speakerEnrollReading || speakerEnrollCountingDown)
-        AlertDialog(
+        KigttsAlertDialog(
             onDismissRequest = {
                 if (canDismiss) {
                     closeSpeakerEnrollDialog()
@@ -2197,12 +2244,12 @@ fun SettingsScreen(
             confirmButton = {
                 when (speakerEnrollStep) {
                     0 -> {
-                        TextButton(onClick = { speakerEnrollStep = 1 }) {
+                        Md2TextButton(onClick = { speakerEnrollStep = 1 }) {
                             Text("下一步")
                         }
                     }
                     1, 2, 3 -> {
-                        TextButton(
+                        Md2TextButton(
                             onClick = { startSpeakerEnrollStepCapture(speakerEnrollStep) },
                             enabled = !(speakerEnrollReading || speakerEnrollCountingDown)
                         ) {
@@ -2216,7 +2263,7 @@ fun SettingsScreen(
                         }
                     }
                     else -> {
-                        TextButton(onClick = { closeSpeakerEnrollDialog() }) {
+                        Md2TextButton(onClick = { closeSpeakerEnrollDialog() }) {
                             Text("完成")
                         }
                     }
@@ -2225,7 +2272,7 @@ fun SettingsScreen(
             dismissButton = {
                 when (speakerEnrollStep) {
                     0, 1, 2, 3 -> {
-                        TextButton(
+                        Md2TextButton(
                             onClick = { closeSpeakerEnrollDialog() },
                             enabled = !(speakerEnrollReading || speakerEnrollCountingDown)
                         ) {
@@ -2233,7 +2280,7 @@ fun SettingsScreen(
                         }
                     }
                     else -> {
-                        TextButton(onClick = {
+                        Md2TextButton(onClick = {
                             speakerEnrollSamples.clear()
                             speakerEnrollStep = 0
                             speakerEnrollCountingDown = false
@@ -2255,29 +2302,14 @@ fun SettingsScreen(
     }
 
     if (speakerEnrollRetryDialog) {
-        AlertDialog(
+        KigttsAlertDialog(
             onDismissRequest = { speakerEnrollRetryDialog = false },
             title = { Text("录制失败") },
             text = { Text("${speakerEnrollMessage}\n请重录当前句子。") },
             confirmButton = {
-                TextButton(onClick = { speakerEnrollRetryDialog = false }) {
+                Md2TextButton(onClick = { speakerEnrollRetryDialog = false }) {
                     Text("重录")
                 }
-            }
-        )
-    }
-
-    if (liveSubtitleNotificationPermissionPurposeOpen) {
-        PermissionPurposeDialog(
-            info = notificationPermissionPurpose(),
-            onConfirm = {
-                liveSubtitleNotificationPermissionPurposeOpen = false
-                liveSubtitleNotificationPermissionLauncher.launch(
-                    Manifest.permission.POST_NOTIFICATIONS
-                )
-            },
-            onDismiss = {
-                liveSubtitleNotificationPermissionPurposeOpen = false
             }
         )
     }
@@ -2479,7 +2511,7 @@ fun LogScreen(
                                     .height(220.dp),
                                 contentAlignment = Alignment.Center
                             ) {
-                                CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
+                                CircularProgressIndicator(color = MaterialTheme.colorScheme.accentText)
                             }
                         }
                     }
@@ -2500,7 +2532,7 @@ fun LogScreen(
                                 contentAlignment = Alignment.Center
                             ) {
                                 CircularProgressIndicator(
-                                    color = MaterialTheme.colorScheme.primary,
+                                    color = MaterialTheme.colorScheme.accentText,
                                     strokeWidth = 2.5.dp,
                                     modifier = Modifier.size(24.dp)
                                 )
@@ -2530,7 +2562,8 @@ internal fun LegalDocumentScreen(assetPath: String) {
                 context.assets.open(assetPath).bufferedReader(Charsets.UTF_8).use { it.readText() }
                     .removePrefix("\uFEFF")
             }.getOrElse {
-                "文档加载失败：${it.message ?: "未知错误"}"
+                AppLogger.e("load legal document failed: $assetPath", it)
+                "无法加载文档，请稍后重试"
             }
         }
         var emittedAny = false
@@ -2587,7 +2620,7 @@ internal fun LegalDocumentScreen(assetPath: String) {
                                 .height(220.dp),
                             contentAlignment = Alignment.Center
                         ) {
-                            CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
+                            CircularProgressIndicator(color = MaterialTheme.colorScheme.accentText)
                         }
                     }
                 }
@@ -2606,7 +2639,7 @@ internal fun LegalDocumentScreen(assetPath: String) {
                             contentAlignment = Alignment.Center
                         ) {
                             CircularProgressIndicator(
-                                color = MaterialTheme.colorScheme.primary,
+                                color = MaterialTheme.colorScheme.accentText,
                                 strokeWidth = 2.5.dp,
                                 modifier = Modifier.size(24.dp)
                             )

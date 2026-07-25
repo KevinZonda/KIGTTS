@@ -22,6 +22,8 @@ import com.lhtstudio.kigtts.app.ui.RecognizedItem
 import com.lhtstudio.kigtts.app.util.AppLogger
 import com.lhtstudio.kigtts.app.util.BluetoothMediaTitleBridge
 import com.lhtstudio.kigtts.app.util.LiveSubtitleNotificationBridge
+import com.lhtstudio.kigtts.app.lan.LanCastRuntime
+import com.lhtstudio.kigtts.app.ui.QUICK_SUBTITLE_CLEARED_HINT
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -59,7 +61,7 @@ data class RealtimeHostState(
     val quickSubtitleConfigJson: String = ""
 )
 
-class RealtimeHostService : Service(), RealtimeRuntimeBridge.AppDelegate {
+class RealtimeHostService : Service(), RealtimeRuntimeBridge.AppDelegate, LanCastRuntime.CommandHandler {
     private val binder = LocalBinder()
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private lateinit var repo: ModelRepository
@@ -99,6 +101,7 @@ class RealtimeHostService : Service(), RealtimeRuntimeBridge.AppDelegate {
         AppLogger.i("RealtimeHostService.onCreate")
         repo = ModelRepository(applicationContext)
         RealtimeRuntimeBridge.registerAppDelegate(this)
+        LanCastRuntime.registerCommandHandler(this)
         observeSettings()
         initializeSelections()
     }
@@ -117,7 +120,7 @@ class RealtimeHostService : Service(), RealtimeRuntimeBridge.AppDelegate {
                             if (queued != null) {
                                 "已加入朗读队列"
                             } else if (currentSettings.ttsDisabled) {
-                                "TTS 已禁用"
+                                "语音朗读已关闭"
                             } else {
                                 "播放文本失败，请检查语音包"
                             }
@@ -140,6 +143,7 @@ class RealtimeHostService : Service(), RealtimeRuntimeBridge.AppDelegate {
         settingsJob?.cancel()
         settingsJob = null
         RealtimeRuntimeBridge.unregisterAppDelegate(this)
+        LanCastRuntime.unregisterCommandHandler(this)
         val activeController = controller
         controller = null
         if (activeController != null) {
@@ -196,7 +200,7 @@ class RealtimeHostService : Service(), RealtimeRuntimeBridge.AppDelegate {
         if (preload && dir != null) {
             val loaded = withContext(Dispatchers.IO) { ensureController().loadAsr(dir) }
             if (!loaded && currentState().asrDir?.absolutePath == dir.absolutePath) {
-                updateStatus("ASR 模型加载失败")
+                updateStatus("语音识别资源加载失败")
             }
         }
     }
@@ -213,7 +217,7 @@ class RealtimeHostService : Service(), RealtimeRuntimeBridge.AppDelegate {
             if (!loaded && currentState().voiceDir?.absolutePath == dir.absolutePath) {
                 updateStatus(
                     if (isSystemTtsVoiceDir(dir)) {
-                        "系统 TTS 初始化失败，请先完成系统 TTS 设置"
+                        "系统语音合成初始化失败，请先完成系统语音合成设置"
                     } else {
                         "音色包加载失败"
                     }
@@ -238,7 +242,7 @@ class RealtimeHostService : Service(), RealtimeRuntimeBridge.AppDelegate {
                 if (!loaded && currentState().voiceDir?.absolutePath == voice.absolutePath) {
                     updateStatus(
                         if (isSystemTtsVoiceDir(voice)) {
-                            "系统 TTS 初始化失败，请先完成系统 TTS 设置"
+                            "系统语音合成初始化失败，请先完成系统语音合成设置"
                         } else {
                             "音色包加载失败"
                         }
@@ -481,6 +485,55 @@ class RealtimeHostService : Service(), RealtimeRuntimeBridge.AppDelegate {
         emitQuickSubtitleRequest(target, normalized, navigateToPage = false)
     }
 
+    override fun submitSubtitle(text: String, playVoice: Boolean) {
+        val normalized = text.trim()
+        if (normalized.isEmpty()) return
+        serviceScope.launch {
+            if (playVoice && !currentSettings.ttsDisabled) {
+                enqueueSpeakAndAppendHistory(
+                    normalized,
+                    fromQuickText = true,
+                    interruptCurrent = currentSettings.quickSubtitleInterruptQueue
+                )
+            } else {
+                appendRecognizedHistory(normalized, fromQuickText = true)
+            }
+            emitQuickSubtitleRequest(
+                OverlayBridge.TARGET_SUBTITLE,
+                normalized,
+                navigateToPage = false
+            )
+        }
+    }
+
+    override fun clearSubtitle() {
+        emitQuickSubtitleRequest(
+            OverlayBridge.TARGET_SUBTITLE,
+            QUICK_SUBTITLE_CLEARED_HINT,
+            navigateToPage = false
+        )
+    }
+
+    override fun replaySubtitle(text: String) {
+        serviceScope.launch {
+            val queued = speakText(text, interruptCurrent = currentSettings.quickSubtitleInterruptQueue)
+            updateStatus(if (queued != null) "已加入朗读队列" else "播放文本失败，请检查语音合成设置")
+        }
+    }
+
+    override fun setRealtimeRunning(running: Boolean) {
+        if (running) startRealtime() else stopRealtime()
+    }
+
+    override fun openApp() {
+        startActivity(
+            OverlayBridge.buildOpenPageIntent(
+                applicationContext,
+                OverlayBridge.TARGET_OPEN_LAN_CAST
+            )
+        )
+    }
+
     private fun emitQuickSubtitleRequest(
         target: String,
         text: String,
@@ -495,6 +548,7 @@ class RealtimeHostService : Service(), RealtimeRuntimeBridge.AppDelegate {
         )
         _quickSubtitleRequests.value = request
         if (target == OverlayBridge.TARGET_SUBTITLE) {
+            LanCastRuntime.updateSubtitleText(normalized)
             updateState {
                 it.copy(
                     quickSubtitleRequestId = request.requestId,
@@ -632,8 +686,8 @@ class RealtimeHostService : Service(), RealtimeRuntimeBridge.AppDelegate {
                     asrDir = asrDir,
                     voiceDir = voiceDir,
                     status = buildList {
-                        if (asrDir != null) add("已加载 ASR")
-                        if (voiceDir != null) add(if (isSystemTtsVoiceDir(voiceDir)) "已加载系统 TTS" else "已加载音色包")
+                        if (asrDir != null) add("已加载语音识别资源")
+                        if (voiceDir != null) add(if (isSystemTtsVoiceDir(voiceDir)) "已加载系统语音合成" else "已加载音色包")
                     }.joinToString(" / ")
                 )
             }
@@ -650,7 +704,7 @@ class RealtimeHostService : Service(), RealtimeRuntimeBridge.AppDelegate {
                 if (!loaded) {
                     updateStatus(
                         if (isSystemTtsVoiceDir(voiceDir)) {
-                            "系统 TTS 初始化失败，请先完成系统 TTS 设置"
+                            "系统语音合成初始化失败，请先完成系统语音合成设置"
                         } else {
                             "音色包加载失败"
                         }
@@ -918,7 +972,7 @@ class RealtimeHostService : Service(), RealtimeRuntimeBridge.AppDelegate {
         val voice = currentState().voiceDir
         val requireVoice = !currentSettings.ttsDisabled
         if (asr == null || (requireVoice && voice == null)) {
-            updateStatus(if (requireVoice) "请先导入 ASR 模型和 voicepack" else "请先导入 ASR 模型")
+            updateStatus(if (requireVoice) "请先安装语音识别资源并导入语音包" else "请先安装语音识别资源")
             return false
         }
         if (currentState().running) return true
@@ -1153,6 +1207,7 @@ class RealtimeHostService : Service(), RealtimeRuntimeBridge.AppDelegate {
                 pushToTalkStreamingText = snapshot.pushToTalkStreamingText
             )
         )
+        LanCastRuntime.updateRealtimeState(snapshot.running, snapshot.playbackProgress)
         if (snapshot.status != previous.status) {
             syncLiveSubtitleNotification()
         }
@@ -1161,7 +1216,9 @@ class RealtimeHostService : Service(), RealtimeRuntimeBridge.AppDelegate {
     private fun currentState(): RealtimeHostState = _state.value
 
     private fun isOverlayOpenTarget(target: String): Boolean {
-        return target == OverlayBridge.TARGET_OPEN || target == OverlayBridge.TARGET_INPUT
+        return target == OverlayBridge.TARGET_OPEN ||
+            target == OverlayBridge.TARGET_INPUT ||
+            target == OverlayBridge.TARGET_OPEN_LAN_CAST
     }
 
     inner class LocalBinder : Binder() {

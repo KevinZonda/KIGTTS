@@ -32,10 +32,12 @@ from engine.runtime_install import (  # type: ignore
     install_voxcpm_runtime,
 )
 from engine.runtime_status import (  # type: ignore
+    describe_runtime_storage,
     describe_piper_cuda_runtime,
     describe_piper_runtime,
     describe_trainer_resources,
     describe_voxcpm_runtime,
+    save_runtime_storage,
 )
 from engine.resource_paths import resolve_resources_root  # type: ignore
 
@@ -772,6 +774,24 @@ def _handle_get_piper_runtime(req_id: str) -> None:
     _send({"type": "response", "id": req_id, "payload": payload})
 
 
+def _handle_get_runtime_storage(req_id: str) -> None:
+    try:
+        payload = describe_runtime_storage()
+    except Exception as exc:
+        _send({"type": "error", "id": req_id, "message": str(exc), "traceback": traceback.format_exc()})
+        return
+    _send({"type": "response", "id": req_id, "payload": payload})
+
+
+def _handle_save_runtime_storage(req_id: str, payload: Dict[str, Any]) -> None:
+    try:
+        result = save_runtime_storage(payload)
+    except Exception as exc:
+        _send({"type": "error", "id": req_id, "message": str(exc), "traceback": traceback.format_exc()})
+        return
+    _send({"type": "response", "id": req_id, "payload": result})
+
+
 def _handle_install_piper_runtime(req_id: str, payload: Dict[str, Any]) -> None:
     if _is_active():
         _send({"type": "error", "id": req_id, "message": "当前已有任务在运行，请等待完成后再试。"})
@@ -985,6 +1005,12 @@ def _handle_request(req: Dict[str, Any]) -> None:
         return
     if msg_type == "get_piper_runtime_status":
         _handle_get_piper_runtime(req_id)
+        return
+    if msg_type == "get_runtime_storage_status":
+        _handle_get_runtime_storage(req_id)
+        return
+    if msg_type == "save_runtime_storage_config":
+        _handle_save_runtime_storage(req_id, payload)
         return
     if msg_type == "install_piper_runtime":
         _handle_install_piper_runtime(req_id, payload)

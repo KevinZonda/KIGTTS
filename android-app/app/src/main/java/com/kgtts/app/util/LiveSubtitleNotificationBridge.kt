@@ -77,6 +77,7 @@ object LiveSubtitleNotificationBridge {
     ): Notification {
         val text = rawText.trim().ifBlank { "暂无字幕" }
         val status = rawStatus.trim().ifBlank { "待命" }
+        val shortCriticalText = liveSubtitleCriticalText(text)
         val openQuickSubtitleIntent = OverlayBridge.buildOpenPageIntent(
             context,
             OverlayBridge.TARGET_OPEN
@@ -130,7 +131,7 @@ object LiveSubtitleNotificationBridge {
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .addExtras(Bundle().apply {
                 putBoolean(EXTRA_REQUEST_PROMOTED_ONGOING, true)
-                putString(EXTRA_SHORT_CRITICAL_TEXT, text)
+                putString(EXTRA_SHORT_CRITICAL_TEXT, shortCriticalText)
             })
             .build()
     }
@@ -155,3 +156,13 @@ object LiveSubtitleNotificationBridge {
 
     private const val EXTRA_SHORT_CRITICAL_TEXT = "android.shortCriticalText"
 }
+
+internal fun liveSubtitleCriticalText(rawText: String): String {
+    val text = rawText.trim().ifBlank { "暂无字幕" }
+    val codePointCount = text.codePointCount(0, text.length)
+    if (codePointCount <= MAX_SHORT_CRITICAL_TEXT_CODE_POINTS) return text
+    val end = text.offsetByCodePoints(0, MAX_SHORT_CRITICAL_TEXT_CODE_POINTS)
+    return text.substring(0, end)
+}
+
+private const val MAX_SHORT_CRITICAL_TEXT_CODE_POINTS = 7

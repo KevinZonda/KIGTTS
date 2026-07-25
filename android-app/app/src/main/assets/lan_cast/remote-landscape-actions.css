@@ -1,0 +1,33 @@
+@media (orientation: landscape) {
+  .subtitle-display-card {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 48px;
+    grid-template-rows: minmax(0, 1fr);
+  }
+
+  .remote-subtitle-preview {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .subtitle-actions {
+    grid-column: 2;
+    grid-row: 1;
+    min-height: 0;
+    flex-direction: column;
+    justify-content: flex-start;
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
+    border-top: 0;
+    border-left: 1px solid var(--divider);
+    padding-top: 0;
+    padding-left: 4px;
+  }
+
+  .subtitle-actions .icon-button {
+    width: 44px;
+    height: 44px;
+    flex: 0 0 44px;
+  }
+}

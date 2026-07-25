@@ -243,6 +243,7 @@ import com.lhtstudio.kigtts.app.audio.SpeechEnhancementMode
 import com.lhtstudio.kigtts.app.audio.SpeakerEnrollResult
 import com.lhtstudio.kigtts.app.audio.VadMode
 import com.lhtstudio.kigtts.app.data.ModelRepository
+import com.lhtstudio.kigtts.app.data.AppFontFamilySource
 import com.lhtstudio.kigtts.app.data.RecognitionResourceProgress
 import com.lhtstudio.kigtts.app.data.RecognitionResourceStatus
 import com.lhtstudio.kigtts.app.data.KokoroVoiceStatus
@@ -252,6 +253,9 @@ import com.lhtstudio.kigtts.app.data.SoundboardLayoutMode
 import com.lhtstudio.kigtts.app.data.SoundboardConfig
 import com.lhtstudio.kigtts.app.data.SoundboardPresetIo
 import com.lhtstudio.kigtts.app.data.KOKORO_VOICE_NAME
+import com.lhtstudio.kigtts.app.data.LedSubtitleSettings
+import com.lhtstudio.kigtts.app.data.DrawingPalette
+import com.lhtstudio.kigtts.app.data.QuickTextGestureSettings
 import com.lhtstudio.kigtts.app.data.SYSTEM_TTS_VOICE_NAME
 import com.lhtstudio.kigtts.app.data.VoicePackInfo
 import com.lhtstudio.kigtts.app.data.UserPrefs
@@ -400,6 +404,13 @@ data class UiState(
     val solidTopBar: Boolean = true,
     val themeMode: Int = UserPrefs.THEME_MODE_FOLLOW_SYSTEM,
     val overlayThemeMode: Int = UserPrefs.THEME_MODE_FOLLOW_SYSTEM,
+    val themeColorArgb: Int = UserPrefs.DEFAULT_THEME_COLOR_ARGB,
+    val themeToneCorrectionEnabled: Boolean = false,
+    val appFontId: String = "system",
+    val appFontFamilySource: AppFontFamilySource? = null,
+    val appFontWeight: Int = 400,
+    val floatingOverlayUseSystemFont: Boolean = false,
+    val useSystemTextToolbar: Boolean = false,
     val fontScaleBlockMode: Int = UserPrefs.FONT_SCALE_BLOCK_ICONS_ONLY,
     val hapticFeedbackEnabled: Boolean = true,
     val onboardingCompleted: Boolean = false,
@@ -416,7 +427,10 @@ data class UiState(
     val floatingOverlayEnabled: Boolean = false,
     val floatingOverlayAutoDock: Boolean = true,
     val floatingOverlayShowOnLockScreen: Boolean = false,
+    val lockScreenBackgroundPermissionGuideShown: Boolean = false,
+    val floatingOverlayFabPrefersKeyboard: Boolean = false,
     val floatingOverlayHardcodedShortcutSupplement: Boolean = false,
+    val quickTextGestureSettings: QuickTextGestureSettings = QuickTextGestureSettings(),
     val volumeHotkeyUpDownEnabled: Boolean = false,
     val volumeHotkeyDownUpEnabled: Boolean = false,
     val volumeHotkeyWindowMs: Int = UserPrefs.VOLUME_HOTKEY_DEFAULT_WINDOW_MS,
@@ -434,10 +448,15 @@ data class UiState(
     val quickSubtitleAutoFit: Boolean = true,
     val quickSubtitleAllowLargeFont: Boolean = false,
     val quickSubtitleCompactControls: Boolean = false,
+    val quickSubtitleFirstRunGuideCompleted: Boolean = false,
     val quickSubtitleKeepInputPreview: Boolean = true,
+    val ledSubtitleSettings: LedSubtitleSettings = LedSubtitleSettings(),
+    val lanCastDisplaySettings: LedSubtitleSettings = LedSubtitleSettings(),
     val bluetoothMediaTitleSubtitle: Boolean = false,
     val liveSubtitleNotificationEnabled: Boolean = false,
+    val lanCastAudioOutputMode: Int = UserPrefs.LAN_CAST_AUDIO_LOCAL,
     val drawingKeepCanvasOrientationToDevice: Boolean = true,
+    val drawingPalette: DrawingPalette = DrawingPalette(),
     val pushToTalkPressed: Boolean = false,
     val pushToTalkStreamingText: String = "",
     val speakerVerifyEnabled: Boolean = false,
@@ -507,6 +526,7 @@ internal fun isOverlayOpenTarget(target: String): Boolean {
             target == OverlayBridge.TARGET_OPEN_SOUNDBOARD ||
             target == OverlayBridge.TARGET_OPEN_VOICE_PACK ||
             target == OverlayBridge.TARGET_OPEN_SETTINGS ||
+            target == OverlayBridge.TARGET_OPEN_LAN_CAST ||
             target == OverlayBridge.TARGET_OPEN_QR_SCANNER
 }
 
@@ -826,5 +846,3 @@ internal val SoundboardGroupIconChoices = listOf(
     "restaurant",
     "pets"
 )
-
-

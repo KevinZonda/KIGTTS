@@ -342,7 +342,7 @@ def load_project_config(project_root: Path) -> dict[str, Any]:
     if not path.exists():
         raise RuntimeError("这个项目缺少训练设置，无法继续训练。")
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
+        data = json.loads(path.read_text(encoding="utf-8-sig"))
     except json.JSONDecodeError as exc:
         raise RuntimeError("项目训练设置无法读取，文件可能已损坏。") from exc
     if not isinstance(data, dict):

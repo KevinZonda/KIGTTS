@@ -57,6 +57,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.browser.customtabs.CustomTabsClient
 import androidx.browser.customtabs.CustomTabsIntent
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.ContentTransform
@@ -105,6 +106,8 @@ import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.ClickableText
 import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.foundation.text.selection.LocalTextSelectionColors
+import androidx.compose.foundation.text.selection.TextSelectionColors
 import androidx.compose.foundation.verticalScroll
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.Camera
@@ -128,7 +131,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -142,7 +144,6 @@ import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
@@ -168,10 +169,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalLifecycleOwner
-import androidx.compose.ui.platform.LocalTextToolbar
 import androidx.compose.ui.platform.LocalView
-import androidx.compose.ui.platform.TextToolbar
-import androidx.compose.ui.platform.TextToolbarStatus
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.semantics.contentDescription
@@ -200,8 +198,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.unit.Constraints
-import androidx.compose.ui.unit.IntOffset
-import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
@@ -209,11 +205,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
-import androidx.compose.ui.window.Popup
-import androidx.compose.ui.window.PopupPositionProvider
-import androidx.compose.ui.window.PopupProperties
 import androidx.compose.ui.zIndex
 import androidx.core.content.FileProvider
 import androidx.core.content.ContextCompat
@@ -348,6 +340,7 @@ import kotlin.math.roundToInt
 class MainActivity : ComponentActivity() {
     private var lastDecorFitsSystemWindows: Boolean = false
     private var pendingBackgroundReturnFix: Boolean = false
+    private var initialAppFontResolved: Boolean = false
     private var delayedResumeFixRunnable: Runnable? = null
     private var lastHandledExternalVoicePackIntentKey: String? = null
     private var lastHandledExternalPresetIntentKey: String? = null
@@ -385,7 +378,11 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        val splashScreen = installSplashScreen()
         super.onCreate(savedInstanceState)
+        splashScreen.setKeepOnScreenCondition {
+            !viewModel.uiState.settingsLoaded || !initialAppFontResolved
+        }
         enableEdgeToEdge(
             statusBarStyle = SystemBarStyle.dark(android.graphics.Color.parseColor("#038387")),
             navigationBarStyle = SystemBarStyle.auto(
@@ -412,41 +409,73 @@ class MainActivity : ComponentActivity() {
             KigttsFontScaleProvider(state.fontScaleBlockMode) {
                 val systemDark = isSystemInDarkTheme()
                 val dark = UserPrefs.resolveThemeMode(state.themeMode, systemDark)
-                val colors = if (dark) KgtDarkColors else KgtLightColors
-                val extraColors = if (dark) KgtDarkExtraColors else KgtLightExtraColors
-                val textToolbarState = remember { KigttsTextToolbarState() }
-                val textToolbar = remember(textToolbarState) { KigttsTextToolbar(textToolbarState) }
+                val colors = resolveKgtColors(
+                    darkTheme = dark,
+                    themeColorArgb = state.themeColorArgb,
+                    toneCorrectionEnabled = state.themeToneCorrectionEnabled
+                )
+                val extraColors = resolveKgtExtraColors(
+                    darkTheme = dark,
+                    themeColorArgb = state.themeColorArgb,
+                    toneCorrectionEnabled = state.themeToneCorrectionEnabled
+                )
+                val textSelectionColors = remember(extraColors.accentText) {
+                    TextSelectionColors(
+                        handleColor = extraColors.accentText,
+                        backgroundColor = extraColors.accentText.copy(alpha = 0.32f)
+                    )
+                }
+                val appFontLoadState = rememberAppFontFamilyLoadState(
+                    source = state.appFontFamilySource,
+                    preferredWeight = state.appFontWeight
+                )
+                val appFontRequestResolved = appFontLoadState.isResolvedFor(
+                    source = state.appFontFamilySource,
+                    preferredWeight = state.appFontWeight
+                )
+                SideEffect {
+                    if (state.settingsLoaded && appFontRequestResolved) {
+                        initialAppFontResolved = true
+                    }
+                }
+                val appFontFamily = appFontLoadState.fontFamily.takeIf {
+                    appFontRequestResolved
+                }
+                val appTypography = remember(appFontFamily) {
+                    KgtTypography.withAppFontFamily(appFontFamily)
+                }
                 CompositionLocalProvider(
                     LocalMd2ExtraColors provides extraColors,
-                    LocalKigttsHapticFeedbackEnabled provides state.hapticFeedbackEnabled
+                    LocalKigttsHapticFeedbackEnabled provides state.hapticFeedbackEnabled,
+                    LocalUseSystemTextToolbar provides state.useSystemTextToolbar,
+                    LocalTextSelectionColors provides textSelectionColors
                 ) {
-                    CompositionLocalProvider(LocalTextToolbar provides textToolbar) {
-                        MaterialTheme(colors = colors, typography = KgtTypography, shapes = Md2Shapes) {
+                    MaterialTheme(colors = colors, typography = appTypography, shapes = Md2Shapes) {
+                        KigttsTextToolbarHost(darkTheme = dark) {
                             Surface(
                                 modifier = Modifier.fillMaxSize(),
                                 color = MaterialTheme.colorScheme.background
                             ) {
                                 Box(Modifier.fillMaxSize()) {
-                                    val appPhase = when {
-                                        !state.settingsLoaded -> 0
-                                        !state.onboardingCompleted -> 1
-                                        else -> 2
-                                    }
-                                    Crossfade(targetState = appPhase) { phase ->
-                                        when (phase) {
-                                            0 -> KigttsStartupLoadingScreen()
-                                            1 -> KigttsOnboardingScreen(
-                                                onComplete = { selectedPresetGroups ->
-                                                    viewModel.completeOnboarding(selectedPresetGroups)
-                                                }
-                                            )
-                                            else -> AppScaffold(viewModel)
+                                    if (state.settingsLoaded) {
+                                        Crossfade(targetState = state.onboardingCompleted) { completed ->
+                                            if (completed) {
+                                                AppScaffold(viewModel)
+                                            } else {
+                                                KigttsOnboardingScreen(
+                                                    onComplete = { selectedPresetGroups ->
+                                                        viewModel.completeOnboarding(selectedPresetGroups)
+                                                    }
+                                                )
+                                            }
                                         }
+                                    } else {
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxSize()
+                                                .background(MaterialTheme.colorScheme.background)
+                                        )
                                     }
-                                    KigttsTextToolbarPopup(
-                                        state = textToolbarState,
-                                        darkTheme = dark
-                                    )
                                 }
                             }
                         }
@@ -657,5 +686,3 @@ class MainActivity : ComponentActivity() {
         FloatingOverlayService.start(this)
     }
 }
-
-

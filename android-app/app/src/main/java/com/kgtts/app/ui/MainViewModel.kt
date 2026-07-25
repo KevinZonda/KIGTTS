@@ -243,6 +243,10 @@ import com.lhtstudio.kigtts.app.audio.SpeechEnhancementMode
 import com.lhtstudio.kigtts.app.audio.SpeakerEnrollResult
 import com.lhtstudio.kigtts.app.audio.VadMode
 import com.lhtstudio.kigtts.app.data.ModelRepository
+import com.lhtstudio.kigtts.app.data.AppFontRepository
+import com.lhtstudio.kigtts.app.data.AppFontChangeBus
+import com.lhtstudio.kigtts.app.data.AppConfigBackupIo
+import com.lhtstudio.kigtts.app.data.AppConfigBackupOptions
 import com.lhtstudio.kigtts.app.data.RecognitionResourceProgress
 import com.lhtstudio.kigtts.app.data.RecognitionResourceStatus
 import com.lhtstudio.kigtts.app.data.ResourceStorageCleaner
@@ -253,6 +257,12 @@ import com.lhtstudio.kigtts.app.data.SoundboardLayoutMode
 import com.lhtstudio.kigtts.app.data.SoundboardConfig
 import com.lhtstudio.kigtts.app.data.SoundboardPresetIo
 import com.lhtstudio.kigtts.app.data.KOKORO_VOICE_NAME
+import com.lhtstudio.kigtts.app.data.LedSubtitleSettings
+import com.lhtstudio.kigtts.app.data.DrawingPalette
+import com.lhtstudio.kigtts.app.data.QuickTextGestureSettings
+import com.lhtstudio.kigtts.app.data.QuickCardPackageCard
+import com.lhtstudio.kigtts.app.data.QuickCardPackageIo
+import com.lhtstudio.kigtts.app.data.QuickCardPackageSummary
 import com.lhtstudio.kigtts.app.data.SYSTEM_TTS_VOICE_NAME
 import com.lhtstudio.kigtts.app.data.VoicePackInfo
 import com.lhtstudio.kigtts.app.data.UserPrefs
@@ -279,6 +289,10 @@ import com.lhtstudio.kigtts.app.util.ExternalShortcutCatalog
 import com.lhtstudio.kigtts.app.util.ExternalShortcutChoice
 import com.lhtstudio.kigtts.app.util.LauncherMenuShortcuts
 import com.lhtstudio.kigtts.app.util.LiveSubtitleNotificationBridge
+import com.lhtstudio.kigtts.app.lan.LanCastAudioBridge
+import com.lhtstudio.kigtts.app.lan.LanCastAudioOutputMode
+import com.lhtstudio.kigtts.app.lan.LanCastRuntime
+import com.lhtstudio.kigtts.app.lan.LanCastService
 import com.lhtstudio.kigtts.app.util.QqScannerSupport
 import com.lhtstudio.kigtts.app.util.QuickCardRenderCache
 import com.lhtstudio.kigtts.app.util.VolumeHotkeyActionSpec
@@ -304,10 +318,13 @@ import com.google.zxing.common.HybridBinarizer
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.yield
 import org.json.JSONArray
@@ -395,6 +412,10 @@ class MainViewModel(
     }
     private var restartJob: Job? = null
     private var settingsObserveJob: Job? = null
+    private var ledSubtitleSettingsSaveJob: Job? = null
+    private var lanCastDisplaySettingsSaveJob: Job? = null
+    private var voicePackRefreshJob: Job? = null
+    private val voicePackRefreshMutex = Mutex()
     private val lastProgressUpdateAtMs = mutableMapOf<Long, Long>()
     private var lastLevelUpdateAtMs = 0L
     private var speakerProfiles = mutableListOf<UserPrefs.SpeakerVerifyProfile>()
@@ -491,6 +512,7 @@ class MainViewModel(
     }
     val drawStrokes = mutableStateListOf<DrawStrokeData>()
     val drawRedoStrokes = mutableStateListOf<DrawStrokeData>()
+    private var drawColorManuallySelected = false
     var drawColor by mutableStateOf(UiTokens.Primary)
         private set
     var drawBrushSize by mutableStateOf(12f)
@@ -547,6 +569,12 @@ class MainViewModel(
         private set
     var quickCardDraft by mutableStateOf<QuickCardDraft?>(null)
         private set
+    var quickCardPackageImportCandidates by mutableStateOf<List<QuickCardPackageSummary>>(emptyList())
+        private set
+    var quickCardPackageImportVisible by mutableStateOf(false)
+        private set
+    var appConfigBackupBusy by mutableStateOf(false)
+        private set
     var drawingToolbarCollapsed by mutableStateOf(false)
         private set
     var drawingManualRotationQuarterTurns by mutableIntStateOf(0)
@@ -562,6 +590,7 @@ class MainViewModel(
     private var pendingSoundboardGroupSelectionId: Long? = null
     private var quickCardsNextId = 1L
     private var quickCardsSaving = false
+    private var pendingQuickCardPackageUri: Uri? = null
     private var onboardingCompleting = false
 
     init {
@@ -575,6 +604,20 @@ class MainViewModel(
         refreshKokoroVoiceStatus()
         observeSoundboardPlayback()
         observeSettingsChanges()
+        observeAppFontChanges()
+    }
+
+    private fun observeAppFontChanges() {
+        viewModelScope.launch {
+            AppFontChangeBus.changes.collect {
+                uiState = uiState.copy(
+                    appFontFamilySource = AppFontRepository.resolveFontFamilySource(
+                        appContext,
+                        uiState.appFontId
+                    )
+                )
+            }
+        }
     }
 
     fun ensureInitialFloatingOverlayShortcuts() {
@@ -767,6 +810,9 @@ class MainViewModel(
 
     private fun applySettingsSnapshot(settings: UserPrefs.AppSettings) {
         FontScaleBlockRuntime.mode = settings.fontScaleBlockMode
+        LanCastAudioBridge.setOutputMode(
+            LanCastAudioOutputMode.fromPreferenceValue(settings.lanCastAudioOutputMode)
+        )
         SoundboardManager.setPlaybackGainPercent(settings.playbackGainPercent)
         SoundboardManager.setAudioFocusAvoidanceMode(appContext, settings.audioFocusAvoidanceMode)
         BluetoothMediaTitleBridge.setEnabled(
@@ -842,6 +888,14 @@ class MainViewModel(
             solidTopBar = settings.solidTopBar,
             themeMode = settings.themeMode,
             overlayThemeMode = settings.overlayThemeMode,
+            themeColorArgb = settings.themeColorArgb,
+            themeToneCorrectionEnabled = settings.themeToneCorrectionEnabled,
+            appFontId = settings.appFontId,
+            appFontFamilySource =
+                AppFontRepository.resolveFontFamilySource(appContext, settings.appFontId),
+            appFontWeight = settings.appFontWeight,
+            floatingOverlayUseSystemFont = settings.floatingOverlayUseSystemFont,
+            useSystemTextToolbar = settings.useSystemTextToolbar,
             fontScaleBlockMode = settings.fontScaleBlockMode,
             hapticFeedbackEnabled = settings.hapticFeedbackEnabled,
             onboardingCompleted = settings.onboardingCompleted,
@@ -858,8 +912,12 @@ class MainViewModel(
             floatingOverlayEnabled = settings.floatingOverlayEnabled,
             floatingOverlayAutoDock = settings.floatingOverlayAutoDock,
             floatingOverlayShowOnLockScreen = settings.floatingOverlayShowOnLockScreen,
+            lockScreenBackgroundPermissionGuideShown =
+                settings.lockScreenBackgroundPermissionGuideShown,
+            floatingOverlayFabPrefersKeyboard = settings.floatingOverlayFabPrefersKeyboard,
             floatingOverlayHardcodedShortcutSupplement =
                 settings.floatingOverlayHardcodedShortcutSupplement,
+            quickTextGestureSettings = settings.quickTextGestureSettings,
             volumeHotkeyUpDownEnabled = settings.volumeHotkeyUpDownEnabled,
             volumeHotkeyDownUpEnabled = settings.volumeHotkeyDownUpEnabled,
             volumeHotkeyWindowMs = settings.volumeHotkeyWindowMs,
@@ -875,10 +933,15 @@ class MainViewModel(
             quickSubtitleAutoFit = settings.quickSubtitleAutoFit,
             quickSubtitleAllowLargeFont = settings.quickSubtitleAllowLargeFont,
             quickSubtitleCompactControls = settings.quickSubtitleCompactControls,
+            quickSubtitleFirstRunGuideCompleted = settings.quickSubtitleFirstRunGuideCompleted,
             quickSubtitleKeepInputPreview = settings.quickSubtitleKeepInputPreview,
+            ledSubtitleSettings = settings.ledSubtitleSettings,
+            lanCastDisplaySettings = settings.lanCastDisplaySettings,
             bluetoothMediaTitleSubtitle = settings.bluetoothMediaTitleSubtitle,
             liveSubtitleNotificationEnabled = settings.liveSubtitleNotificationEnabled,
+            lanCastAudioOutputMode = settings.lanCastAudioOutputMode,
             drawingKeepCanvasOrientationToDevice = settings.drawingKeepCanvasOrientationToDevice,
+            drawingPalette = settings.drawingPalette,
             speakerVerifyEnabled = speakerVerifyEnabled,
             speakerVerifyThreshold = settings.speakerVerifyThreshold,
             speakerProfileReady = hasProfiles,
@@ -1208,7 +1271,8 @@ class MainViewModel(
                 uiState = uiState.copy(status = "便捷字幕预设已导出：${file.absolutePath}")
                 sharePresetFile(file, "application/x-kigtts-quicktext-preset", "分享便捷字幕预设")
             }.onFailure { e ->
-                uiState = uiState.copy(status = "便捷字幕预设导出失败：${e.message ?: "未知错误"}")
+                AppLogger.e("export quick subtitle preset failed", e)
+                uiState = uiState.copy(status = "导出快捷文本预设失败，请稍后重试")
             }
         }
     }
@@ -1230,7 +1294,8 @@ class MainViewModel(
                     requestPresetInstallNavigation(PresetInstallTarget.QuickSubtitle, message)
                 }
             }.onFailure { e ->
-                uiState = uiState.copy(status = "便捷字幕预设导入失败：${e.message ?: "未知错误"}")
+                AppLogger.e("import quick subtitle preset failed", e)
+                uiState = uiState.copy(status = "无法导入快捷文本预设，请检查文件后重试")
             }
         }
     }
@@ -1646,7 +1711,8 @@ class MainViewModel(
                 uiState = uiState.copy(status = "音效板预设已导出：${file.absolutePath}")
                 sharePresetFile(file, "application/x-kigtts-soundboard-preset", "分享音效板预设")
             }.onFailure { e ->
-                uiState = uiState.copy(status = "音效板预设导出失败：${e.message ?: "未知错误"}")
+                AppLogger.e("export soundboard preset failed", e)
+                uiState = uiState.copy(status = "导出音效板预设失败，请稍后重试")
             }
         }
     }
@@ -1672,7 +1738,8 @@ class MainViewModel(
                     requestPresetInstallNavigation(PresetInstallTarget.Soundboard, message)
                 }
             }.onFailure { e ->
-                uiState = uiState.copy(status = "音效板预设导入失败：${e.message ?: "未知错误"}")
+                AppLogger.e("import soundboard preset failed", e)
+                uiState = uiState.copy(status = "无法导入音效板预设，请检查文件后重试")
             }
         }
     }
@@ -1905,7 +1972,8 @@ class MainViewModel(
                 }
                 uiState = uiState.copy(status = "音效已导入")
             }.onFailure { e ->
-                uiState = uiState.copy(status = "音效导入失败：${e.message ?: "未知错误"}")
+                AppLogger.e("import soundboard audio failed", e)
+                uiState = uiState.copy(status = "音效导入失败，请检查音频文件后重试")
             }
         }
     }
@@ -1947,7 +2015,8 @@ class MainViewModel(
                 saveSoundboardConfig()
                 uiState = uiState.copy(status = "已批量导入 ${newItems.size} 个音效")
             }.onFailure { e ->
-                uiState = uiState.copy(status = "批量导入音效失败：${e.message ?: "未知错误"}")
+                AppLogger.e("batch import soundboard audio failed", e)
+                uiState = uiState.copy(status = "批量添加音效失败，请检查音频文件后重试")
             }
         }
     }
@@ -2030,7 +2099,7 @@ class MainViewModel(
             val landscapeImagePath = obj.optString("landscapeImagePath", "")
             parsedCards += QuickCard(
                 id = id,
-                type = QuickCardType.Text,
+                type = QuickCardType.fromWire(obj.optString("type", QuickCardType.Text.wireValue)),
                 title = title,
                 note = note,
                 themeColor = normalizeQuickCardColor(themeColor),
@@ -2059,7 +2128,7 @@ class MainViewModel(
                 cardsArr.put(
                     JSONObject().apply {
                         put("id", c.id)
-                        put("type", QuickCardType.Text.wireValue)
+                        put("type", c.type.wireValue)
                         put("title", c.title)
                         put("note", c.note)
                         put("themeColor", c.themeColor)
@@ -2080,6 +2149,160 @@ class MainViewModel(
             }
         }
         prefetchQuickCardAssets()
+    }
+
+    fun prepareQuickCardPackageImport(uri: Uri) {
+        pendingQuickCardPackageUri = null
+        quickCardPackageImportCandidates = emptyList()
+        quickCardPackageImportVisible = false
+        viewModelScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                runCatching { QuickCardPackageIo.inspectPackage(appContext, uri) }
+            }
+            result.onSuccess { candidates ->
+                pendingQuickCardPackageUri = uri
+                quickCardPackageImportCandidates = candidates
+                quickCardPackageImportVisible = true
+            }.onFailure { error ->
+                AppLogger.e("inspect quick card package failed", error)
+                uiState = uiState.copy(status = "无法读取名片包，请确认文件完整且格式正确")
+            }
+        }
+    }
+
+    fun dismissQuickCardPackageImport() {
+        pendingQuickCardPackageUri = null
+        quickCardPackageImportCandidates = emptyList()
+        quickCardPackageImportVisible = false
+    }
+
+    fun importPreparedQuickCardPackage(selectedIds: Set<Long>) {
+        val uri = pendingQuickCardPackageUri ?: return
+        if (selectedIds.isEmpty()) {
+            uiState = uiState.copy(status = "请先选择要导入的名片")
+            return
+        }
+        val firstNewIndex = quickCards.size
+        val currentNextId = quickCardsNextId
+        val existingTitles = quickCards.map { it.title }.toSet()
+        dismissQuickCardPackageImport()
+        viewModelScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                runCatching {
+                    QuickCardPackageIo.importPackage(
+                        context = appContext,
+                        uri = uri,
+                        selectedIds = selectedIds,
+                        nextId = currentNextId,
+                        existingTitles = existingTitles
+                    )
+                }
+            }
+            result.onSuccess { imported ->
+                val cards = imported.map { card ->
+                    QuickCard(
+                        id = card.id,
+                        type = QuickCardType.fromWire(card.type),
+                        title = card.title,
+                        note = card.note,
+                        themeColor = normalizeQuickCardColor(card.themeColor),
+                        link = card.link,
+                        portraitImagePath = card.portraitImagePath,
+                        landscapeImagePath = card.landscapeImagePath
+                    )
+                }
+                quickCards = quickCards + cards
+                quickCardsNextId = maxOf(
+                    quickCardsNextId,
+                    (cards.maxOfOrNull { it.id } ?: 0L) + 1L
+                )
+                quickCardSelectedIndex = firstNewIndex.coerceIn(0, quickCards.lastIndex.coerceAtLeast(0))
+                saveQuickCardConfig()
+                uiState = uiState.copy(status = "已导入 ${cards.size} 张快捷名片")
+            }.onFailure { error ->
+                AppLogger.e("import quick card package failed", error)
+                uiState = uiState.copy(status = "无法导入名片包，请检查文件后重试")
+            }
+        }
+    }
+
+    fun exportQuickCardPackage(cardIds: Set<Long>) {
+        val selected = quickCards.filter { it.id in cardIds }
+        if (selected.isEmpty()) {
+            uiState = uiState.copy(status = "请先选择要导出的名片")
+            return
+        }
+        val packageCards = selected.map { card ->
+            QuickCardPackageCard(
+                id = card.id,
+                type = card.type.wireValue,
+                title = card.title,
+                note = card.note,
+                themeColor = card.themeColor,
+                link = card.link,
+                portraitImagePath = card.portraitImagePath,
+                landscapeImagePath = card.landscapeImagePath
+            )
+        }
+        viewModelScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                runCatching { QuickCardPackageIo.exportPackage(appContext, packageCards) }
+            }
+            result.onSuccess { file ->
+                uiState = uiState.copy(status = "快捷名片已导出：${file.absolutePath}")
+                sharePresetFile(file, "application/x-kigtts-quickcard", "分享快捷名片")
+            }.onFailure { error ->
+                AppLogger.e("export quick card package failed", error)
+                uiState = uiState.copy(status = "导出名片包失败，请稍后重试")
+            }
+        }
+    }
+
+    fun exportAppConfigBackup(options: AppConfigBackupOptions) {
+        if (appConfigBackupBusy) return
+        appConfigBackupBusy = true
+        uiState = uiState.copy(status = "正在备份应用数据…")
+        viewModelScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                runCatching { AppConfigBackupIo.exportPackage(appContext, options) }
+            }
+            appConfigBackupBusy = false
+            result.onSuccess { file ->
+                uiState = uiState.copy(status = "应用数据已备份：${file.absolutePath}")
+                sharePresetFile(file, "application/x-kigtts-config", "分享应用数据备份")
+            }.onFailure { error ->
+                AppLogger.e("export app data backup failed", error)
+                uiState = uiState.copy(status = "备份失败，请检查存储空间后重试")
+            }
+        }
+    }
+
+    fun importAppConfigBackup(uri: Uri) {
+        if (appConfigBackupBusy) return
+        appConfigBackupBusy = true
+        uiState = uiState.copy(status = "正在恢复应用数据…")
+        viewModelScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                runCatching { AppConfigBackupIo.importPackage(appContext, uri) }
+            }
+            appConfigBackupBusy = false
+            result.onSuccess { restored ->
+                loadQuickSubtitleConfig()
+                loadSoundboardConfig()
+                loadQuickCardConfig()
+                refreshVoicePacks()
+                refreshKokoroVoiceStatus()
+                if (uiState.floatingOverlayEnabled) {
+                    FloatingOverlayService.refresh(appContext)
+                }
+                uiState = uiState.copy(
+                    status = "应用数据已恢复：${restored.restoredPreferenceCount} 项设置，${restored.restoredFileCount} 个资源文件"
+                )
+            }.onFailure { error ->
+                AppLogger.e("restore app data backup failed", error)
+                uiState = uiState.copy(status = "恢复失败，请确认备份文件完整且版本兼容")
+            }
+        }
     }
 
     fun updateQuickCardSelectedIndex(index: Int) {
@@ -2179,7 +2402,7 @@ class MainViewModel(
         )
         return QuickCard(
             id = id,
-            type = QuickCardType.Text,
+            type = normalized.type,
             title = normalized.title,
             note = normalized.note,
             themeColor = normalized.themeColor,
@@ -2375,7 +2598,7 @@ class MainViewModel(
             if (!loaded && uiState.voiceDir?.absolutePath == voiceDir.absolutePath) {
                 uiState = uiState.copy(
                     status = if (isSystemTtsVoiceDir(voiceDir)) {
-                        "系统 TTS 初始化失败，请先完成系统 TTS 设置"
+                        "系统语音合成初始化失败，请先完成系统语音合成设置"
                     } else {
                         "音色包加载失败"
                     }
@@ -2403,7 +2626,7 @@ class MainViewModel(
                 }
             }
         }
-        toast(context, "无法打开系统 TTS 设置")
+        toast(context, "无法打开系统语音合成设置")
     }
 
     private fun systemTtsVoiceDir(): File = repo.systemTtsVirtualDir()
@@ -2484,7 +2707,7 @@ class MainViewModel(
 
     private fun fallbackVoiceStatus(dir: File): String {
         return when {
-            isSystemTtsVoiceDir(dir) -> "已切换到系统 TTS"
+            isSystemTtsVoiceDir(dir) -> "已切换到系统语音合成"
             isKokoroVoiceDir(dir) -> "已切换备用语音包：Kokoro"
             else -> "已切换备用语音包：${dir.name}"
         }
@@ -2615,7 +2838,7 @@ class MainViewModel(
                     recognitionResourceBusy = false,
                     recognitionResourceProgressStage = "",
                     recognitionResourceProgress = -1f,
-                    recognitionResourceStatus = "语音识别资源包安装失败：${e.message ?: "未知错误"}",
+                    recognitionResourceStatus = "安装失败，请检查网络或下载源后重试",
                     status = "语音识别资源包安装失败"
                 )
             }
@@ -2644,7 +2867,7 @@ class MainViewModel(
                     recognitionResourceBusy = false,
                     recognitionResourceProgressStage = "",
                     recognitionResourceProgress = -1f,
-                    recognitionResourceStatus = "语音识别资源包安装失败：${e.message ?: "未知错误"}",
+                    recognitionResourceStatus = "安装失败，请确认资源包文件完整且格式正确",
                     status = "语音识别资源包安装失败"
                 )
             }
@@ -2714,7 +2937,7 @@ class MainViewModel(
                     kokoroBusy = false,
                     kokoroProgressStage = "",
                     kokoroProgress = -1f,
-                    kokoroStatus = "Kokoro 离线语音安装失败：${e.message ?: "未知错误"}",
+                    kokoroStatus = "安装失败，请检查网络或下载源后重试",
                     status = "Kokoro 离线语音安装失败"
                 )
             }
@@ -2741,7 +2964,7 @@ class MainViewModel(
                     kokoroBusy = false,
                     kokoroProgressStage = "",
                     kokoroProgress = -1f,
-                    kokoroStatus = "Kokoro 离线语音安装失败：${e.message ?: "未知错误"}",
+                    kokoroStatus = "安装失败，请确认资源文件完整且格式正确",
                     status = "Kokoro 离线语音安装失败"
                 )
             }
@@ -2827,7 +3050,7 @@ class MainViewModel(
     private fun recognitionResourceStatusText(status: RecognitionResourceStatus): String {
         if (!status.installed) return "未安装语音识别资源包，请先从下载源或本地文件安装。"
         val version = status.version.takeIf { it.isNotBlank() }?.let { "，版本 $it" }.orEmpty()
-        val asr = if (status.asrDir != null) "，ASR 可用" else "，ASR 未找到"
+        val asr = if (status.asrDir != null) "，语音识别可用" else "，未找到语音识别资源"
         return "${status.name}$version 已安装$asr"
     }
 
@@ -2856,6 +3079,9 @@ class MainViewModel(
             recognitionResourceProgress = -1f,
             status = message
         )
+        if (uiState.floatingOverlayEnabled) {
+            FloatingOverlayService.refresh(appContext)
+        }
     }
 
     fun loadLastVoice() {
@@ -2864,7 +3090,7 @@ class MainViewModel(
             val lastDir = resolvePreferredVoiceDir(lastName)
             if (lastDir != null) {
                 val voiceStatus = when {
-                    isSystemTtsVoiceDir(lastDir) -> "已加载系统 TTS"
+                    isSystemTtsVoiceDir(lastDir) -> "已加载系统语音合成"
                     isKokoroVoiceDir(lastDir) -> "已加载 Kokoro"
                     else -> "已加载音色包"
                 }
@@ -2904,9 +3130,9 @@ class MainViewModel(
             val dir = withContext(Dispatchers.IO) { repo.importAsr(uri, appContext.contentResolver) }
             val host = realtimeHost
             if (host != null) {
-                host.updateSelectedAsrDir(dir, status = "ASR 模型导入完成", preload = true)
+                host.updateSelectedAsrDir(dir, status = "语音识别模型导入完成", preload = true)
             } else {
-                uiState = uiState.copy(asrDir = dir, status = "ASR 模型导入完成")
+                uiState = uiState.copy(asrDir = dir, status = "语音识别模型导入完成")
                 preloadAsr(dir)
             }
         }
@@ -2935,7 +3161,7 @@ class MainViewModel(
                     requestVoicePackInstallNavigation("语音包安装完成")
                 }
             } catch (e: Exception) {
-                uiState = uiState.copy(status = e.message ?: "音色包导入失败")
+                uiState = uiState.copy(status = "音色包导入失败，请确认文件完整且格式正确")
                 AppLogger.e("importVoice failed", e)
             }
         }
@@ -2952,7 +3178,7 @@ class MainViewModel(
                 }
             )
             val status = when {
-                isSystemTtsVoiceDir(dir) -> "已选择系统 TTS"
+                isSystemTtsVoiceDir(dir) -> "已选择系统语音合成"
                 isKokoroVoiceDir(dir) -> "已选择 Kokoro"
                 else -> "已选择音色包"
             }
@@ -2974,9 +3200,12 @@ class MainViewModel(
     }
 
     fun refreshVoicePacks() {
-        viewModelScope.launch {
-            val packs = loadVoicePackList()
-            uiState = uiState.copy(voicePacks = packs)
+        voicePackRefreshJob?.cancel()
+        voicePackRefreshJob = viewModelScope.launch {
+            voicePackRefreshMutex.withLock {
+                val packs = loadVoicePackList()
+                uiState = uiState.copy(voicePacks = packs)
+            }
         }
     }
 
@@ -3066,7 +3295,7 @@ class MainViewModel(
 
     fun deleteVoice(pack: VoicePackInfo) {
         if (isSystemTtsVoicePack(pack)) {
-            uiState = uiState.copy(status = "系统 TTS 不能删除")
+            uiState = uiState.copy(status = "系统语音合成不能删除")
             return
         }
         val current = uiState.voiceDir?.absolutePath == pack.dir.absolutePath
@@ -3123,7 +3352,7 @@ class MainViewModel(
                     }
                 }
             } catch (e: SecurityException) {
-                uiState = uiState.copy(status = e.message ?: "语音包删除失败")
+                uiState = uiState.copy(status = "语音包删除失败，请稍后重试")
                 AppLogger.e("deleteVoice failed", e)
                 return@launch
             }
@@ -3144,7 +3373,7 @@ class MainViewModel(
 
     fun shareVoice(pack: VoicePackInfo) {
         if (isSystemTtsVoicePack(pack)) {
-            uiState = uiState.copy(status = "系统 TTS 不能分享")
+            uiState = uiState.copy(status = "系统语音合成不能分享")
             return
         }
         if (isKokoroVoicePack(pack)) {
@@ -3187,7 +3416,8 @@ class MainViewModel(
             }
             appContext.startActivity(Intent.createChooser(intent, chooserTitle))
         }.onFailure { e ->
-            uiState = uiState.copy(status = "分享失败：${e.message ?: "未知错误"}")
+            AppLogger.e("share preset file failed", e)
+            uiState = uiState.copy(status = "分享失败，请稍后重试")
         }
     }
 
@@ -3433,10 +3663,63 @@ class MainViewModel(
         }
     }
 
+    fun setLockScreenBackgroundPermissionGuideShown(shown: Boolean) {
+        uiState = uiState.copy(lockScreenBackgroundPermissionGuideShown = shown)
+        viewModelScope.launch {
+            UserPrefs.setLockScreenBackgroundPermissionGuideShown(appContext, shown)
+        }
+    }
+
+    fun setFloatingOverlayFabPrefersKeyboard(enabled: Boolean) {
+        uiState = uiState.copy(floatingOverlayFabPrefersKeyboard = enabled)
+        viewModelScope.launch {
+            UserPrefs.setFloatingOverlayFabPrefersKeyboard(appContext, enabled)
+        }
+    }
+
     fun setFloatingOverlayHardcodedShortcutSupplement(enabled: Boolean) {
         uiState = uiState.copy(floatingOverlayHardcodedShortcutSupplement = enabled)
         viewModelScope.launch {
             UserPrefs.setFloatingOverlayHardcodedShortcutSupplement(appContext, enabled)
+        }
+    }
+
+    fun setQuickTextGestureMasterEnabled(enabled: Boolean) {
+        updateQuickTextGestureSettings { settings -> settings.copy(enabled = enabled) }
+    }
+
+    fun setQuickTextGestureBindingEnabled(gestureId: String, enabled: Boolean) {
+        updateQuickTextGestureSettings { settings ->
+            settings.updateBinding(gestureId) { binding -> binding.copy(enabled = enabled) }
+        }
+    }
+
+    fun updateQuickTextGestureBinding(gestureId: String, enabled: Boolean, text: String) {
+        updateQuickTextGestureSettings { settings ->
+            settings.updateBinding(gestureId) { binding ->
+                binding.copy(enabled = enabled, text = text)
+            }
+        }
+    }
+
+    fun triggerQuickTextGesture(gestureId: String) {
+        val settings = uiState.quickTextGestureSettings
+        val binding = settings.binding(gestureId) ?: return
+        if (!settings.enabled || !binding.enabled || binding.text.isBlank()) return
+        submitQuickSubtitlePreset(
+            text = binding.text,
+            hasVoice = uiState.voiceDir != null,
+            interruptCurrent = uiState.quickSubtitleInterruptQueue
+        )
+    }
+
+    private fun updateQuickTextGestureSettings(
+        transform: (QuickTextGestureSettings) -> QuickTextGestureSettings
+    ) {
+        val updated = transform(uiState.quickTextGestureSettings).normalized()
+        uiState = uiState.copy(quickTextGestureSettings = updated)
+        viewModelScope.launch {
+            UserPrefs.setQuickTextGestureSettings(appContext, updated)
         }
     }
 
@@ -3552,11 +3835,49 @@ class MainViewModel(
         }
     }
 
+    fun completeQuickSubtitleFirstRunGuide() {
+        if (uiState.quickSubtitleFirstRunGuideCompleted) return
+        uiState = uiState.copy(quickSubtitleFirstRunGuideCompleted = true)
+        viewModelScope.launch {
+            UserPrefs.setQuickSubtitleFirstRunGuideCompleted(appContext, true)
+        }
+    }
+
     fun setQuickSubtitleKeepInputPreview(enabled: Boolean) {
         uiState = uiState.copy(quickSubtitleKeepInputPreview = enabled)
         viewModelScope.launch {
             UserPrefs.setQuickSubtitleKeepInputPreview(appContext, enabled)
         }
+    }
+
+    fun updateLedSubtitleSettings(settings: LedSubtitleSettings) {
+        val normalized = settings.normalized()
+        if (uiState.ledSubtitleSettings == normalized) return
+        uiState = uiState.copy(ledSubtitleSettings = normalized)
+        ledSubtitleSettingsSaveJob?.cancel()
+        ledSubtitleSettingsSaveJob = viewModelScope.launch {
+            delay(160)
+            UserPrefs.setLedSubtitleSettings(appContext, normalized)
+        }
+    }
+
+    fun resetLedSubtitleSettings() {
+        updateLedSubtitleSettings(LedSubtitleSettings())
+    }
+
+    fun updateLanCastDisplaySettings(settings: LedSubtitleSettings) {
+        val normalized = settings.normalized()
+        if (uiState.lanCastDisplaySettings == normalized) return
+        uiState = uiState.copy(lanCastDisplaySettings = normalized)
+        lanCastDisplaySettingsSaveJob?.cancel()
+        lanCastDisplaySettingsSaveJob = viewModelScope.launch {
+            delay(160)
+            UserPrefs.setLanCastDisplaySettings(appContext, normalized)
+        }
+    }
+
+    fun resetLanCastDisplaySettings() {
+        updateLanCastDisplaySettings(LedSubtitleSettings())
     }
 
     fun setBluetoothMediaTitleSubtitle(enabled: Boolean) {
@@ -3581,6 +3902,37 @@ class MainViewModel(
         viewModelScope.launch {
             UserPrefs.setLiveSubtitleNotificationEnabled(appContext, enabled)
         }
+    }
+
+    fun setLanCastAudioOutputMode(mode: Int) {
+        val normalized = UserPrefs.normalizeLanCastAudioOutputMode(mode)
+        uiState = uiState.copy(lanCastAudioOutputMode = normalized)
+        LanCastAudioBridge.setOutputMode(
+            LanCastAudioOutputMode.fromPreferenceValue(normalized)
+        )
+        viewModelScope.launch {
+            UserPrefs.setLanCastAudioOutputMode(appContext, normalized)
+        }
+    }
+
+    fun startLanCast() {
+        LanCastService.start(appContext)
+    }
+
+    fun stopLanCast() {
+        LanCastService.stop(appContext)
+    }
+
+    fun refreshLanCastAddresses() {
+        if (LanCastRuntime.status().running) {
+            LanCastService.refresh(appContext)
+        } else {
+            LanCastRuntime.refreshAddresses()
+        }
+    }
+
+    fun selectLanCastAddress(addressId: String) {
+        LanCastRuntime.selectAddress(addressId)
     }
 
     fun setDrawingKeepCanvasOrientationToDevice(enabled: Boolean) {
@@ -3863,6 +4215,35 @@ class MainViewModel(
         }
     }
 
+    fun setThemeColorArgb(colorArgb: Int) {
+        val normalized = UserPrefs.normalizeThemeColorArgb(colorArgb)
+        uiState = uiState.copy(themeColorArgb = normalized)
+        viewModelScope.launch {
+            UserPrefs.setThemeColorArgb(appContext, normalized)
+        }
+    }
+
+    fun setThemeToneCorrectionEnabled(enabled: Boolean) {
+        uiState = uiState.copy(themeToneCorrectionEnabled = enabled)
+        viewModelScope.launch {
+            UserPrefs.setThemeToneCorrectionEnabled(appContext, enabled)
+        }
+    }
+
+    fun setFloatingOverlayUseSystemFont(enabled: Boolean) {
+        uiState = uiState.copy(floatingOverlayUseSystemFont = enabled)
+        viewModelScope.launch {
+            UserPrefs.setFloatingOverlayUseSystemFont(appContext, enabled)
+        }
+    }
+
+    fun setUseSystemTextToolbar(enabled: Boolean) {
+        uiState = uiState.copy(useSystemTextToolbar = enabled)
+        viewModelScope.launch {
+            UserPrefs.setUseSystemTextToolbar(appContext, enabled)
+        }
+    }
+
     fun setFontScaleBlockMode(mode: Int) {
         val normalized = UserPrefs.normalizeFontScaleBlockMode(mode)
         FontScaleBlockRuntime.mode = normalized
@@ -3979,8 +4360,21 @@ class MainViewModel(
     }
 
     fun updateDrawColor(color: Color) {
+        drawColorManuallySelected = true
         drawColor = color
         drawEraser = false
+    }
+
+    fun applyDefaultDrawColor(color: Color) {
+        if (!drawColorManuallySelected) drawColor = color
+    }
+
+    fun saveDrawingPalette(palette: DrawingPalette) {
+        val normalized = palette.normalized()
+        uiState = uiState.copy(drawingPalette = normalized)
+        viewModelScope.launch {
+            UserPrefs.setDrawingPalette(appContext, normalized)
+        }
     }
 
     fun updateDrawBrushSize(size: Float) {
@@ -4131,7 +4525,7 @@ class MainViewModel(
             }.onFailure { e ->
                 AppLogger.e("drawing save failed", e)
                 withContext(Dispatchers.Main) {
-                    uiState = uiState.copy(status = "画板保存失败：${e.message ?: "未知错误"}")
+                    uiState = uiState.copy(status = "图片保存失败，请检查存储权限和剩余空间")
                     Toast.makeText(appContext, "画板保存失败", Toast.LENGTH_SHORT).show()
                 }
             }
