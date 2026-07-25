@@ -3,6 +3,7 @@ package com.lhtstudio.kigtts.app.overlay
 import android.content.Context
 import android.graphics.PixelFormat
 import android.graphics.drawable.GradientDrawable
+import android.os.IBinder
 import android.view.Gravity
 import android.view.WindowManager
 import android.widget.FrameLayout
@@ -15,6 +16,8 @@ internal class OverlayFabModeGuideWindow(
     private val windowManager: WindowManager,
     private val styleProvider: () -> OverlayInteractionStyle,
     private val windowFlagsProvider: () -> Int,
+    private val windowTypeProvider: () -> Int = ::defaultOverlayWindowType,
+    private val windowTokenProvider: () -> IBinder? = { null },
     private val onModeSelected: (keyboardFirst: Boolean) -> Unit
 ) {
     private var root: FrameLayout? = null
@@ -129,15 +132,11 @@ internal class OverlayFabModeGuideWindow(
     private fun createLayoutParams(): WindowManager.LayoutParams = WindowManager.LayoutParams(
         WindowManager.LayoutParams.MATCH_PARENT,
         WindowManager.LayoutParams.MATCH_PARENT,
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
-        } else {
-            @Suppress("DEPRECATION")
-            WindowManager.LayoutParams.TYPE_PHONE
-        },
+        windowTypeProvider(),
         windowFlagsProvider(),
         PixelFormat.TRANSLUCENT
     ).apply {
+        token = windowTokenProvider()
         gravity = Gravity.FILL
         title = "KIGTTS overlay FAB guide"
     }

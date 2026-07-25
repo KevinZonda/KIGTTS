@@ -427,6 +427,7 @@ data class UiState(
     val floatingOverlayEnabled: Boolean = false,
     val floatingOverlayAutoDock: Boolean = true,
     val floatingOverlayShowOnLockScreen: Boolean = false,
+    val lockScreenBackgroundPermissionGuideShown: Boolean = false,
     val floatingOverlayFabPrefersKeyboard: Boolean = false,
     val floatingOverlayHardcodedShortcutSupplement: Boolean = false,
     val quickTextGestureSettings: QuickTextGestureSettings = QuickTextGestureSettings(),

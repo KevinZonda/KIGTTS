@@ -404,6 +404,10 @@ fun FloatingOverlayScreen(
     var accessibilityExplainDialogOpen by remember { mutableStateOf(false) }
     var pendingVolumeHotkeyEnableSequence by remember { mutableStateOf<VolumeHotkeySequence?>(null) }
     var dismissVolumeHotkeyEnableWarning by remember { mutableStateOf(false) }
+    val requiresBackgroundPopupPermission = remember {
+        LockScreenBackgroundPermissionGuide.isRequiredForDevice()
+    }
+    var backgroundPopupPermissionGuideOpen by rememberSaveable { mutableStateOf(false) }
     val overlayPermissionLauncher =
         rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
             val granted = FloatingOverlayService.canDrawOverlays(context)
@@ -534,6 +538,20 @@ fun FloatingOverlayScreen(
         }
     }
 
+    LaunchedEffect(
+        requiresBackgroundPopupPermission,
+        state.floatingOverlayShowOnLockScreen,
+        state.lockScreenBackgroundPermissionGuideShown
+    ) {
+        if (
+            requiresBackgroundPopupPermission &&
+            state.floatingOverlayShowOnLockScreen &&
+            !state.lockScreenBackgroundPermissionGuideShown
+        ) {
+            backgroundPopupPermissionGuideOpen = true
+        }
+    }
+
     CenteredPageColumn(
         maxWidth = UiTokens.WideContentMaxWidth,
         scroll = scroll
@@ -617,7 +635,12 @@ fun FloatingOverlayScreen(
                 ) {
                     Md2Switch(
                         checked = state.floatingOverlayShowOnLockScreen,
-                        onCheckedChange = { viewModel.setFloatingOverlayShowOnLockScreen(it) }
+                        onCheckedChange = { enabled ->
+                            viewModel.setFloatingOverlayShowOnLockScreen(enabled)
+                            if (enabled && requiresBackgroundPopupPermission) {
+                                backgroundPopupPermissionGuideOpen = true
+                            }
+                        }
                     )
                     Text("锁屏时显示悬浮窗")
                 }
@@ -625,6 +648,13 @@ fun FloatingOverlayScreen(
                     "锁屏时仍可查看和操作悬浮窗；部分设备需要额外允许锁屏显示或后台弹出界面。",
                     style = MaterialTheme.typography.bodySmall
                 )
+                if (requiresBackgroundPopupPermission) {
+                    Md2OutlinedButton(
+                        onClick = { backgroundPopupPermissionGuideOpen = true }
+                    ) {
+                        Text("后台弹出权限")
+                    }
+                }
                 Spacer(Modifier.height(8.dp))
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
@@ -789,6 +819,22 @@ fun FloatingOverlayScreen(
                 overlayPermissionPurposeOpen = false
                 pendingOverlayPermissionEnable = false
             }
+        )
+    }
+
+    if (backgroundPopupPermissionGuideOpen) {
+        fun closeBackgroundPopupPermissionGuide() {
+            viewModel.setLockScreenBackgroundPermissionGuideShown(true)
+            backgroundPopupPermissionGuideOpen = false
+        }
+        LockScreenBackgroundPermissionGuideDialog(
+            onOpenSettings = {
+                closeBackgroundPopupPermissionGuide()
+                if (!LockScreenBackgroundPermissionGuide.openSettings(context)) {
+                    toast(context, "无法打开权限设置，请在系统设置中手动查找 KIGTTS")
+                }
+            },
+            onDismiss = ::closeBackgroundPopupPermissionGuide
         )
     }
 

@@ -35,6 +35,7 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <uses-permission android:name="android.permission.HIDE_OVERLAY_WINDOWS" />
 
     <application
         android:allowBackup="true"
@@ -49,9 +50,11 @@
             android:theme="@style/Theme.KGTTS.Cropper" />
         <activity
             android:name=".overlay.LockScreenOverlayHostActivity"
+            android:configChanges="orientation|screenSize|smallestScreenSize|uiMode"
             android:excludeFromRecents="true"
             android:exported="false"
             android:launchMode="singleTask"
+            android:screenOrientation="user"
             android:showWhenLocked="true"
             android:taskAffinity=""
             android:theme="@style/Theme.KGTTS.LockScreenOverlayHost" />
@@ -160,6 +163,9 @@
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="floating_overlay_ui" />
         </service>
+        <service
+            android:name=".overlay.LockScreenFloatingOverlayService"
+            android:exported="false" />
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"

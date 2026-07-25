@@ -128,7 +128,7 @@ import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
 
-class FloatingOverlayService : Service() {
+open class FloatingOverlayService : Service() {
     private val overlayRadiusDp = 4f
     private val qqAccessibilityScannerShortcutId = "__qq_scanner_accessibility__"
     private val defaultQuickSubtitleText = "快捷字幕\n大字幕"
@@ -164,30 +164,60 @@ class FloatingOverlayService : Service() {
     private var settingsJob: Job? = null
     private var fontChangeJob: Job? = null
     private var screenStateReceiverRegistered = false
-    private var lockScreenRefreshGeneration = 0
+
+    protected open fun requiresOverlayPermission(): Boolean = true
+    protected open fun managesLockScreenHost(): Boolean = true
+    protected open fun runsAsForegroundService(): Boolean = true
+    protected open fun restartsAfterTaskRemoval(): Boolean = true
+    protected open fun usesAttachedHostWindow(): Boolean = false
+    protected open fun persistsFabAnchors(): Boolean = true
+    protected open fun supportsCollapsedFabState(): Boolean = true
+    protected open fun runAfterOverlayHostUnlock(action: () -> Unit): Boolean {
+        action()
+        return true
+    }
+    protected open fun onOverlayVisibilityChanged(panelVisible: Boolean, miniVisible: Boolean) = Unit
+    protected open suspend fun awaitOverlayHostReady() = Unit
+    protected open fun overlayWindowToken(): IBinder? = null
+    protected open fun onOverlayWindowsInitialized() = Unit
+
+    private fun canDisplayOverlayWindows(): Boolean =
+        !requiresOverlayPermission() || canDrawOverlays(this)
     private val screenStateReceiver =
         object : BroadcastReceiver() {
             override fun onReceive(context: Context?, intent: Intent?) {
                 when (intent?.action) {
                     Intent.ACTION_SCREEN_OFF -> {
-                        LockScreenOverlayHostActivity.dismiss(this@FloatingOverlayService)
-                        if (settings.floatingOverlayShowOnLockScreen) {
-                            refreshOverlayForLockScreen("screen_off", delayMs = 180L)
+                        if (managesLockScreenHost()) {
+                            LockScreenOverlayHostActivity.dismiss(this@FloatingOverlayService)
                         }
                         healFabInteractionState("screen_off")
                     }
                     Intent.ACTION_SCREEN_ON -> {
-                        if (settings.floatingOverlayShowOnLockScreen) {
+                        if (
+                            managesLockScreenHost() &&
+                            settings.floatingOverlayShowOnLockScreen &&
+                            overlayWindowsInitialized
+                        ) {
                             LockScreenOverlayHostActivity.showIfLocked(
                                 this@FloatingOverlayService,
                                 "screen_on"
                             )
-                            refreshOverlayForLockScreen("screen_on", delayMs = 220L)
+                            fabRoot?.postDelayed({
+                                if (settings.floatingOverlayShowOnLockScreen) {
+                                    LockScreenOverlayHostActivity.showIfLocked(
+                                        this@FloatingOverlayService,
+                                        "screen_on_retry"
+                                    )
+                                }
+                            }, 500L)
                         }
                         healFabInteractionState("screen_on")
                     }
                     Intent.ACTION_USER_PRESENT -> {
-                        LockScreenOverlayHostActivity.dismiss(this@FloatingOverlayService)
+                        if (managesLockScreenHost()) {
+                            LockScreenOverlayHostActivity.dismiss(this@FloatingOverlayService)
+                        }
                         applyOverlayWindowFlags()
                         healFabInteractionState("user_present")
                     }
@@ -359,6 +389,9 @@ class FloatingOverlayService : Service() {
     private var currentFabOrientation = Configuration.ORIENTATION_PORTRAIT
     private var lastFabDisplayWidth = 0
     private var lastFabDisplayHeight = 0
+    private var overlayWindowsInitialized = false
+    private var fabPositionReady = false
+    private val pendingServiceActions = mutableListOf<String>()
     private var downRawX = 0f
     private var downRawY = 0f
     private var downWinX = 0
@@ -1268,9 +1301,10 @@ class FloatingOverlayService : Service() {
         screenHeight: Int,
         persist: Boolean = true
     ) {
+        if (!fabPositionReady) return
         val anchor = captureCurrentFabAnchor(screenWidth, screenHeight) ?: return
         setFabAnchorForOrientation(orientation, anchor)
-        if (persist) saveOverlayLauncherLayout()
+        if (persist && persistsFabAnchors()) saveOverlayLauncherLayout()
     }
 
     private fun applyFabAnchor(
@@ -1322,7 +1356,8 @@ class FloatingOverlayService : Service() {
             runCatching { windowManager.updateViewLayout(root, params) }
         }
         updateFabTouchProxyLayout()
-        if (converted != null) saveOverlayLauncherLayout()
+        fabPositionReady = true
+        if (converted != null && persistsFabAnchors()) saveOverlayLauncherLayout()
     }
 
     private fun fabDockExposedWidthPx(): Int {
@@ -1499,6 +1534,19 @@ class FloatingOverlayService : Service() {
         val root = fabRoot ?: return
         if (!settings.floatingOverlayEnabled) return
         reconcileExpandedWindowState("heal_$reason")
+        if (!supportsCollapsedFabState()) {
+            fabVisibilityTarget = false
+            root.animate().cancel()
+            root.visibility = View.GONE
+            root.alpha = 1f
+            root.scaleX = 1f
+            root.scaleY = 1f
+            fabTouchProxy?.visibility = View.GONE
+            if (overlayWindowsInitialized && !panelVisible && !miniVisible) {
+                requestExpandedPanel()
+            }
+            return
+        }
         val now = SystemClock.uptimeMillis()
         if (draggingFab && now - lastFabTouchUptime > 3000L) {
             AppLogger.w("FloatingOverlayService.heal stale fab drag reason=$reason")
@@ -1913,7 +1961,7 @@ class FloatingOverlayService : Service() {
         }
     }
 
-    override fun onBind(intent: Intent?): IBinder? = null
+    open override fun onBind(intent: Intent?): IBinder? = null
 
     override fun getResources(): Resources {
         val base = super.getResources()
@@ -1927,7 +1975,7 @@ class FloatingOverlayService : Service() {
     override fun onCreate() {
         super.onCreate()
         AppLogger.i("FloatingOverlayService.onCreate")
-        if (!canDrawOverlays(this)) {
+        if (requiresOverlayPermission() && !canDrawOverlays(this)) {
             stopSelf()
             return
         }
@@ -1935,39 +1983,58 @@ class FloatingOverlayService : Service() {
         ensureRealtimeHostBound()
         overlayDarkTheme = isOverlayDarkTheme()
         updateFabDisplaySnapshot()
-        startForegroundInternal()
+        if (runsAsForegroundService()) startForegroundInternal()
         registerScreenStateReceiver()
         startFabStateWatchdog()
-        ensureWindows()
         RealtimeRuntimeBridge.addListener(runtimeBridgeListener)
-        observeSettings()
-        observeAppFontChanges()
-        observeSoundboardPlayback()
         scope.launch {
+            awaitOverlayHostReady()
             settings = UserPrefs.getSettings(this@FloatingOverlayService)
-            syncLockScreenOverlayHost("settings_loaded")
+            if (!settings.floatingOverlayEnabled) {
+                stopSelf()
+                return@launch
+            }
             refreshRecognitionResourceAvailability()
-            val typefaceChanged = refreshOverlayTypefaces(settings)
+            refreshOverlayTypefaces(settings)
             applyOverlayWindowFlags()
             loadQuickSubtitleConfig()
             loadOverlayShortcuts()
             loadOverlayLauncherLayout()
-            if (typefaceChanged) {
-                rebuildWindowsPreservingState()
-            } else {
-                restoreFabPositionForCurrentOrientation(allowOppositeConversion = true)
-                refreshPanelUi()
-                refreshQuickSubtitleUi()
-                updateFabUi()
-            }
+            ensureWindows()
+            restoreFabPositionForCurrentOrientation(allowOppositeConversion = true)
+            refreshPanelUi()
+            refreshQuickSubtitleUi()
+            updateFabUi()
+            overlayWindowsInitialized = true
+            syncLockScreenOverlayHost("windows_initialized")
+            onOverlayWindowsInitialized()
+            val startupActions = pendingServiceActions.toList()
+            pendingServiceActions.clear()
+            startupActions.forEach(::handleServiceAction)
+            observeSettings()
+            observeAppFontChanges()
+            observeSoundboardPlayback()
         }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        when (intent?.action) {
+        val action = intent?.action
+        if (action == ACTION_STOP) {
+            stopSelf()
+            return START_NOT_STICKY
+        }
+        if (!overlayWindowsInitialized && action != null) {
+            pendingServiceActions += action
+            return START_STICKY
+        }
+        handleServiceAction(action)
+        return START_STICKY
+    }
+
+    private fun handleServiceAction(action: String?) {
+        when (action) {
             ACTION_STOP -> {
                 stopSelf()
-                return START_NOT_STICKY
             }
             ACTION_OPEN_PANEL -> {
                 showPanel()
@@ -1996,7 +2063,7 @@ class FloatingOverlayService : Service() {
                         refreshMiniSoundboardUi()
                     }
                     if (typefaceChanged) {
-                        rebuildWindowsPreservingState()
+                        rebuildWindowsPreservingState(preserveCurrentFabPosition = false)
                     } else {
                         restoreFabPositionForCurrentOrientation(allowOppositeConversion = true)
                         refreshPanelUi()
@@ -2006,11 +2073,34 @@ class FloatingOverlayService : Service() {
                 }
             }
         }
-        return START_STICKY
+    }
+
+    protected fun requestExpandedPanel() {
+        if (overlayWindowsInitialized) {
+            showPanel()
+        } else if (ACTION_OPEN_PANEL !in pendingServiceActions) {
+            pendingServiceActions += ACTION_OPEN_PANEL
+        }
+    }
+
+    private fun launchAfterOverlayHostUnlock(
+        label: String,
+        onFailure: (() -> Unit)? = null,
+        action: () -> Unit
+    ): Boolean {
+        var succeeded = true
+        val routed = runAfterOverlayHostUnlock {
+            runCatching(action).onFailure { error ->
+                succeeded = false
+                AppLogger.e("FloatingOverlayService.$label failed", error)
+                onFailure?.invoke()
+            }
+        }
+        return routed && succeeded
     }
 
     override fun onDestroy() {
-        LockScreenOverlayHostActivity.dismiss(this)
+        if (managesLockScreenHost()) LockScreenOverlayHostActivity.dismiss(this)
         settingsJob?.cancel()
         settingsJob = null
         fontChangeJob?.cancel()
@@ -2030,14 +2120,14 @@ class FloatingOverlayService : Service() {
         RealtimeRuntimeBridge.removeListener(runtimeBridgeListener)
         unregisterScreenStateReceiver()
         hideConfirmOverlay()
-        removeWindows()
+        removeWindows(immediate = usesAttachedHostWindow())
         scope.cancel()
         super.onDestroy()
     }
 
     override fun onTaskRemoved(rootIntent: Intent?) {
         super.onTaskRemoved(rootIntent)
-        if (settings.floatingOverlayEnabled && canDrawOverlays(this)) {
+        if (restartsAfterTaskRemoval() && settings.floatingOverlayEnabled && canDrawOverlays(this)) {
             runCatching { start(this) }
                 .onFailure { AppLogger.e("FloatingOverlayService restart after task removed failed", it) }
         }
@@ -2118,8 +2208,6 @@ class FloatingOverlayService : Service() {
                 }
                 if (next.floatingOverlayShowOnLockScreen != previousShowOnLockScreen) {
                     syncLockScreenOverlayHost("setting_changed")
-                    rebuildWindowsPreservingState()
-                    return@collectLatest
                 }
                 if (next.bluetoothMediaTitleSubtitle && !previousBluetoothTitleSubtitle) {
                     syncBluetoothMediaTitleToCommittedQuickSubtitle()
@@ -2228,6 +2316,7 @@ class FloatingOverlayService : Service() {
     }
 
     private fun registerScreenStateReceiver() {
+        if (!managesLockScreenHost()) return
         if (screenStateReceiverRegistered) return
         val filter = IntentFilter().apply {
             addAction(Intent.ACTION_SCREEN_OFF)
@@ -2235,12 +2324,12 @@ class FloatingOverlayService : Service() {
             addAction(Intent.ACTION_USER_PRESENT)
         }
         runCatching {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                registerReceiver(screenStateReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
-            } else {
-                @Suppress("DEPRECATION")
-                registerReceiver(screenStateReceiver, filter)
-            }
+            ContextCompat.registerReceiver(
+                this,
+                screenStateReceiver,
+                filter,
+                ContextCompat.RECEIVER_NOT_EXPORTED
+            )
             screenStateReceiverRegistered = true
         }.onFailure {
             AppLogger.e("FloatingOverlayService.registerScreenStateReceiver failed", it)
@@ -2254,29 +2343,33 @@ class FloatingOverlayService : Service() {
         screenStateReceiverRegistered = false
     }
 
-    private fun refreshOverlayForLockScreen(reason: String, delayMs: Long) {
-        applyOverlayWindowFlags()
-        val generation = ++lockScreenRefreshGeneration
-        fabRoot?.postDelayed({
-            if (
-                generation == lockScreenRefreshGeneration &&
-                settings.floatingOverlayShowOnLockScreen &&
-                fabRoot != null
-            ) {
-                rebuildWindowsPreservingState()
-                healFabInteractionState("lock_screen_rebuild_$reason")
-                AppLogger.i("FloatingOverlayService refreshed for lock screen: $reason")
-            }
-        }, delayMs)
-    }
-
     private fun syncLockScreenOverlayHost(reason: String) {
+        if (!managesLockScreenHost()) return
         if (settings.floatingOverlayShowOnLockScreen) {
             LockScreenOverlayHostActivity.showIfLocked(this, reason)
         } else {
             LockScreenOverlayHostActivity.dismiss(this)
         }
     }
+
+    private fun setPanelWindowVisibleImmediately(visible: Boolean) {
+        panelContent?.animate()?.cancel()
+        panelContent?.alpha = 1f
+        panelContent?.translationY = 0f
+        panelContent?.visibility = if (visible) View.VISIBLE else View.GONE
+        panelRoot?.visibility = if (visible) View.VISIBLE else View.GONE
+        panelVisible = visible
+    }
+
+    private fun setMiniWindowVisibleImmediately(visible: Boolean) {
+        miniContent?.animate()?.cancel()
+        miniContent?.alpha = 1f
+        miniContent?.translationY = 0f
+        miniContent?.visibility = if (visible) View.VISIBLE else View.GONE
+        miniRoot?.visibility = if (visible) View.VISIBLE else View.GONE
+        miniVisible = visible
+    }
+
 
     @Suppress("DEPRECATION")
     private fun overlayWindowFlags(
@@ -2286,9 +2379,6 @@ class FloatingOverlayService : Service() {
         var flags = WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
         if (notFocusable) flags = flags or WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
         if (notTouchable) flags = flags or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
-        if (settings.floatingOverlayShowOnLockScreen) {
-            flags = flags or WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED
-        }
         return flags
     }
 
@@ -2415,6 +2505,7 @@ class FloatingOverlayService : Service() {
             overlayWindowFlags(),
             PixelFormat.TRANSLUCENT
         ).apply {
+            token = overlayWindowToken()
             gravity = Gravity.TOP or Gravity.START
             windowAnimations = 0
             x = displayWidth() - dp(96)
@@ -2434,6 +2525,7 @@ class FloatingOverlayService : Service() {
             overlayWindowFlags(),
             PixelFormat.TRANSLUCENT
         ).apply {
+            token = overlayWindowToken()
             gravity = Gravity.TOP or Gravity.START
             windowAnimations = 0
             x = (fabParams?.x ?: 0) + fabExpandedOuterPaddingPx()
@@ -2519,10 +2611,12 @@ class FloatingOverlayService : Service() {
             background = roundedRectDrawable(overlayRadiusDp, overlayCardColor())
             elevation = dp(6).toFloat()
             setPadding(dp(16), dp(12), dp(16), dp(12))
-            addView(symbolTextView("arrow_back", 22f, overlayOnSurfaceColor()).apply {
-                setOnClickListener { hidePanel() }
-            })
-            addView(spaceView(dp(10), 1))
+            if (supportsCollapsedFabState()) {
+                addView(symbolTextView("arrow_back", 22f, overlayOnSurfaceColor()).apply {
+                    setOnClickListener { hidePanel() }
+                })
+                addView(spaceView(dp(10), 1))
+            }
             addView(
                 FrameLayout(this@FloatingOverlayService).apply {
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
@@ -2822,6 +2916,7 @@ class FloatingOverlayService : Service() {
             overlayWindowFlags(),
             PixelFormat.TRANSLUCENT
         ).apply {
+            token = overlayWindowToken()
             gravity = Gravity.TOP or Gravity.START
         }
         windowManager.addView(panelRoot, panelParams)
@@ -2938,6 +3033,7 @@ class FloatingOverlayService : Service() {
             overlayWindowFlags(notFocusable = false),
             PixelFormat.TRANSLUCENT
         ).apply {
+            token = overlayWindowToken()
             gravity = Gravity.TOP or Gravity.START
             softInputMode =
                 WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE or
@@ -4006,6 +4102,7 @@ class FloatingOverlayService : Service() {
             overlayWindowFlags(),
             PixelFormat.TRANSLUCENT
         ).apply {
+            token = overlayWindowToken()
             gravity = Gravity.TOP or Gravity.START
         }
         windowManager.addView(miniRoot, miniParams)
@@ -4091,6 +4188,7 @@ class FloatingOverlayService : Service() {
             overlayWindowFlags(notTouchable = true),
             PixelFormat.TRANSLUCENT
         ).apply {
+            token = overlayWindowToken()
             gravity = Gravity.TOP or Gravity.START
         }
         windowManager.addView(confirmOverlay, confirmParams)
@@ -4099,12 +4197,22 @@ class FloatingOverlayService : Service() {
         updateFabUi()
     }
 
-    private fun removeWindows() {
+    private fun removeWindows(immediate: Boolean = false) {
+        fun removeWindow(view: View?) {
+            view ?: return
+            runCatching {
+                if (immediate) {
+                    windowManager.removeViewImmediate(view)
+                } else {
+                    windowManager.removeView(view)
+                }
+            }
+        }
         overlayTextInputWindow?.dismiss(immediate = true)
         overlayFabModeGuideWindow?.dismiss()
         cancelFabSnapAnimation()
         cancelFabInnerFoldAnimation()
-        confirmOverlay?.let { runCatching { windowManager.removeView(it) } }
+        removeWindow(confirmOverlay)
         confirmOverlay = null
         confirmTextCardView = null
         confirmClipContainer = null
@@ -4113,11 +4221,11 @@ class FloatingOverlayService : Service() {
         rightActionButton = null
         panelPickerTextContextMenu?.dispose()
         panelPickerTextContextMenu = null
-        panelPickerOverlay?.let { runCatching { windowManager.removeView(it) } }
+        removeWindow(panelPickerOverlay)
         panelPickerOverlay = null
         panelPickerListContainer = null
         panelPickerSearchInput = null
-        panelRoot?.let { runCatching { windowManager.removeView(it) } }
+        removeWindow(panelRoot)
         panelRoot = null
         panelContent = null
         panelStatusTextView = null
@@ -4145,7 +4253,7 @@ class FloatingOverlayService : Service() {
         panelPager = null
         panelPagerAdapter = null
         saveMiniQuickItemsScrollState()
-        miniRoot?.let { runCatching { windowManager.removeView(it) } }
+        removeWindow(miniRoot)
         miniRoot = null
         miniContent = null
         miniStatusTextView = null
@@ -4220,11 +4328,11 @@ class FloatingOverlayService : Service() {
         miniActionFabIconView = null
         miniBackButtonView = null
         miniOpenButtonView = null
-        fabTouchProxy?.let { runCatching { windowManager.removeView(it) } }
+        removeWindow(fabTouchProxy)
         fabTouchProxy = null
         fabTouchParams = null
         fabRootTouchPassthrough = false
-        fabRoot?.let { runCatching { windowManager.removeView(it) } }
+        removeWindow(fabRoot)
         fabRoot = null
         fabButton = null
         fabButtonHost = null
@@ -4234,21 +4342,34 @@ class FloatingOverlayService : Service() {
         bubbleTextView = null
     }
 
-    private fun rebuildWindowsPreservingState() {
-        saveFabAnchorForOrientation(
-            currentFabOrientation,
-            lastFabDisplayWidth.takeIf { it > 0 } ?: displayWidth(),
-            lastFabDisplayHeight.takeIf { it > 0 } ?: displayHeight()
-        )
+    protected fun removeAttachedHostWindowsImmediately() {
+        if (!usesAttachedHostWindow() || !overlayWindowsInitialized) return
+        removeWindows(immediate = true)
+        overlayWindowsInitialized = false
+        panelVisible = false
+        miniVisible = false
+    }
+
+    private fun rebuildWindowsPreservingState(
+        preserveCurrentFabPosition: Boolean = true
+    ) {
+        if (preserveCurrentFabPosition) {
+            saveFabAnchorForOrientation(
+                currentFabOrientation,
+                lastFabDisplayWidth.takeIf { it > 0 } ?: displayWidth(),
+                lastFabDisplayHeight.takeIf { it > 0 } ?: displayHeight()
+            )
+        }
         val wasPanelVisible = panelVisible
         val wasMiniVisible = miniVisible
+        val restorePanelVisible = wasPanelVisible || (!supportsCollapsedFabState() && !wasMiniVisible)
         val wasPickerVisible = panelPickerOverlay?.visibility == View.VISIBLE
         removeWindows()
         ensureWindows()
         restoreFabPositionForCurrentOrientation(allowOppositeConversion = false)
-        panelVisible = wasPanelVisible
-        miniVisible = wasMiniVisible
-        if (wasPanelVisible) updatePanelPosition()
+        setPanelWindowVisibleImmediately(restorePanelVisible)
+        setMiniWindowVisibleImmediately(wasMiniVisible)
+        if (restorePanelVisible) updatePanelPosition()
         if (wasMiniVisible) updateMiniPanelPosition()
         if (wasPickerVisible) showShortcutPicker()
         refreshPanelUi()
@@ -4316,6 +4437,7 @@ class FloatingOverlayService : Service() {
         if (fabIdleDocked) {
             bubbleRow?.visibility = View.GONE
         }
+        onOverlayVisibilityChanged(panelVisible, miniVisible)
     }
 
     private suspend fun refreshRecognitionResourceAvailability() {
@@ -4350,6 +4472,8 @@ class FloatingOverlayService : Service() {
             windowManager = windowManager,
             styleProvider = ::overlayInteractionStyle,
             windowFlagsProvider = { overlayWindowFlags(notFocusable = false) },
+            windowTypeProvider = ::overlayWindowType,
+            windowTokenProvider = ::overlayWindowToken,
             createPreviewCard = ::createOverlayTextInputPreviewCard,
             updatePreviewCard = ::updateOverlayTextInputPreviewCard,
             onDraftChanged = { quickSubtitleInputText = it },
@@ -4382,6 +4506,8 @@ class FloatingOverlayService : Service() {
             windowManager = windowManager,
             styleProvider = ::overlayInteractionStyle,
             windowFlagsProvider = { overlayWindowFlags(notFocusable = false) },
+            windowTypeProvider = ::overlayWindowType,
+            windowTokenProvider = ::overlayWindowToken,
             onModeSelected = { keyboardFirst ->
                 settings = settings.copy(
                     floatingOverlayFabPrefersKeyboard = keyboardFirst,
@@ -4409,6 +4535,16 @@ class FloatingOverlayService : Service() {
     }
 
     private fun syncFabVisibility(show: Boolean) {
+        if (!supportsCollapsedFabState()) {
+            fabVisibilityTarget = false
+            fabRoot?.animate()?.cancel()
+            fabRoot?.visibility = View.GONE
+            fabRoot?.alpha = 1f
+            fabRoot?.scaleX = 1f
+            fabRoot?.scaleY = 1f
+            fabTouchProxy?.visibility = View.GONE
+            return
+        }
         if (!show) {
             prepareFabRestoreForVisibilityHide()
             fabTouchProxy?.visibility = View.GONE
@@ -4628,15 +4764,13 @@ class FloatingOverlayService : Service() {
 
     private fun requestRecordAudioPermissionFromApp(startRealtimeOnGrant: Boolean) {
         overlayHintText = "需要麦克风权限"
-        runCatching {
+        launchAfterOverlayHostUnlock("requestRecordAudioPermission") {
             startActivity(
                 OverlayBridge.buildRequestRecordAudioPermissionIntent(
                     this,
                     startRealtimeOnGrant = startRealtimeOnGrant
                 )
             )
-        }.onFailure {
-            AppLogger.e("FloatingOverlayService.requestRecordAudioPermission failed", it)
         }
     }
 
@@ -4742,10 +4876,8 @@ class FloatingOverlayService : Service() {
     }
 
     private fun launchQuickSubtitle(target: String, text: String) {
-        runCatching {
+        launchAfterOverlayHostUnlock("launchQuickSubtitle") {
             startActivity(OverlayBridge.buildQuickSubtitleIntent(this, target, text))
-        }.onFailure {
-            AppLogger.e("FloatingOverlayService.launchQuickSubtitle failed", it)
         }
     }
 
@@ -4770,10 +4902,8 @@ class FloatingOverlayService : Service() {
 
     private fun launchSoundboardPage(groupId: Long? = null) {
         hideMiniPanel()
-        runCatching {
+        launchAfterOverlayHostUnlock("launchSoundboardPage") {
             startActivity(OverlayBridge.buildOpenSoundboardIntent(this, groupId))
-        }.onFailure {
-            AppLogger.e("FloatingOverlayService.launchSoundboardPage failed", it)
         }
     }
 
@@ -5054,7 +5184,7 @@ class FloatingOverlayService : Service() {
 
     private fun showPanel() {
         scope.launch {
-            if (!canDrawOverlays(this@FloatingOverlayService)) {
+            if (!canDisplayOverlayWindows()) {
                 stopSelf()
                 return@launch
             }
@@ -5095,6 +5225,7 @@ class FloatingOverlayService : Service() {
     }
 
     private fun hidePanel() {
+        if (!supportsCollapsedFabState()) return
         if (!panelVisible) {
             if (panelRoot?.visibility == View.VISIBLE) forceHidePanelWindow("already_hidden")
             return
@@ -5116,7 +5247,7 @@ class FloatingOverlayService : Service() {
 
     private fun showMiniPanel(mode: MiniOverlayMode = MiniOverlayMode.Subtitle) {
         scope.launch {
-            if (!canDrawOverlays(this@FloatingOverlayService)) {
+            if (!canDisplayOverlayWindows()) {
                 stopSelf()
                 return@launch
             }
@@ -5172,6 +5303,10 @@ class FloatingOverlayService : Service() {
     }
 
     private fun hideMiniPanel() {
+        if (!supportsCollapsedFabState()) {
+            if (miniVisible) returnFromMiniToPanel()
+            return
+        }
         if (!miniVisible) {
             if (miniRoot?.visibility == View.VISIBLE) forceHideMiniWindow("already_hidden")
             return
@@ -5242,6 +5377,7 @@ class FloatingOverlayService : Service() {
                 MiniOverlayMode.QuickCard -> "打开快捷名片"
                 MiniOverlayMode.Soundboard -> "打开音效板"
             }
+        scheduleAttachedOverlayPositionRefresh()
     }
 
     private fun setMiniSubtitleBodyVisibility(visible: Boolean, animate: Boolean) {
@@ -5388,10 +5524,6 @@ class FloatingOverlayService : Service() {
         val root = panelRoot ?: return
         val content = panelContent ?: return
         val params = panelParams ?: return
-        params.width = WindowManager.LayoutParams.MATCH_PARENT
-        params.height = WindowManager.LayoutParams.MATCH_PARENT
-        params.x = 0
-        params.y = 0
         val contentWidth = overlayContentWidthPx(phoneMaxDp = 360, tabletMaxDp = 400)
         content.measure(
             View.MeasureSpec.makeMeasureSpec(contentWidth, View.MeasureSpec.EXACTLY),
@@ -5400,12 +5532,27 @@ class FloatingOverlayService : Service() {
         val targetHeight = content.measuredHeight
         val targetX = overlayContentLeftPx(contentWidth)
         val targetY = overlayContentTopPx(targetHeight)
-        content.layoutParams = FrameLayout.LayoutParams(
-            contentWidth,
-            ViewGroup.LayoutParams.WRAP_CONTENT
-        ).apply {
-            leftMargin = targetX
-            topMargin = targetY
+        if (usesAttachedHostWindow()) {
+            params.width = contentWidth
+            params.height = targetHeight
+            params.x = targetX
+            params.y = targetY
+            content.layoutParams = FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+        } else {
+            params.width = WindowManager.LayoutParams.MATCH_PARENT
+            params.height = WindowManager.LayoutParams.MATCH_PARENT
+            params.x = 0
+            params.y = 0
+            content.layoutParams = FrameLayout.LayoutParams(
+                contentWidth,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply {
+                leftMargin = targetX
+                topMargin = targetY
+            }
         }
         positionStatusDetailCard(
             content = content,
@@ -5416,14 +5563,18 @@ class FloatingOverlayService : Service() {
         syncConfirmOverlayToActiveWindow()
     }
 
+    private fun scheduleAttachedOverlayPositionRefresh() {
+        if (!usesAttachedHostWindow()) return
+        (panelRoot ?: miniRoot)?.post {
+            if (panelVisible) updatePanelPosition()
+            if (miniVisible) updateMiniPanelPosition()
+        }
+    }
+
     private fun updateMiniPanelPosition() {
         val root = miniRoot ?: return
         val content = miniContent ?: return
         val params = miniParams ?: return
-        params.width = WindowManager.LayoutParams.MATCH_PARENT
-        params.height = WindowManager.LayoutParams.MATCH_PARENT
-        params.x = 0
-        params.y = 0
         val contentWidth = overlayContentWidthPx(phoneMaxDp = 360, tabletMaxDp = 400)
         content.measure(
             View.MeasureSpec.makeMeasureSpec(contentWidth, View.MeasureSpec.EXACTLY),
@@ -5431,13 +5582,28 @@ class FloatingOverlayService : Service() {
         )
         val targetHeight = content.measuredHeight
         val targetX = overlayContentLeftPx(contentWidth)
-        val targetY = overlayContentTopPx(targetHeight)
-        content.layoutParams = FrameLayout.LayoutParams(
-            contentWidth,
-            ViewGroup.LayoutParams.WRAP_CONTENT
-        ).apply {
-            leftMargin = targetX
-            topMargin = targetY
+        val targetY = miniOverlayContentTopPx(targetHeight)
+        if (usesAttachedHostWindow()) {
+            params.width = contentWidth
+            params.height = targetHeight
+            params.x = targetX
+            params.y = targetY
+            content.layoutParams = FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+        } else {
+            params.width = WindowManager.LayoutParams.MATCH_PARENT
+            params.height = WindowManager.LayoutParams.MATCH_PARENT
+            params.x = 0
+            params.y = 0
+            content.layoutParams = FrameLayout.LayoutParams(
+                contentWidth,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply {
+                leftMargin = targetX
+                topMargin = targetY
+            }
         }
         positionStatusDetailCard(
             content = content,
@@ -6042,7 +6208,7 @@ class FloatingOverlayService : Service() {
         return centerX >= displayWidth() / 2
     }
 
-    private fun overlayContentWidthPx(phoneMaxDp: Int, tabletMaxDp: Int): Int {
+    protected open fun overlayContentWidthPx(phoneMaxDp: Int, tabletMaxDp: Int): Int {
         val sideMargin = dp(16)
         val phoneMax = dp(phoneMaxDp)
         val tabletMax = dp(tabletMaxDp)
@@ -6054,7 +6220,7 @@ class FloatingOverlayService : Service() {
         }.coerceAtLeast(dp(280))
     }
 
-    private fun overlayContentLeftPx(contentWidth: Int): Int {
+    protected open fun overlayContentLeftPx(contentWidth: Int): Int {
         val sideMargin = dp(16)
         if (!isTabletLandscapeUi()) {
             val landscapePhoneBias = if (isPhoneLandscapeUi()) dp(16) else 0
@@ -6070,12 +6236,15 @@ class FloatingOverlayService : Service() {
             .coerceIn(sideMargin, max(sideMargin, displayWidth() - contentWidth - sideMargin))
     }
 
-    private fun overlayContentTopPx(contentHeight: Int): Int {
+    protected open fun overlayContentTopPx(contentHeight: Int): Int {
         val topBottomMargin = dp(20)
         val portraitBias = if (!isLandscapeUi()) dp(16) else 0
         return (((displayHeight() - contentHeight) / 2) - portraitBias)
             .coerceIn(topBottomMargin, max(topBottomMargin, displayHeight() - contentHeight - topBottomMargin))
     }
+
+    protected open fun miniOverlayContentTopPx(contentHeight: Int): Int =
+        overlayContentTopPx(contentHeight)
 
     private suspend fun loadQuickSubtitleConfig() {
         val raw = UserPrefs.getQuickSubtitleConfig(this)
@@ -8146,21 +8315,19 @@ class FloatingOverlayService : Service() {
 
     private fun openOverlayQuickCardLink(rawLink: String) {
         val normalized = normalizeOverlayWebUrl(rawLink) ?: return
-        runCatching {
+        launchAfterOverlayHostUnlock("openOverlayQuickCardLink") {
             startActivity(
                 Intent(Intent.ACTION_VIEW, Uri.parse(normalized)).apply {
                     addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 }
             )
-        }.onFailure {
-            AppLogger.e("FloatingOverlayService.openOverlayQuickCardLink failed", it)
         }
     }
 
     private fun shareOverlayPlainText(content: String, chooserTitle: String) {
         val text = content.trim()
         if (text.isEmpty()) return
-        runCatching {
+        launchAfterOverlayHostUnlock("shareOverlayPlainText") {
             startActivity(
                 Intent.createChooser(
                     Intent(Intent.ACTION_SEND).apply {
@@ -8172,8 +8339,6 @@ class FloatingOverlayService : Service() {
                     addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 }
             )
-        }.onFailure {
-            AppLogger.e("FloatingOverlayService.shareOverlayPlainText failed", it)
         }
     }
 
@@ -9383,22 +9548,27 @@ class FloatingOverlayService : Service() {
 
     private fun saveOverlayLauncherLayout() {
         if (!overlayLauncherLayoutLoaded) return
-        val payload = JSONObject().apply {
-            put(
-                "order",
-                JSONArray().apply {
-                    overlayLauncherOrder.forEach { put(it) }
-                }
-            )
-            put(
-                "fabAnchors",
-                JSONObject().apply {
-                    buildOverlayFabAnchorPayload(portraitFabAnchor)?.let { put("portrait", it) }
-                    buildOverlayFabAnchorPayload(landscapeFabAnchor)?.let { put("landscape", it) }
-                }
-            )
-        }.toString()
+        val order = overlayLauncherOrder.toList()
+        val persistAnchors = persistsFabAnchors()
+        val currentAnchors = JSONObject().apply {
+            buildOverlayFabAnchorPayload(portraitFabAnchor)?.let { put("portrait", it) }
+            buildOverlayFabAnchorPayload(landscapeFabAnchor)?.let { put("landscape", it) }
+        }
         scope.launch(Dispatchers.IO) {
+            val anchors = if (persistAnchors) {
+                currentAnchors
+            } else {
+                runCatching {
+                    UserPrefs.getFloatingOverlayLayout(this@FloatingOverlayService)
+                        ?.takeIf { it.trim().startsWith("{") }
+                        ?.let(::JSONObject)
+                        ?.optJSONObject("fabAnchors")
+                }.getOrNull() ?: JSONObject()
+            }
+            val payload = JSONObject().apply {
+                put("order", JSONArray().apply { order.forEach { put(it) } })
+                put("fabAnchors", anchors)
+            }.toString()
             UserPrefs.setFloatingOverlayLayout(this@FloatingOverlayService, payload)
         }
     }
@@ -9565,6 +9735,7 @@ class FloatingOverlayService : Service() {
         if (syncPagerPosition) {
             panelPager?.post { scrollPanelToPage(panelPageIndex, animate = false) }
         }
+        scheduleAttachedOverlayPositionRefresh()
     }
 
     private fun requestPanelUiRefresh(syncPagerPosition: Boolean = true) {
@@ -10489,7 +10660,10 @@ class FloatingOverlayService : Service() {
             launchExternalShortcut(shortcut)
             return
         }
-        runCatching {
+        launchAfterOverlayHostUnlock(
+            label = "launchExternalLauncherShortcut",
+            onFailure = { launchExternalShortcut(shortcut) }
+        ) {
             launcherApps.startShortcut(
                 shortcut.packageName,
                 shortcutInfo.id,
@@ -10497,9 +10671,6 @@ class FloatingOverlayService : Service() {
                 null,
                 Process.myUserHandle()
             )
-        }.onFailure {
-            AppLogger.e("FloatingOverlayService.launchExternalLauncherShortcut failed", it)
-            launchExternalShortcut(shortcut)
         }
     }
 
@@ -10510,19 +10681,19 @@ class FloatingOverlayService : Service() {
         val shortcutId = target.shortcutId
         if (shortcutId == qqAccessibilityScannerShortcutId) {
             if (!VolumeHotkeyAccessibilityService.isEnabled(this)) {
-                runCatching {
+                launchAfterOverlayHostUnlock("openAccessibilityGuide") {
                     startActivity(OverlayBridge.buildOpenAccessibilityGuideIntent(this))
-                }.onFailure {
-                    AppLogger.e("FloatingOverlayService.openAccessibilityGuide failed", it)
                 }
                 return
             }
-            if (VolumeHotkeyAccessibilityService.requestOpenQqScanner(this)) {
-                Toast.makeText(this, "正在打开QQ扫一扫", Toast.LENGTH_SHORT).show()
-            } else if (QqScannerSupport.launchQq(this)) {
-                Toast.makeText(this, "无障碍服务未连接，已打开QQ", Toast.LENGTH_SHORT).show()
-            } else {
-                Toast.makeText(this, "打开QQ失败，请手动打开QQ扫一扫", Toast.LENGTH_SHORT).show()
+            launchAfterOverlayHostUnlock("openQqScanner") {
+                if (VolumeHotkeyAccessibilityService.requestOpenQqScanner(this)) {
+                    Toast.makeText(this, "正在打开QQ扫一扫", Toast.LENGTH_SHORT).show()
+                } else if (QqScannerSupport.launchQq(this)) {
+                    Toast.makeText(this, "无障碍服务未连接，已打开QQ", Toast.LENGTH_SHORT).show()
+                } else {
+                    Toast.makeText(this, "打开QQ失败，请手动打开QQ扫一扫", Toast.LENGTH_SHORT).show()
+                }
             }
             return
         }
@@ -10539,7 +10710,14 @@ class FloatingOverlayService : Service() {
             }
             return
         }
-        runCatching {
+        launchAfterOverlayHostUnlock(
+            label = "launchExternalShortcutById",
+            onFailure = {
+                if (!launchExternalShortcutFallback(shortcut, target)) {
+                    launchExternalShortcut(shortcut)
+                }
+            }
+        ) {
             launcherApps.startShortcut(
                 shortcut.packageName,
                 shortcutId,
@@ -10547,11 +10725,6 @@ class FloatingOverlayService : Service() {
                 null,
                 Process.myUserHandle()
             )
-        }.onFailure {
-            AppLogger.e("FloatingOverlayService.launchExternalShortcutById failed", it)
-            if (!launchExternalShortcutFallback(shortcut, target)) {
-                launchExternalShortcut(shortcut)
-            }
         }
     }
 
@@ -10596,13 +10769,11 @@ class FloatingOverlayService : Service() {
                 useLaunchIntent = false
             )
         if (explicitIntent != null) {
-            val launched =
-                runCatching {
+            val launched = launchAfterOverlayHostUnlock(
+                label = "launchHardcodedExternalShortcut explicit"
+            ) {
                     startActivity(explicitIntent)
-                    true
-                }.onFailure {
-                    AppLogger.e("FloatingOverlayService.launchHardcodedExternalShortcut explicit failed", it)
-                }.getOrDefault(false)
+                }
             if (launched) return true
         }
         val launchIntent =
@@ -10611,16 +10782,13 @@ class FloatingOverlayService : Service() {
                 spec = spec,
                 useLaunchIntent = true
             )
-        return runCatching {
-            if (launchIntent != null) {
+        return if (launchIntent != null) {
+            launchAfterOverlayHostUnlock("launchHardcodedExternalShortcut launchIntent") {
                 startActivity(launchIntent)
-                true
-            } else {
-                false
             }
-        }.onFailure {
-            AppLogger.e("FloatingOverlayService.launchHardcodedExternalShortcut launchIntent failed", it)
-        }.getOrDefault(false)
+        } else {
+            false
+        }
     }
 
     private fun buildHardcodedExternalIntent(
@@ -10664,15 +10832,15 @@ class FloatingOverlayService : Service() {
             launchExternalShortcut(shortcut)
             return
         }
-        runCatching {
+        launchAfterOverlayHostUnlock(
+            label = "launchExternalManifestShortcut",
+            onFailure = { launchExternalShortcut(shortcut) }
+        ) {
             if (intents.size == 1) {
                 startActivity(intents.first())
             } else {
                 startActivities(intents.toTypedArray())
             }
-        }.onFailure {
-            AppLogger.e("FloatingOverlayService.launchExternalManifestShortcut failed", it)
-            launchExternalShortcut(shortcut)
         }
     }
 
@@ -11433,23 +11601,19 @@ class FloatingOverlayService : Service() {
     }
 
     private fun launchAppPage(target: String) {
-        runCatching {
+        launchAfterOverlayHostUnlock("launchAppPage") {
             startActivity(OverlayBridge.buildOpenPageIntent(this, target))
-        }.onFailure {
-            AppLogger.e("FloatingOverlayService.launchAppPage failed", it)
         }
     }
 
     private fun launchExternalShortcut(shortcut: OverlayAppShortcut) {
-        runCatching {
+        launchAfterOverlayHostUnlock("launchExternalShortcut") {
             val intent = Intent(Intent.ACTION_MAIN).apply {
                 addCategory(Intent.CATEGORY_LAUNCHER)
                 component = android.content.ComponentName(shortcut.packageName, shortcut.className)
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
             startActivity(intent)
-        }.onFailure {
-            AppLogger.e("FloatingOverlayService.launchExternalShortcut failed", it)
         }
     }
 
@@ -11707,13 +11871,14 @@ class FloatingOverlayService : Service() {
         )
         val targetWidth = contentWidth
         val targetHeight = content.height.takeIf { it > 0 } ?: content.measuredHeight.takeIf { it > 0 } ?: return
-        val layoutParams = content.layoutParams as? FrameLayout.LayoutParams ?: return
+        val contentLocation = IntArray(2)
+        content.getLocationOnScreen(contentLocation)
         val extraWidth = if (isPhoneLandscapeUi()) dp(40) else 0
         val extraHeight = if (isPhoneLandscapeUi()) 0 else dp(40)
         params.width = targetWidth + extraWidth
         params.height = targetHeight + extraHeight
-        params.x = layoutParams.leftMargin
-        params.y = layoutParams.topMargin
+        params.x = contentLocation[0]
+        params.y = contentLocation[1]
         runCatching { windowManager.updateViewLayout(overlay, params) }
         overlay.post { layoutConfirmOverlayContents() }
     }
@@ -11848,7 +12013,7 @@ class FloatingOverlayService : Service() {
         val targetY = params.y.coerceIn(fabMinY(), fabMaxY(screenHeight))
         val targetAnchor = buildFabAnchor(targetX, targetY, screenWidth, screenHeight)
         setFabAnchorForOrientation(currentFabOrientation, targetAnchor)
-        saveOverlayLauncherLayout()
+        if (persistsFabAnchors()) saveOverlayLauncherLayout()
         animateFabContainerTo(targetX, targetY) {
             updateFabDockLayout(targetEdge)
             updateFabWindowLayout()
@@ -11864,7 +12029,7 @@ class FloatingOverlayService : Service() {
         params.y = params.y.coerceIn(fabMinY(), maxY)
     }
 
-    private fun overlayWindowType(): Int {
+    protected open fun overlayWindowType(): Int {
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
         } else {
@@ -12210,7 +12375,6 @@ class FloatingOverlayService : Service() {
         private const val ACTION_OPEN_MINI_SUBTITLE = "com.lhtstudio.kigtts.app.action.OVERLAY_OPEN_MINI_SUBTITLE"
         private const val ACTION_OPEN_MINI_QUICK_CARD = "com.lhtstudio.kigtts.app.action.OVERLAY_OPEN_MINI_QUICK_CARD"
         private const val ACTION_OPEN_MINI_SOUNDBOARD = "com.lhtstudio.kigtts.app.action.OVERLAY_OPEN_MINI_SOUNDBOARD"
-
         fun canDrawOverlays(context: Context): Boolean {
             return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                 Settings.canDrawOverlays(context)
@@ -12258,6 +12422,7 @@ class FloatingOverlayService : Service() {
             }
             ContextCompat.startForegroundService(context, intent)
         }
+
 
         fun stop(context: Context) {
             context.stopService(Intent(context, FloatingOverlayService::class.java))

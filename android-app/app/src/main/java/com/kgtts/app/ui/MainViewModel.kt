@@ -912,6 +912,8 @@ class MainViewModel(
             floatingOverlayEnabled = settings.floatingOverlayEnabled,
             floatingOverlayAutoDock = settings.floatingOverlayAutoDock,
             floatingOverlayShowOnLockScreen = settings.floatingOverlayShowOnLockScreen,
+            lockScreenBackgroundPermissionGuideShown =
+                settings.lockScreenBackgroundPermissionGuideShown,
             floatingOverlayFabPrefersKeyboard = settings.floatingOverlayFabPrefersKeyboard,
             floatingOverlayHardcodedShortcutSupplement =
                 settings.floatingOverlayHardcodedShortcutSupplement,
@@ -3658,6 +3660,13 @@ class MainViewModel(
         uiState = uiState.copy(floatingOverlayShowOnLockScreen = enabled)
         viewModelScope.launch {
             UserPrefs.setFloatingOverlayShowOnLockScreen(appContext, enabled)
+        }
+    }
+
+    fun setLockScreenBackgroundPermissionGuideShown(shown: Boolean) {
+        uiState = uiState.copy(lockScreenBackgroundPermissionGuideShown = shown)
+        viewModelScope.launch {
+            UserPrefs.setLockScreenBackgroundPermissionGuideShown(appContext, shown)
         }
     }
 

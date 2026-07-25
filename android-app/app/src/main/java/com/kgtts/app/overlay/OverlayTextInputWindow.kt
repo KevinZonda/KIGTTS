@@ -5,6 +5,7 @@ import android.graphics.Color
 import android.graphics.PixelFormat
 import android.graphics.Rect
 import android.graphics.drawable.GradientDrawable
+import android.os.IBinder
 import android.text.Editable
 import android.text.InputType
 import android.text.TextWatcher
@@ -26,6 +27,8 @@ internal class OverlayTextInputWindow(
     private val windowManager: WindowManager,
     private val styleProvider: () -> OverlayInteractionStyle,
     private val windowFlagsProvider: () -> Int,
+    private val windowTypeProvider: () -> Int = ::defaultOverlayWindowType,
+    private val windowTokenProvider: () -> IBinder? = { null },
     private val createPreviewCard: () -> OverlaySubtitlePreviewCard,
     private val updatePreviewCard: (OverlaySubtitlePreviewCard, String) -> Unit,
     private val onDraftChanged: (String) -> Unit,
@@ -46,13 +49,9 @@ internal class OverlayTextInputWindow(
     private var lastPreviewText = ""
     private var lastPreviewCursorIndex = 0
 
-    val isShowing: Boolean
-        get() = root?.isAttachedToWindow == true
+    val isShowing: Boolean get() = root?.isAttachedToWindow == true
 
-    fun show(
-        initialText: String,
-        initialPlayOnSend: Boolean
-    ) {
+    fun show(initialText: String, initialPlayOnSend: Boolean) {
         dismiss(immediate = true)
         val style = styleProvider()
         playOnSend = initialPlayOnSend
@@ -466,15 +465,11 @@ internal class OverlayTextInputWindow(
     private fun createLayoutParams(): WindowManager.LayoutParams = WindowManager.LayoutParams(
         WindowManager.LayoutParams.MATCH_PARENT,
         WindowManager.LayoutParams.MATCH_PARENT,
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
-        } else {
-            @Suppress("DEPRECATION")
-            WindowManager.LayoutParams.TYPE_PHONE
-        },
+        windowTypeProvider(),
         windowFlagsProvider(),
         PixelFormat.TRANSLUCENT
     ).apply {
+        token = windowTokenProvider()
         gravity = Gravity.FILL
         softInputMode =
             WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING or

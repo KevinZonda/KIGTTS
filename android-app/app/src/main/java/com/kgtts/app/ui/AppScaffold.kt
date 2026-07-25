@@ -539,8 +539,8 @@ fun AppScaffold(viewModel: MainViewModel) {
             fontFile = lanCastFontFile
         )
     }
-    val topBarColor = if (state.solidTopBar) md2CardContainerColor() else MaterialTheme.colorScheme.primary
-    val topBarContentColor = if (state.solidTopBar) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onPrimary
+    val topBarColor = if (state.solidTopBar) MaterialTheme.colorScheme.primary else md2CardContainerColor()
+    val topBarContentColor = if (state.solidTopBar) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
     val hiddenDrawerScrimColor = Color.Black.copy(
         alpha = if (isDarkTheme) 0.56f else 0.32f
     )

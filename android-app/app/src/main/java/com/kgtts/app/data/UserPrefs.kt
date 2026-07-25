@@ -155,6 +155,8 @@ object UserPrefs {
     private val KEY_FLOATING_OVERLAY_AUTO_DOCK = booleanPreferencesKey("floating_overlay_auto_dock")
     private val KEY_FLOATING_OVERLAY_SHOW_ON_LOCK_SCREEN =
         booleanPreferencesKey("floating_overlay_show_on_lock_screen")
+    private val KEY_LOCK_SCREEN_BACKGROUND_PERMISSION_GUIDE_SHOWN =
+        booleanPreferencesKey("lock_screen_background_permission_guide_shown")
     private val KEY_FLOATING_OVERLAY_FAB_PREFERS_KEYBOARD =
         booleanPreferencesKey("floating_overlay_fab_prefers_keyboard")
     private val KEY_FLOATING_OVERLAY_FAB_INPUT_GUIDE_SHOWN =
@@ -281,6 +283,7 @@ object UserPrefs {
         val floatingOverlayEnabled: Boolean = false,
         val floatingOverlayAutoDock: Boolean = true,
         val floatingOverlayShowOnLockScreen: Boolean = false,
+        val lockScreenBackgroundPermissionGuideShown: Boolean = false,
         val floatingOverlayFabPrefersKeyboard: Boolean = false,
         val floatingOverlayFabInputGuideShown: Boolean = false,
         val floatingOverlayHardcodedShortcutSupplement: Boolean = false,
@@ -601,6 +604,8 @@ object UserPrefs {
             floatingOverlayEnabled = this[KEY_FLOATING_OVERLAY_ENABLED] ?: false,
             floatingOverlayAutoDock = this[KEY_FLOATING_OVERLAY_AUTO_DOCK] ?: true,
             floatingOverlayShowOnLockScreen = this[KEY_FLOATING_OVERLAY_SHOW_ON_LOCK_SCREEN] ?: false,
+            lockScreenBackgroundPermissionGuideShown =
+                this[KEY_LOCK_SCREEN_BACKGROUND_PERMISSION_GUIDE_SHOWN] ?: false,
             floatingOverlayFabPrefersKeyboard =
                 this[KEY_FLOATING_OVERLAY_FAB_PREFERS_KEYBOARD] ?: false,
             floatingOverlayFabInputGuideShown =
@@ -1052,6 +1057,12 @@ object UserPrefs {
     suspend fun setFloatingOverlayShowOnLockScreen(context: Context, enabled: Boolean) {
         context.dataStore.edit { prefs ->
             prefs[KEY_FLOATING_OVERLAY_SHOW_ON_LOCK_SCREEN] = enabled
+        }
+    }
+
+    suspend fun setLockScreenBackgroundPermissionGuideShown(context: Context, shown: Boolean) {
+        context.dataStore.edit { prefs ->
+            prefs[KEY_LOCK_SCREEN_BACKGROUND_PERMISSION_GUIDE_SHOWN] = shown
         }
     }
 
