@@ -76,70 +76,70 @@ internal fun LockScreenWallpaperSettingsCard(
                     onSettingsChange(settings.copy(wallpaperBlurRadius = it))
                 }
             )
-            LockScreenEffectSlider(
-                title = "遮罩透明度",
-                valueLabel = "${(settings.scrimOpacity * 100).toInt()}%",
-                value = settings.scrimOpacity,
-                valueRange = 0f..1f,
-                onValueChange = { onSettingsChange(settings.copy(scrimOpacity = it)) }
-            )
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { showScrimColorPicker = true }
-                    .padding(vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                Box(
-                    Modifier
-                        .size(28.dp)
-                        .background(Color(settings.scrimColorArgb), androidx.compose.foundation.shape.CircleShape)
-                )
-                Column(Modifier.weight(1f)) {
-                    Text("遮罩颜色", fontWeight = FontWeight.SemiBold)
-                    Text(
-                        formatColorHexAndNameZhCn(settings.scrimColorArgb),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                MsIcon("chevron_right", contentDescription = "选择遮罩颜色")
-            }
-            Text(
-                "遮罩样式",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            TabRow(
-                selectedTabIndex = settings.scrimStyle.ordinal,
-                backgroundColor = md2CardContainerColor(),
-                contentColor = MaterialTheme.colorScheme.primary
-            ) {
-                LockScreenScrimStyle.entries.forEach { style ->
-                    Tab(
-                        selected = settings.scrimStyle == style,
-                        onClick = { onSettingsChange(settings.copy(scrimStyle = style)) },
-                        text = {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                MsIcon(
-                                    if (style == LockScreenScrimStyle.EdgeGradient) "gradient" else "crop_square",
-                                    contentDescription = null,
-                                    iconSize = 18.dp
-                                )
-                                Spacer(Modifier.size(6.dp))
-                                Text(if (style == LockScreenScrimStyle.EdgeGradient) "渐变" else "全填充")
-                            }
-                        }
-                    )
-                }
-            }
-            Text(
-                "竖屏渐变覆盖顶部和底部；横屏仅从左侧向右淡出，保证时钟与解锁提示清晰。",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
         }
+        LockScreenEffectSlider(
+            title = "遮罩透明度",
+            valueLabel = "${(settings.scrimOpacity * 100).toInt()}%",
+            value = settings.scrimOpacity,
+            valueRange = 0f..1f,
+            onValueChange = { onSettingsChange(settings.copy(scrimOpacity = it)) }
+        )
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { showScrimColorPicker = true }
+                .padding(vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Box(
+                Modifier
+                    .size(28.dp)
+                    .background(Color(settings.scrimColorArgb), androidx.compose.foundation.shape.CircleShape)
+            )
+            Column(Modifier.weight(1f)) {
+                Text("遮罩颜色", fontWeight = FontWeight.SemiBold)
+                Text(
+                    formatColorHexAndNameZhCn(settings.scrimColorArgb),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            MsIcon("chevron_right", contentDescription = "选择遮罩颜色")
+        }
+        Text(
+            "遮罩样式",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        TabRow(
+            selectedTabIndex = settings.scrimStyle.ordinal,
+            backgroundColor = md2CardContainerColor(),
+            contentColor = MaterialTheme.colorScheme.primary
+        ) {
+            LockScreenScrimStyle.entries.forEach { style ->
+                Tab(
+                    selected = settings.scrimStyle == style,
+                    onClick = { onSettingsChange(settings.copy(scrimStyle = style)) },
+                    text = {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            MsIcon(
+                                if (style == LockScreenScrimStyle.EdgeGradient) "gradient" else "crop_square",
+                                contentDescription = null,
+                                iconSize = 18.dp
+                            )
+                            Spacer(Modifier.size(6.dp))
+                            Text(if (style == LockScreenScrimStyle.EdgeGradient) "渐变" else "全填充")
+                        }
+                    }
+                )
+            }
+        }
+        Text(
+            "未选择自定义壁纸时，遮罩也会覆盖系统锁屏壁纸。竖屏渐变覆盖顶部和底部；横屏仅从左侧向右淡出。",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
     }
     if (showScrimColorPicker) {
         ThemeColorPickerDialog(

@@ -151,14 +151,19 @@ private suspend fun renderAdaptiveLedFrame(
         val textBitmapPaint = AndroidPaint(AndroidPaint.ANTI_ALIAS_FLAG).apply {
             color = value.ledColorArgb
         }
-        if (value.glowEnabled && value.glowStrength > 0f) {
-            val glowPaint = AndroidPaint(textBitmapPaint).apply {
-                alpha = (110f * value.glowStrength).roundToInt().coerceIn(0, 110)
-                setShadowLayer(24f * value.glowStrength, 0f, 0f, value.ledColorArgb)
-            }
-            outputCanvas.drawBitmap(mask, 0f, 0f, glowPaint)
-        }
-        outputCanvas.drawBitmap(mask, 0f, 0f, textBitmapPaint)
+        val layers = createLedPaintLayers(
+            source = textBitmapPaint,
+            glowEnabled = value.glowEnabled,
+            glowStrength = value.glowStrength,
+            glowRadiusPx = ledTextGlowRadiusPx(
+                textSizePx = low,
+                densityScale = densityScale,
+                glowStrength = value.glowStrength
+            )
+        )
+        layers.outerGlow?.let { outputCanvas.drawBitmap(mask, 0f, 0f, it) }
+        layers.innerGlow?.let { outputCanvas.drawBitmap(mask, 0f, 0f, it) }
+        outputCanvas.drawBitmap(mask, 0f, 0f, layers.core)
     }
     mask.recycle()
     return output.asImageBitmap()

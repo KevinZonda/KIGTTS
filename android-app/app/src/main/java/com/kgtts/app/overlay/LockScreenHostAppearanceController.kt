@@ -84,17 +84,15 @@ internal class LockScreenHostAppearanceController(
         wallpaperBitmap?.takeIf { it !== wallpaper }?.recycle()
         wallpaperBitmap = wallpaper
         if (wallpaper == null) {
-            wallpaperView.foreground = null
-            wallpaperView.visibility = android.view.View.GONE
+            wallpaperView.visibility = android.view.View.VISIBLE
         } else {
             wallpaperView.setImageBitmap(wallpaper)
             wallpaperView.visibility = android.view.View.VISIBLE
-            applyWallpaperScrim()
         }
+        applyWallpaperScrim()
     }
 
     private fun applyWallpaperScrim() {
-        if (wallpaperBitmap == null) return
         wallpaperView.foreground = LockScreenWallpaperAppearance.scrimDrawable(
             settings,
             isLandscape()

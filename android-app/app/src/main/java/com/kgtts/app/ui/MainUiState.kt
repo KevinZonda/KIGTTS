@@ -262,6 +262,7 @@ import com.lhtstudio.kigtts.app.data.VoicePackInfo
 import com.lhtstudio.kigtts.app.data.UserPrefs
 import com.lhtstudio.kigtts.app.data.VoicePackMeta
 import com.lhtstudio.kigtts.app.data.defaultSoundboardGroups
+import com.lhtstudio.kigtts.app.data.defaultLanCastDisplaySettings
 import com.lhtstudio.kigtts.app.data.isKokoroVoiceDir
 import com.lhtstudio.kigtts.app.data.isSystemTtsVoiceDir
 import com.lhtstudio.kigtts.app.data.parseSoundboardConfig
@@ -454,10 +455,11 @@ data class UiState(
     val quickSubtitleGuideReplayRequestId: Int = 0,
     val quickSubtitleKeepInputPreview: Boolean = true,
     val ledSubtitleSettings: LedSubtitleSettings = LedSubtitleSettings(),
-    val lanCastDisplaySettings: LedSubtitleSettings = LedSubtitleSettings(),
+    val lanCastDisplaySettings: LedSubtitleSettings = defaultLanCastDisplaySettings(),
     val bluetoothMediaTitleSubtitle: Boolean = false,
     val liveSubtitleNotificationEnabled: Boolean = false,
     val lanCastAudioOutputMode: Int = UserPrefs.LAN_CAST_AUDIO_LOCAL,
+    val lanCastBackgroundReminderDismissed: Boolean = false,
     val drawingKeepCanvasOrientationToDevice: Boolean = true,
     val drawingPalette: DrawingPalette = DrawingPalette(),
     val pushToTalkPressed: Boolean = false,

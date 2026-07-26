@@ -37,6 +37,20 @@ internal fun resolveLanCastPlaybackPlan(
     )
 }
 
+internal fun isLanCastAudioClientAvailable(
+    running: Boolean,
+    audioClients: Int,
+    lastSeenAtMs: Long,
+    nowMs: Long,
+    reconnectGraceMs: Long
+): Boolean {
+    if (!running) return false
+    if (audioClients > 0) return true
+    return lastSeenAtMs > 0L &&
+        nowMs >= lastSeenAtMs &&
+        nowMs - lastSeenAtMs <= reconnectGraceMs
+}
+
 internal data class LanCastAddress(
     val id: String,
     val interfaceName: String,
@@ -74,7 +88,7 @@ internal data class LanCastQuickTextGroup(
 internal data class LanCastLedStyle(
     val colorArgb: Int = -1,
     val backgroundArgb: Int = 0xFF000000.toInt(),
-    val dotMatrix: Boolean = true,
+    val dotMatrix: Boolean = false,
     val dotShape: Int = 0,
     val dotDensity: Float = 0.58f,
     val dotSize: Float = 8f,
@@ -82,7 +96,7 @@ internal data class LanCastLedStyle(
     val glowEnabled: Boolean = true,
     val glowStrength: Float = 0.42f,
     val displayHeightFraction: Float = 0.72f,
-    val adaptiveMultiLine: Boolean = false,
+    val adaptiveMultiLine: Boolean = true,
     val speed: Float = 72f,
     val direction: Int = 0,
     val quickSwipeOpensQuickText: Boolean = true,
@@ -111,7 +125,6 @@ internal sealed interface LanCastUiCommand {
         val fontSizeSp: Float
     ) : LanCastUiCommand
     data class SetAudioOutputMode(val mode: Int) : LanCastUiCommand
-    data object ResetDisplaySettings : LanCastUiCommand
 }
 
 internal data class LanCastPresentationState(
@@ -137,7 +150,6 @@ internal data class LanCastPresentationState(
     val groups: List<LanCastQuickTextGroup> = emptyList(),
     val compactQuickText: Boolean = false,
     val led: LanCastLedStyle = LanCastLedStyle(),
-    val displayMode: String = "adaptive",
     val playOnSend: Boolean = true,
     val audioOutputMode: Int = LanCastAudioOutputMode.Local.preferenceValue
 ) {
@@ -163,7 +175,6 @@ internal data class LanCastPresentationState(
         put("playbackProgress", playbackProgress.toDouble())
         put("selectedGroupId", selectedGroupId)
         put("compactQuickText", compactQuickText)
-        put("displayMode", displayMode)
         put("playOnSend", playOnSend)
         put("audioOutputMode", audioOutputMode)
         put("groups", JSONArray().apply {

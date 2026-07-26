@@ -49,19 +49,24 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 @Composable
-internal fun LanCastServiceCard(viewModel: MainViewModel, status: LanCastStatus) {
+internal fun LanCastServiceCard(
+    viewModel: MainViewModel,
+    status: LanCastStatus,
+    onEnableRequested: () -> Unit,
+    onBackgroundSettingsRequested: () -> Unit
+) {
     Md2StaggeredFloatIn(index = 0) {
         Md2SettingsCard(title = "局域网投屏") {
             Md2SettingSwitchRow(
                 title = "启用投屏与网页遥控",
                 checked = status.running,
                 onCheckedChange = { enabled ->
-                    if (enabled) viewModel.startLanCast() else viewModel.stopLanCast()
+                    if (enabled) onEnableRequested() else viewModel.stopLanCast()
                 },
                 supportingText = if (status.running) {
-                    "服务仅在本次手动开启后运行；切换网络时会自动刷新连接地址。"
+                    "服务仅在本次手动开启后运行；锁屏投屏需要允许应用在后台不受限制地运行。"
                 } else {
-                    "默认关闭。开启后，同一局域网内的浏览器可以显示字幕并遥控主软件。"
+                    "默认关闭。首次开启时会引导设置后台运行，以保持锁屏后的投屏连接。"
                 }
             )
             if (status.running) {
@@ -71,6 +76,11 @@ internal fun LanCastServiceCard(viewModel: MainViewModel, status: LanCastStatus)
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+                Md2TextButton(onClick = onBackgroundSettingsRequested) {
+                    MsIcon("battery_saver", contentDescription = null)
+                    Spacer(Modifier.size(6.dp))
+                    Text("后台运行设置")
+                }
             }
             status.error?.let { error ->
                 Text(error, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colors.error)

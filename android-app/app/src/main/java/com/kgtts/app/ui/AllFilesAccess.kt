@@ -93,7 +93,7 @@ private fun allFilesAccessSettingsIntent(context: Context): Intent {
 private fun allFilesAccessPermissionPurpose(): PermissionPurposeInfo = PermissionPurposeInfo(
     title = "允许管理全部文件",
     iconName = "folder_open",
-    summary = "开启后，内置文件管理器可以一次访问共享存储，不再逐个目录授权。",
+    summary = "开启访问全部文件权限后，内置文件管理器将可以直接浏览共享存储，不再需要逐个授权目录。",
     permissionName = "所有文件访问权限",
     serviceFeature = "内置文件管理器浏览和导入本机资源",
     purpose = "仅在你主动打开文件管理器时浏览共享存储中的文件和目录，用于选择并导入语音包、模型、预设、字体、音频或图片。",

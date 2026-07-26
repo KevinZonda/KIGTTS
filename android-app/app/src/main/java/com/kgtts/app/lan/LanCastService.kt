@@ -27,6 +27,7 @@ import kotlinx.coroutines.launch
 
 internal class LanCastService : Service() {
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private val powerGuard by lazy(LazyThreadSafetyMode.NONE) { LanCastPowerGuard(this) }
     private var statusJob: Job? = null
     private var connectivityManager: ConnectivityManager? = null
     private var networkCallback: ConnectivityManager.NetworkCallback? = null
@@ -40,6 +41,7 @@ internal class LanCastService : Service() {
             stopSelf()
             return
         }
+        powerGuard.acquire()
         observeStatus()
         observeNetworks()
         AppLogger.i("LanCastService started port=${LanCastRuntime.DEFAULT_PORT}")
@@ -47,10 +49,13 @@ internal class LanCastService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
-            ACTION_STOP -> stopSelf()
+            ACTION_STOP -> {
+                stopSelf()
+                return START_NOT_STICKY
+            }
             ACTION_REFRESH_NETWORKS -> LanCastRuntime.refreshAddresses()
         }
-        return START_NOT_STICKY
+        return START_STICKY
     }
 
     override fun onDestroy() {
@@ -62,6 +67,7 @@ internal class LanCastService : Service() {
         networkCallback = null
         connectivityManager = null
         LanCastRuntime.stopServer()
+        powerGuard.release()
         serviceScope.cancel()
         AppLogger.i("LanCastService stopped")
         super.onDestroy()

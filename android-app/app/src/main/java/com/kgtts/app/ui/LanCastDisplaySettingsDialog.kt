@@ -63,7 +63,7 @@ internal fun LanCastDisplaySettingsDialog(
     ) {
         CastSettingsSection("外观")
         Md2SettingSwitchRow(
-            title = "使用普通字体",
+            title = "使用正常字形",
             checked = !settings.dotMatrixEnabled,
             onCheckedChange = { onSettingsChange(settings.copy(dotMatrixEnabled = !it)) }
         )

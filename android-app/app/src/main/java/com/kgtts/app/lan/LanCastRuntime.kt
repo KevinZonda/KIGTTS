@@ -1,13 +1,21 @@
 package com.lhtstudio.kigtts.app.lan
 
-import com.lhtstudio.kigtts.app.data.LedSubtitleSettings
 import android.content.Context
+import android.os.SystemClock
+import com.lhtstudio.kigtts.app.data.LedSubtitleSettings
+import com.lhtstudio.kigtts.app.data.UserPrefs
+import com.lhtstudio.kigtts.app.data.defaultLanCastDisplaySettings
 import com.lhtstudio.kigtts.app.util.AppLogger
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import org.json.JSONObject
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
@@ -16,6 +24,7 @@ import java.util.concurrent.atomic.AtomicLong
 internal object LanCastRuntime {
     const val DEFAULT_PORT = 8765
     private const val MAX_COMMAND_TEXT_LENGTH = 4_000
+    private const val AUDIO_CLIENT_RECONNECT_GRACE_MS = 2_000L
 
     interface CommandHandler {
         fun submitSubtitle(text: String, playVoice: Boolean)
@@ -27,7 +36,9 @@ internal object LanCastRuntime {
 
     private val stateRevision = AtomicLong(0L)
     private val mediaRevision = AtomicLong(0L)
+    private val displaySettingsPersistenceRevision = AtomicLong(0L)
     private val mediaFiles = ConcurrentHashMap<Long, File>()
+    private val persistenceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val _status = MutableStateFlow(LanCastStatus())
     private val _presentation = MutableStateFlow(LanCastPresentationState())
     private val _uiCommands = MutableSharedFlow<LanCastUiCommand>(extraBufferCapacity = 32)
@@ -35,6 +46,8 @@ internal object LanCastRuntime {
     @Volatile private var server: LanCastServer? = null
     @Volatile private var commandHandler: CommandHandler? = null
     @Volatile private var currentFontFile: File? = null
+    @Volatile private var persistenceContext: Context? = null
+    @Volatile private var lastAudioClientSeenAtMs = 0L
 
     fun statusFlow(): StateFlow<LanCastStatus> = _status.asStateFlow()
     fun presentationFlow(): StateFlow<LanCastPresentationState> = _presentation.asStateFlow()
@@ -44,9 +57,22 @@ internal object LanCastRuntime {
 
     fun startServer(context: Context): Boolean {
         if (server != null) return true
+        val appContext = context.applicationContext
+        persistenceContext = appContext
+        val persistedDisplaySettings = runCatching {
+            runBlocking(Dispatchers.IO) {
+                UserPrefs.getSettings(appContext).lanCastDisplaySettings
+            }
+        }.onFailure {
+            AppLogger.e("LanCast display settings load failed", it)
+        }.getOrDefault(defaultLanCastDisplaySettings())
+        _presentation.value = _presentation.value.copy(
+            revision = stateRevision.incrementAndGet(),
+            led = persistedDisplaySettings.toLanCastLedStyle()
+        )
         val addresses = LanCastNetwork.addresses()
         return runCatching {
-            val next = LanCastServer(context.applicationContext, DEFAULT_PORT, this)
+            val next = LanCastServer(appContext, DEFAULT_PORT, this)
             // Keep WebSockets alive between the browser's 10-second heartbeat messages.
             next.start(60_000, false)
             server = next
@@ -76,6 +102,7 @@ internal object LanCastRuntime {
         server = null
         runCatching { active?.stop() }
         mediaFiles.clear()
+        lastAudioClientSeenAtMs = 0L
         _status.value = _status.value.copy(
             running = false,
             displayClients = 0,
@@ -122,7 +149,6 @@ internal object LanCastRuntime {
         val current = _presentation.value
         val next = state.copy(
             revision = stateRevision.incrementAndGet(),
-            displayMode = current.displayMode,
             running = current.running,
             playbackProgress = current.playbackProgress
         )
@@ -156,14 +182,27 @@ internal object LanCastRuntime {
     fun currentFontFile(): File? = currentFontFile?.takeIf { it.isFile }
 
     fun updateClientCounts(display: Int, remote: Int, audio: Int) {
+        val normalizedAudio = audio.coerceAtLeast(0)
+        if (normalizedAudio > 0) {
+            lastAudioClientSeenAtMs = SystemClock.elapsedRealtime()
+        }
         _status.value = _status.value.copy(
             displayClients = display.coerceAtLeast(0),
             remoteClients = remote.coerceAtLeast(0),
-            audioClients = audio.coerceAtLeast(0)
+            audioClients = normalizedAudio
         )
     }
 
-    fun hasAudioClients(): Boolean = _status.value.running && _status.value.audioClients > 0
+    fun hasAudioClients(): Boolean {
+        val status = _status.value
+        return isLanCastAudioClientAvailable(
+            running = status.running,
+            audioClients = status.audioClients,
+            lastSeenAtMs = lastAudioClientSeenAtMs,
+            nowMs = SystemClock.elapsedRealtime(),
+            reconnectGraceMs = AUDIO_CLIENT_RECONNECT_GRACE_MS
+        )
+    }
 
     fun broadcastAudioControl(message: JSONObject) {
         server?.broadcastAudioText(message.toString())
@@ -216,16 +255,6 @@ internal object LanCastRuntime {
                     val handler = commandHandler ?: error("主软件控制服务尚未就绪")
                     handler.openApp()
                 }
-                "displayMode" -> {
-                    val mode = command.optString("mode").takeIf {
-                        it == "adaptive" || it == "led"
-                    } ?: error("不支持的显示模式")
-                    _presentation.value = _presentation.value.copy(
-                        revision = stateRevision.incrementAndGet(),
-                        displayMode = mode
-                    )
-                    server?.broadcastState()
-                }
                 "ledSettings" -> {
                     val settings = command.optJSONObject("settings")
                         ?: error("缺少 LED 设置")
@@ -236,7 +265,7 @@ internal object LanCastRuntime {
                 "resetLedSettings" -> {
                     val next = LanCastLedStyle()
                     updateLedStyle(next)
-                    _uiCommands.tryEmit(LanCastUiCommand.ResetDisplaySettings)
+                    _uiCommands.tryEmit(LanCastUiCommand.UpdateDisplaySettings(next))
                 }
                 "playOnSend" -> {
                     val enabled = command.optBoolean("enabled", true)
@@ -328,6 +357,17 @@ internal object LanCastRuntime {
             led = settings
         )
         server?.broadcastState()
+        persistenceContext?.let { context ->
+            val saveRevision = displaySettingsPersistenceRevision.incrementAndGet()
+            persistenceScope.launch {
+                if (saveRevision != displaySettingsPersistenceRevision.get()) return@launch
+                runCatching {
+                    UserPrefs.setLanCastDisplaySettings(context, settings.toLedSubtitleSettings())
+                }.onFailure {
+                    AppLogger.e("LanCast display settings save failed", it)
+                }
+            }
+        }
     }
 
     private fun parseLedStyle(source: JSONObject, current: LanCastLedStyle): LanCastLedStyle {
@@ -388,4 +428,47 @@ internal object LanCastRuntime {
         val rgb = raw.takeIf { it.length == 6 }?.toLongOrNull(16) ?: return fallback
         return (0xFF000000L or rgb).toInt()
     }
+
+    private fun LedSubtitleSettings.toLanCastLedStyle(): LanCastLedStyle = LanCastLedStyle(
+        colorArgb = ledColorArgb,
+        backgroundArgb = backgroundColorArgb,
+        dotMatrix = dotMatrixEnabled,
+        dotShape = dotShape,
+        dotDensity = dotDensity,
+        dotSize = 4f + dotDensity * 8f,
+        dotGap = 1f + (1f - dotDensity) * 5f,
+        glowEnabled = glowEnabled,
+        glowStrength = glowStrength,
+        displayHeightFraction = displayHeightFraction,
+        adaptiveMultiLine = adaptiveMultiLine,
+        speed = scrollSpeedDpPerSecond,
+        direction = scrollDirection,
+        quickSwipeOpensQuickText = quickSwipeOpensQuickText,
+        loopGap = loopGapDp,
+        shortTextAlignment = shortTextAlignment,
+        keepScreenOn = keepScreenOn,
+        followSystemBrightness = followSystemBrightness,
+        screenBrightness = screenBrightness
+    )
+
+    private fun LanCastLedStyle.toLedSubtitleSettings(): LedSubtitleSettings =
+        LedSubtitleSettings(
+            ledColorArgb = colorArgb,
+            backgroundColorArgb = backgroundArgb,
+            dotMatrixEnabled = dotMatrix,
+            dotShape = dotShape,
+            dotDensity = dotDensity,
+            glowEnabled = glowEnabled,
+            glowStrength = glowStrength,
+            displayHeightFraction = displayHeightFraction,
+            adaptiveMultiLine = adaptiveMultiLine,
+            scrollSpeedDpPerSecond = speed,
+            scrollDirection = direction,
+            quickSwipeOpensQuickText = quickSwipeOpensQuickText,
+            loopGapDp = loopGap,
+            shortTextAlignment = shortTextAlignment,
+            keepScreenOn = keepScreenOn,
+            followSystemBrightness = followSystemBrightness,
+            screenBrightness = screenBrightness
+        ).normalized()
 }

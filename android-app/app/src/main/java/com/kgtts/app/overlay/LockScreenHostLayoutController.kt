@@ -49,10 +49,10 @@ internal class LockScreenHostLayoutController(
         )
         val timeGroup = createTimeGroup()
         currentTimeGroup = timeGroup
-        if (mode == LockScreenLayoutMode.PhonePortrait) {
-            applyPortrait(timeGroup)
+        if (mode.isPortrait) {
+            applyPortrait(mode, timeGroup)
         } else {
-            applyWide(mode, screenWidth, screenHeight, metrics.density, timeGroup)
+            applyWide(mode, screenWidth, metrics.density, timeGroup)
         }
         updateClockVisibility(animate = false)
     }
@@ -88,8 +88,11 @@ internal class LockScreenHostLayoutController(
         addView(dateView, wrapContentParams().apply { topMargin = dp(8) })
     }
 
-    private fun applyPortrait(timeGroup: LinearLayout) {
-        timeView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 68f)
+    private fun applyPortrait(mode: LockScreenLayoutMode, timeGroup: LinearLayout) {
+        timeView.setTextSize(
+            TypedValue.COMPLEX_UNIT_SP,
+            if (mode == LockScreenLayoutMode.TabletPortrait) 72f else 68f
+        )
         root.addView(
             timeGroup,
             FrameLayout.LayoutParams(
@@ -111,19 +114,17 @@ internal class LockScreenHostLayoutController(
     private fun applyWide(
         mode: LockScreenLayoutMode,
         screenWidth: Int,
-        screenHeight: Int,
         density: Float,
         timeGroup: LinearLayout
     ) {
         timeView.setTextSize(
             TypedValue.COMPLEX_UNIT_SP,
-            if (mode == LockScreenLayoutMode.Tablet) 72f else 54f
+            if (mode == LockScreenLayoutMode.TabletLandscape) 72f else 54f
         )
         val sideMargin = dp(16)
         val overlayWidth = LockScreenLayoutPolicy.overlayWidthPx(
             mode,
             screenWidth,
-            screenHeight,
             density,
             sideMargin
         )
