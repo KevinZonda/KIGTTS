@@ -58,17 +58,14 @@ import androidx.activity.viewModels
 import androidx.browser.customtabs.CustomTabsClient
 import androidx.browser.customtabs.CustomTabsIntent
 import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.ContentTransform
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.animateContentSize
-import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
-import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
@@ -727,10 +724,7 @@ fun FloatingOverlayScreen(
                 ) {
                     Md2OutlinedButton(
                         onClick = {
-                            if (
-                                state.volumeHotkeyAccessibilityEnabled &&
-                                !accessibilityPermissionGranted.value
-                            ) {
+                            if (!accessibilityPermissionGranted.value) {
                                 accessibilityExplainDialogOpen = true
                             } else {
                                 accessibilitySettingsLauncher.launch(
@@ -841,7 +835,12 @@ fun FloatingOverlayScreen(
                 pendingVolumeHotkeyEnableSequence = null
                 dismissVolumeHotkeyEnableWarning = false
             },
-            title = { Text("建议开启无障碍稳定监听") },
+            title = {
+                PermissionDialogTitle(
+                    title = "建议开启无障碍稳定监听",
+                    iconName = "accessibility_new"
+                )
+            },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("部分系统由于设计原因，首次点按音量键时只会弹出音量调整控件，并不会真正调整音量。")
@@ -969,7 +968,12 @@ fun FloatingOverlayScreen(
     if (accessibilityExplainDialogOpen) {
         KigttsAlertDialog(
             onDismissRequest = { accessibilityExplainDialogOpen = false },
-            title = { Text("启用无障碍稳定监听") },
+            title = {
+                PermissionDialogTitle(
+                    title = "启用无障碍稳定监听",
+                    iconName = "accessibility_new"
+                )
+            },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("KIGTTS 会通过无障碍服务在前台、后台或锁屏状态更稳定地监听音量键上下序列，用来触发你配置的音量热键功能。")

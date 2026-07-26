@@ -204,6 +204,7 @@ private fun DrawingPaletteReorderList(
                 layoutManager = LinearLayoutManager(ctx)
                 overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
                 clipToPadding = false
+                clipChildren = false
                 setPadding(14.dpToPx(ctx), 8.dpToPx(ctx), 14.dpToPx(ctx), 24.dpToPx(ctx))
                 itemAnimator = DefaultItemAnimator().apply {
                     supportsChangeAnimations = false
@@ -214,6 +215,7 @@ private fun DrawingPaletteReorderList(
             recycler.adapter = adapter
             val callback = object : ItemTouchHelper.Callback() {
                 private var moved = false
+                private var activeViewHolder: RecyclerView.ViewHolder? = null
                 private val edgeAutoScroller = DragEdgeAutoScroller()
 
                 override fun isLongPressDragEnabled(): Boolean = false
@@ -260,12 +262,24 @@ private fun DrawingPaletteReorderList(
                     super.onSelectedChanged(viewHolder, actionState)
                     adapter.isDragging = actionState == ItemTouchHelper.ACTION_STATE_DRAG
                     adapter.setDraggingPosition(viewHolder?.bindingAdapterPosition ?: RecyclerView.NO_POSITION)
-                    if (actionState == ItemTouchHelper.ACTION_STATE_IDLE) edgeAutoScroller.stop()
+                    if (actionState == ItemTouchHelper.ACTION_STATE_DRAG && viewHolder != null) {
+                        if (activeViewHolder !== viewHolder) {
+                            activeViewHolder?.let { animateDragElevation(it.itemView, elevated = false) }
+                        }
+                        activeViewHolder = viewHolder
+                        animateDragElevation(viewHolder.itemView, elevated = true)
+                    } else if (actionState == ItemTouchHelper.ACTION_STATE_IDLE) {
+                        edgeAutoScroller.stop()
+                        activeViewHolder?.let { animateDragElevation(it.itemView, elevated = false) }
+                        activeViewHolder = null
+                    }
                 }
 
                 override fun clearView(recyclerView: RecyclerView, viewHolder: RecyclerView.ViewHolder) {
                     edgeAutoScroller.stop()
                     super.clearView(recyclerView, viewHolder)
+                    animateDragElevation(viewHolder.itemView, elevated = false)
+                    if (activeViewHolder === viewHolder) activeViewHolder = null
                     adapter.isDragging = false
                     adapter.setDraggingPosition(RecyclerView.NO_POSITION)
                     if (moved) {
@@ -323,6 +337,7 @@ private class DrawingPaletteAdapter(
     }
 
     override fun onBindViewHolder(holder: PaletteViewHolder, position: Int) {
+        if (!isDragging) holder.itemView.translationZ = 0f
         val entry = items[position]
         holder.bind(
             entry = entry,
@@ -332,6 +347,12 @@ private class DrawingPaletteAdapter(
             onDelete = { onDelete?.invoke(entry.id) },
             onStartDrag = { onStartDrag?.invoke(holder) }
         )
+    }
+
+    override fun onViewRecycled(holder: PaletteViewHolder) {
+        holder.itemView.animate().cancel()
+        holder.itemView.translationZ = 0f
+        super.onViewRecycled(holder)
     }
 
     fun submit(entries: List<DrawingPaletteEntry>) {

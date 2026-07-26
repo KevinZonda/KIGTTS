@@ -114,7 +114,6 @@ internal class LockScreenFloatingOverlayService : FloatingOverlayService() {
         return LockScreenLayoutPolicy.overlayWidthPx(
             mode = mode,
             screenWidthPx = metrics.widthPixels,
-            screenHeightPx = metrics.heightPixels,
             density = metrics.density,
             sideMarginPx = (16f * metrics.density).toInt()
         )
@@ -143,14 +142,22 @@ internal class LockScreenFloatingOverlayService : FloatingOverlayService() {
             screenHeightPx = metrics.heightPixels,
             density = metrics.density
         )
-        if (mode != LockScreenLayoutMode.PhonePortrait) return base
-        return LockScreenLayoutPolicy.portraitOverlayTopPx(
-            screenHeightPx = metrics.heightPixels,
-            contentHeightPx = contentHeight,
-            preferredTopPx = (220f * metrics.density).toInt(),
-            bottomReservePx = (64f * metrics.density).toInt(),
-            marginPx = (20f * metrics.density).toInt()
-        )
+        return when (mode) {
+            LockScreenLayoutMode.PhonePortrait -> LockScreenLayoutPolicy.portraitOverlayTopPx(
+                screenHeightPx = metrics.heightPixels,
+                contentHeightPx = contentHeight,
+                preferredTopPx = (220f * metrics.density).toInt(),
+                bottomReservePx = (64f * metrics.density).toInt(),
+                marginPx = (20f * metrics.density).toInt()
+            )
+            LockScreenLayoutMode.TabletPortrait -> LockScreenLayoutPolicy.centeredOverlayTopPx(
+                screenHeightPx = metrics.heightPixels,
+                contentHeightPx = contentHeight,
+                verticalBiasPx = 0,
+                marginPx = (20f * metrics.density).toInt()
+            )
+            else -> base
+        }
     }
 
     override fun miniOverlayContentTopPx(contentHeight: Int): Int {
@@ -160,7 +167,7 @@ internal class LockScreenFloatingOverlayService : FloatingOverlayService() {
             screenHeightPx = metrics.heightPixels,
             density = metrics.density
         )
-        if (mode != LockScreenLayoutMode.PhonePortrait) {
+        if (!mode.isPortrait) {
             return super.miniOverlayContentTopPx(contentHeight)
         }
         return LockScreenLayoutPolicy.centeredOverlayTopPx(

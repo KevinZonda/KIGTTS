@@ -1,17 +1,24 @@
 package com.lhtstudio.kigtts.app.ui
 
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.width
+import androidx.compose.material.Checkbox
 import androidx.compose.material.MaterialTheme
 import androidx.compose.material.Text
 import androidx.compose.material.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.DialogProperties
@@ -24,19 +31,30 @@ internal data class PermissionPurposeInfo(
     val serviceFeature: String,
     val purpose: String,
     val privacyNote: String,
-    val confirmLabel: String = "授权并继续"
+    val confirmLabel: String = "授权并继续",
+    val dismissLabel: String = "取消"
 )
 
 @Composable
 internal fun PermissionPurposeDialog(
     info: PermissionPurposeInfo,
     onConfirm: () -> Unit,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    showDontAskAgain: Boolean = false,
+    dontAskAgainChecked: Boolean = false,
+    onDontAskAgainChange: (Boolean) -> Unit = {}
 ) {
     KigttsAlertDialog(
         onDismissRequest = onDismiss,
-        title = { PermissionPurposeTitle(info) },
-        text = { PermissionPurposeDetails(info) },
+        title = { PermissionDialogTitle(info.title, info.iconName) },
+        text = {
+            PermissionPurposeDetails(
+                info = info,
+                showDontAskAgain = showDontAskAgain,
+                dontAskAgainChecked = dontAskAgainChecked,
+                onDontAskAgainChange = onDontAskAgainChange
+            )
+        },
         confirmButton = {
             Md2TextButton(onClick = onConfirm) {
                 Text(info.confirmLabel)
@@ -44,7 +62,7 @@ internal fun PermissionPurposeDialog(
         },
         dismissButton = {
             Md2TextButton(onClick = onDismiss) {
-                Text("取消")
+                Text(info.dismissLabel)
             }
         },
         properties = DialogProperties(
@@ -55,19 +73,19 @@ internal fun PermissionPurposeDialog(
 }
 
 @Composable
-private fun PermissionPurposeTitle(info: PermissionPurposeInfo) {
+internal fun PermissionDialogTitle(title: String, iconName: String) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(
-            text = info.title,
+            text = title,
             modifier = Modifier.weight(1f),
             style = MaterialTheme.typography.h6
         )
         Spacer(Modifier.width(12.dp))
         MsIcon(
-            name = info.iconName,
+            name = iconName,
             contentDescription = null,
             tint = MaterialTheme.colors.primary,
             iconSize = 26.dp
@@ -78,21 +96,58 @@ private fun PermissionPurposeTitle(info: PermissionPurposeInfo) {
 @Composable
 internal fun PermissionPurposeDetails(
     info: PermissionPurposeInfo,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    showDontAskAgain: Boolean = false,
+    dontAskAgainChecked: Boolean = false,
+    onDontAskAgainChange: (Boolean) -> Unit = {}
 ) {
+    var detailsExpanded by remember(info.title) { mutableStateOf(false) }
     Column(
         modifier = modifier,
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         Text(info.summary, style = MaterialTheme.typography.body2)
-        PermissionPurposeLine("权限名称", info.permissionName)
-        PermissionPurposeLine("使用场景", info.serviceFeature)
-        PermissionPurposeLine("用途与范围", info.purpose)
-        PermissionPurposeLine("隐私说明", info.privacyNote)
-        Text(
-            "请确认了解权限用途后再继续授权。",
-            style = MaterialTheme.typography.body2
-        )
+        Md2TextButton(
+            onClick = { detailsExpanded = !detailsExpanded },
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text(
+                text = if (detailsExpanded) "收起详细说明" else "查看详细说明",
+                modifier = Modifier.weight(1f)
+            )
+            MsIcon(
+                name = if (detailsExpanded) "expand_less" else "expand_more",
+                contentDescription = null
+            )
+        }
+        if (detailsExpanded) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                PermissionPurposeLine("权限名称", info.permissionName)
+                PermissionPurposeRange(
+                    serviceFeature = info.serviceFeature,
+                    purpose = info.purpose
+                )
+                PermissionPurposeLine("隐私说明", info.privacyNote)
+            }
+        }
+        if (showDontAskAgain) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .toggleable(
+                        value = dontAskAgainChecked,
+                        role = Role.Checkbox,
+                        onValueChange = onDontAskAgainChange
+                    ),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Checkbox(
+                    checked = dontAskAgainChecked,
+                    onCheckedChange = null
+                )
+                Text("下次不再提示", style = MaterialTheme.typography.body2)
+            }
+        }
     }
 }
 
@@ -101,6 +156,15 @@ private fun PermissionPurposeLine(label: String, value: String) {
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
         Text(label, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.body2)
         Text(value, style = MaterialTheme.typography.body2)
+    }
+}
+
+@Composable
+private fun PermissionPurposeRange(serviceFeature: String, purpose: String) {
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Text("用途与范围", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.body2)
+        Text(serviceFeature, fontWeight = FontWeight.Medium, style = MaterialTheme.typography.body2)
+        Text(purpose, style = MaterialTheme.typography.body2)
     }
 }
 

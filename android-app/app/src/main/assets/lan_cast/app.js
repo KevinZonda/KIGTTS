@@ -5,7 +5,7 @@
   document.body.className = remotePage ? "remote-page" : "display-page";
 
   var socket = null;
-  var reconnectDelay = 500;
+  var reconnectDelay = 250;
   var reconnectTimer = 0;
   var heartbeatTimer = 0;
   var socketGeneration = 0;
@@ -13,26 +13,27 @@
   var pageClosing = false;
   var audioContext = null;
   var audioEnabled = false;
+  var audioActivationRevision = 0;
   var nextAudioTime = 0;
   var fileSources = {};
   var currentState = {
     text: "点击下方快捷文本或输入文字",
     inputText: "",
     previewActive: false,
-    displayMode: "adaptive",
     compactQuickText: false,
     groups: [],
     led: {
       color: "#ffffff",
       background: "#000000",
-      dotMatrix: true,
+      dotMatrix: false,
       dotShape: 0,
       dotSize: 8,
       dotGap: 2,
       speed: 72,
       direction: 0,
       loopGap: 96,
-      shortTextAlignment: 1
+      shortTextAlignment: 1,
+      adaptiveMultiLine: true
     }
   };
   var snackbarTimer = 0;
@@ -61,7 +62,7 @@
     setConnectionLabel("正在连接");
     candidate.onopen = function () {
       if (socket !== candidate || generation !== socketGeneration) return;
-      reconnectDelay = 500;
+      reconnectDelay = 250;
       lastSocketActivity = Date.now();
       sendRaw({ type: "hello", role: remotePage ? "remote" : "display", audioEnabled: audioEnabled });
       setConnectionLabel("已连接");
@@ -94,7 +95,7 @@
       reconnectTimer = 0;
       connect(false);
     }, delay);
-    if (!immediate) reconnectDelay = Math.min(reconnectDelay * 1.7, 5000);
+    if (!immediate) reconnectDelay = Math.min(reconnectDelay * 1.7, 2000);
   }
 
   function startHeartbeat() {
@@ -130,12 +131,18 @@
 
   function sendRaw(payload) {
     if (!socket || socket.readyState !== WebSocket.OPEN) return false;
-    socket.send(JSON.stringify(payload));
-    return true;
+    try {
+      socket.send(JSON.stringify(payload));
+      return true;
+    } catch (_) {
+      try { socket.close(); } catch (_) {}
+      scheduleReconnect(true);
+      return false;
+    }
   }
 
   function sendCommand(type, extra) {
-    var payload = extra || {};
+    var payload = Object.assign({}, extra || {});
     payload.type = type;
     payload.requestId = Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
     if (!sendRaw(payload)) showSnackbar("网页遥控器尚未连接");
@@ -239,6 +246,8 @@
 
   function setAudioEnabled(enabled) {
     if (remotePage) return;
+    var revision = ++audioActivationRevision;
+    if (window.KigttsLedDisplay) window.KigttsLedDisplay.setAudioEnabled(enabled);
     if (!enabled) {
       audioEnabled = false;
       Object.keys(fileSources).forEach(stopAudioFile);
@@ -254,17 +263,36 @@
       if (window.KigttsLedDisplay) window.KigttsLedDisplay.setAudioEnabled(false);
       return;
     }
-    if (!audioContext) audioContext = new AudioCtor();
-    audioContext.resume();
-    audioEnabled = true;
-    nextAudioTime = audioContext.currentTime + 0.05;
-    sendRaw({ type: "audioReady", enabled: true });
-    if (window.KigttsLedDisplay) window.KigttsLedDisplay.setAudioEnabled(true);
-    showSnackbar("投屏端音频已开启");
+    var resumeRequest;
+    try {
+      if (!audioContext || audioContext.state === "closed") audioContext = new AudioCtor();
+      resumeRequest = audioContext.resume();
+    } catch (_) {
+      audioEnabled = false;
+      if (window.KigttsLedDisplay) window.KigttsLedDisplay.setAudioEnabled(false);
+      showSnackbar("投屏端浏览器无法启动音频");
+      return;
+    }
+    Promise.resolve(resumeRequest).then(function () {
+      if (revision !== audioActivationRevision) return;
+      if (audioContext.state !== "running") throw new Error("AudioContext is not running");
+      audioEnabled = true;
+      nextAudioTime = audioContext.currentTime + 0.08;
+      sendRaw({ type: "audioReady", enabled: true });
+      if (window.KigttsLedDisplay) window.KigttsLedDisplay.setAudioEnabled(true);
+      showSnackbar("投屏端音频已开启");
+    }).catch(function () {
+      if (revision !== audioActivationRevision) return;
+      audioEnabled = false;
+      sendRaw({ type: "audioReady", enabled: false });
+      if (window.KigttsLedDisplay) window.KigttsLedDisplay.setAudioEnabled(false);
+      showSnackbar("浏览器阻止了音频播放，请再次点击开启");
+    });
   }
 
   function handlePcm(arrayBuffer) {
     if (!audioEnabled || !audioContext || !arrayBuffer || arrayBuffer.byteLength < 16) return;
+    if (audioContext.state === "suspended") Promise.resolve(audioContext.resume()).catch(function () {});
     var view = new DataView(arrayBuffer);
     if (view.getUint8(0) !== 75 || view.getUint8(1) !== 73 || view.getUint8(2) !== 71 || view.getUint8(3) !== 65) return;
     var sampleRate = view.getInt32(8, true);
@@ -284,6 +312,7 @@
 
   function playAudioFile(message) {
     if (!audioEnabled || !audioContext) return;
+    if (audioContext.state === "suspended") Promise.resolve(audioContext.resume()).catch(function () {});
     fetch(message.url).then(function (response) { return response.arrayBuffer(); }).then(function (data) {
       audioContext.decodeAudioData(data, function (buffer) {
         var source = audioContext.createBufferSource();
@@ -349,7 +378,7 @@
   });
 
   window.addEventListener("online", function () {
-    reconnectDelay = 500;
+    reconnectDelay = 250;
     recoverConnection();
   });
   window.addEventListener("offline", function () {

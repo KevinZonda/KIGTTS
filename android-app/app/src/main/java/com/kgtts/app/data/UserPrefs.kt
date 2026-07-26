@@ -208,6 +208,8 @@ object UserPrefs {
         booleanPreferencesKey("live_subtitle_notification_enabled")
     private val KEY_LAN_CAST_AUDIO_OUTPUT_MODE =
         intPreferencesKey("lan_cast_audio_output_mode")
+    private val KEY_LAN_CAST_BACKGROUND_REMINDER_DISMISSED =
+        booleanPreferencesKey("lan_cast_background_reminder_dismissed")
     private val KEY_DRAWING_KEEP_CANVAS_ORIENTATION_TO_DEVICE =
         booleanPreferencesKey("drawing_keep_canvas_orientation_to_device")
     private val KEY_DRAWING_PALETTE = stringPreferencesKey("drawing_palette")
@@ -311,10 +313,11 @@ object UserPrefs {
         val quickSubtitleListPopupGridMode: Boolean = true,
         val quickSubtitleKeepInputPreview: Boolean = true,
         val ledSubtitleSettings: LedSubtitleSettings = LedSubtitleSettings(),
-        val lanCastDisplaySettings: LedSubtitleSettings = LedSubtitleSettings(),
+        val lanCastDisplaySettings: LedSubtitleSettings = defaultLanCastDisplaySettings(),
         val bluetoothMediaTitleSubtitle: Boolean = false,
         val liveSubtitleNotificationEnabled: Boolean = false,
         val lanCastAudioOutputMode: Int = LAN_CAST_AUDIO_LOCAL,
+        val lanCastBackgroundReminderDismissed: Boolean = false,
         val drawingKeepCanvasOrientationToDevice: Boolean = true,
         val drawingPalette: DrawingPalette = DrawingPalette(),
         val speakerVerifyEnabled: Boolean = false,
@@ -649,12 +652,17 @@ object UserPrefs {
             quickSubtitleListPopupGridMode = this[KEY_QUICK_SUBTITLE_LIST_POPUP_GRID_MODE] ?: true,
             quickSubtitleKeepInputPreview = this[KEY_QUICK_SUBTITLE_KEEP_INPUT_PREVIEW] ?: true,
             ledSubtitleSettings = decodeLedSubtitleSettings(this[KEY_LED_SUBTITLE_SETTINGS]),
-            lanCastDisplaySettings = decodeLedSubtitleSettings(this[KEY_LAN_CAST_DISPLAY_SETTINGS]),
+            lanCastDisplaySettings = decodeLedSubtitleSettings(
+                this[KEY_LAN_CAST_DISPLAY_SETTINGS],
+                defaultLanCastDisplaySettings()
+            ),
             bluetoothMediaTitleSubtitle = this[KEY_BLUETOOTH_MEDIA_TITLE_SUBTITLE] ?: false,
             liveSubtitleNotificationEnabled = this[KEY_LIVE_SUBTITLE_NOTIFICATION_ENABLED] ?: false,
             lanCastAudioOutputMode = normalizeLanCastAudioOutputMode(
                 this[KEY_LAN_CAST_AUDIO_OUTPUT_MODE] ?: LAN_CAST_AUDIO_LOCAL
             ),
+            lanCastBackgroundReminderDismissed =
+                this[KEY_LAN_CAST_BACKGROUND_REMINDER_DISMISSED] ?: false,
             drawingKeepCanvasOrientationToDevice = this[KEY_DRAWING_KEEP_CANVAS_ORIENTATION_TO_DEVICE] ?: true,
             drawingPalette = decodeDrawingPalette(this[KEY_DRAWING_PALETTE]),
             speakerVerifyEnabled = this[KEY_SPEAKER_VERIFY_ENABLED] ?: false,
@@ -1250,6 +1258,15 @@ object UserPrefs {
     suspend fun setLanCastAudioOutputMode(context: Context, mode: Int) {
         context.dataStore.edit { prefs ->
             prefs[KEY_LAN_CAST_AUDIO_OUTPUT_MODE] = normalizeLanCastAudioOutputMode(mode)
+        }
+    }
+
+    suspend fun setLanCastBackgroundReminderDismissed(
+        context: Context,
+        dismissed: Boolean
+    ) {
+        context.dataStore.edit { prefs ->
+            prefs[KEY_LAN_CAST_BACKGROUND_REMINDER_DISMISSED] = dismissed
         }
     }
 

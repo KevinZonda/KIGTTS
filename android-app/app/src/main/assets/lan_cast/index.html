@@ -68,12 +68,12 @@
 
     <aside id="led-settings-panel" class="led-side-panel led-settings-panel led-panel" aria-label="LED 设置面板">
       <header class="led-panel-header">
-        <div class="led-panel-title">LED 设置</div>
+        <div class="led-panel-title">投屏设置</div>
         <button id="led-settings-close" class="icon-button" title="关闭设置" aria-label="关闭设置"><span class="material-symbols">close</span></button>
       </header>
       <div class="led-settings-scroll">
         <h2>外观</h2>
-        <label class="led-setting-row"><span>使用正常字形</span><input id="led-normal-font" type="checkbox" role="switch"></label>
+        <label class="led-setting-row"><span>使用正常字形</span><input id="led-normal-font" type="checkbox" role="switch" checked></label>
         <label class="led-setting-row"><span>字幕颜色</span><input id="led-color" class="led-color-input" type="color"></label>
         <label class="led-setting-row"><span>背景颜色</span><input id="led-background-color" class="led-color-input" type="color"></label>
         <div id="led-dot-settings">
@@ -85,7 +85,7 @@
         <label class="led-slider-row"><span>显示高度 <output id="led-height-value"></output></span><input id="led-height" type="range" min="0.35" max="0.92" step="0.01"></label>
 
         <h2>排版</h2>
-        <label class="led-setting-row"><span>自适应多行</span><input id="led-adaptive-multiline" type="checkbox" role="switch"></label>
+        <label class="led-setting-row"><span>自适应多行</span><input id="led-adaptive-multiline" type="checkbox" role="switch" checked></label>
         <div id="led-scroll-options">
         <label class="led-slider-row"><span>滚动速度 <output id="led-speed-value"></output></span><input id="led-speed" type="range" min="24" max="1600" step="1"></label>
         <div class="led-setting-block"><span>滚动方向</span><div class="led-setting-segments" data-setting="direction"><button data-value="0" aria-label="向左"><span class="material-symbols">arrow_back</span></button><button data-value="1" aria-label="向右"><span class="material-symbols">arrow_forward</span></button></div></div>
@@ -99,14 +99,14 @@
         <label class="led-setting-row"><span>亮度跟随系统</span><input id="led-follow-brightness" type="checkbox" role="switch"></label>
         <label id="led-brightness-row" class="led-slider-row"><span>屏幕亮度 <output id="led-brightness-value"></output></span><input id="led-brightness" type="range" min="0.1" max="1" step="0.01"></label>
         <label class="led-setting-row"><span>投屏端音频</span><input id="led-web-audio" type="checkbox" role="switch"></label>
-        <button id="led-reset-settings" class="led-reset-button"><span class="material-symbols">settings_backup_restore</span><span>恢复 LED 默认设置</span></button>
+        <button id="led-reset-settings" class="led-reset-button"><span class="material-symbols">settings_backup_restore</span><span>恢复投屏默认设置</span></button>
       </div>
     </aside>
 
     <div id="led-reset-dialog" class="led-dialog" role="dialog" aria-modal="true" aria-labelledby="led-reset-title">
       <div class="led-dialog-card">
-        <h2 id="led-reset-title">恢复 LED 默认设置</h2>
-        <p>确定恢复全部 LED 显示设置？</p>
+        <h2 id="led-reset-title">恢复投屏默认设置</h2>
+        <p>确定恢复全部投屏显示设置？</p>
         <div><button id="led-reset-cancel">取消</button><button id="led-reset-confirm">恢复</button></div>
       </div>
     </div>
@@ -193,18 +193,10 @@
           <label class="setting-row"><span>使用紧凑快捷文本控件</span><input id="remote-compact-quick-text" type="checkbox" role="switch"></label>
         </section>
 
-        <section class="md-card">
-          <div class="card-title">投屏模式</div>
-          <div class="segmented" role="tablist" aria-label="投屏模式">
-            <button class="segment" data-display-mode="adaptive"><span class="material-symbols">fit_screen</span><span>自适应大字幕</span></button>
-            <button class="segment" data-display-mode="led"><span class="material-symbols">text_fields</span><span>LED 滚动</span></button>
-          </div>
-        </section>
-
         <section class="md-card cast-settings-card">
           <div class="card-title">投屏显示样式</div>
           <div class="settings-section-label">外观</div>
-          <label class="setting-row"><span>使用正常字形</span><input id="remote-normal-font" type="checkbox" role="switch"></label>
+          <label class="setting-row"><span>使用正常字形</span><input id="remote-normal-font" type="checkbox" role="switch" checked></label>
           <label class="setting-row"><span>字幕颜色</span><input id="remote-led-color" type="color"></label>
           <label class="setting-row"><span>背景颜色</span><input id="remote-led-background" type="color"></label>
           <div id="remote-dot-options">
@@ -215,7 +207,7 @@
           </div>
           <label class="slider-row"><span>显示高度 <output id="remote-height-value"></output></span><input id="remote-height" type="range" min="0.35" max="0.92" step="0.01"></label>
           <div class="settings-section-label">排版</div>
-          <label class="setting-row"><span>自适应多行</span><input id="remote-adaptive-multiline" type="checkbox" role="switch"></label>
+          <label class="setting-row"><span>自适应多行</span><input id="remote-adaptive-multiline" type="checkbox" role="switch" checked></label>
           <div id="remote-scroll-options">
           <label class="slider-row"><span>滚动速度 <output id="remote-speed-value"></output></span><input id="remote-speed" type="range" min="24" max="1600" step="1"></label>
           <div class="setting-block"><span>滚动方向</span><div class="segmented compact-segments" data-cast-setting="direction"><button class="segment" data-value="0"><span class="material-symbols">arrow_back</span><span>向左</span></button><button class="segment" data-value="1"><span class="material-symbols">arrow_forward</span><span>向右</span></button></div></div>

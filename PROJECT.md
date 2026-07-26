@@ -632,3 +632,126 @@
 - Release APK：`D:\KGTTS\android-app\app\build\outputs\apk\release\app-release.apk`，95820331 字节，SHA-256 `528591d04e08b5b5d9294079be92485c87bfeaf64ad0eddf9805c907d01212b4`；包元数据为 `0.1.3 (4)`，APK Signature Scheme v2 验证通过，签名证书 SHA-256 为 `3193af87840d767843e42770c92823b20df10b5edf03a7d618ce9f4da0f5e197`。
 - 真机：Release APK 已通过 `adb install -r` 保留数据覆盖安装到小米设备 `cfc8ef16`；系统包信息确认版本为 `0.1.3 (4)`，`pkgFlags` 不包含 `DEBUGGABLE`，`run-as` 同步确认该包不可调试。
 - GitHub：发行标签使用 `APP0.1.3`，发行标题使用“APP 0.1.3 发行版”，资产文件名保持 `app-release.apk`。
+
+## 2026-07-26 中文字体资源第二批扩充
+
+- 范围：更新独立字体资源仓库 `D:\KIGTTS_FONTS_Resource` 与本项目记录；Android、Flutter 和应用版本号均未修改。
+- 新增字体：更纱黑体 UI SC 1.0.40、Maple Mono CN 7.9、霞鹜漫黑 1.003、铁蒺藜体 1.100、霞鹜臻楷 GB 0.825 和悠哉字体 0.868，共 6 个字体条目。
+- 文件选择：更纱使用简体中文 UI 独立 TTF 包；Maple 使用不含 Nerd Font 图标的 CN TTF 包；两者均排除斜体。所有字体取自上游正式 Release，不使用应用不支持的 TTC 文件。
+- 字重支持：更纱保留 200/300/400/600/700 五个真实静态字重；Maple 按字体内部 OS/2 元数据保留 250/275/300/400/500/600/700/800 八档；悠哉保留 300/400/500 三档。其余三个字体为单一 400 字重。
+- 授权处理：6 个条目均随资源保存各自上游的 SIL Open Font License 1.1；许可证统一为 UTF-8 无 BOM 和 LF，并写入清单 SHA-256。
+- 资源清单：`font_manifest.json` 升级为 `2026.07.26.4`，当前共 41 个字体条目、96 个被引用字体/许可证文件，引用资源总计 807417273 字节；清单大小 37797 字节。
+- 本地验证：全部引用文件的大小和 SHA-256 匹配；所有字重文件可由 FontTools 解析且清单权重与 `OS/2.usWeightClass` 一致；字体和许可证目录均无未被清单引用的遗留文件。
+- 客户端验证：`:app:testDebugUnitTest --tests com.lhtstudio.kigtts.app.data.AppFontCatalogParserTest` 通过，生产清单解析与静态字重吸附逻辑保持兼容。
+- Hugging Face：27 个新增/更新文件通过单次提交发布，提交为 `b4f4548064ec3f8fb7e62095302315e9c78c0acc`。
+- ModelScope：上传缓存跳过 71 个既有文件，仅提交本次 27 个文件，0 失败。
+- 反向验证：使用应用 User-Agent 从 Hugging Face 和 ModelScope 的实际 `resolve` 地址分别下载本次 27 个文件；两个源均为 27/27 文件、341181325 字节，大小与 SHA-256 全部一致。
+
+## 2026-07-26 Android 锁屏遮罩、平板竖屏与网页投屏修正
+
+- 无壁纸遮罩：锁屏背景遮罩不再依赖自定义壁纸位图；未选择壁纸时仍在透明锁屏宿主上覆盖系统锁屏壁纸，颜色、透明度、全填充及边缘渐变均保持生效。设置页始终显示遮罩选项，只有高斯模糊继续要求先选择自定义壁纸；预览同步显示无自定义壁纸时的遮罩效果。
+- 平板竖屏：锁屏布局策略将平板拆分为横屏和竖屏两类。平板竖屏改用手机式上下布局，时间和日期位于顶部并遵循居左设置，解锁提示固定在底部，内嵌完整悬浮窗实例按真实可变高度在屏幕中间定位；平板横屏继续使用左侧时钟、右侧悬浮窗布局。
+- 投屏模式：网页投屏页的设置面板新增“自适应 / LED”模式选择，安卓“投屏显示设置”同步补充显示模式入口；选择结果写入独立偏好，不修改原生 LED 页面设置，服务或应用重启后仍会恢复。恢复投屏默认设置时同时回到自适应大字幕。
+- 设置生效：自适应大字幕的显示高度现已参与最大字号计算；投屏页模式切换会立即重绘并同步安卓端。遥控器延迟发送设置时改为保存当前设置快照，避免状态回推或多端操作覆盖尚未发出的调整。
+- 网页音频：投屏页开启音频时会等待浏览器音频上下文真正进入运行状态，再向安卓端登记音频接收；浏览器拒绝播放或初始化失败时自动撤销开关并提示。重连继续携带已确认的音频接收状态，PCM 与文件音频在上下文被临时挂起时会尝试恢复播放。
+- 验证：新增平板横竖屏模式、定位策略和投屏显示模式默认值测试；全部局域网投屏脚本通过 Node 语法检查，`:app:testDebugUnitTest` 与 `:app:assembleDebug` 通过，30 个测试套件共 104 项，0 失败、0 错误、0 跳过，`git diff --check` 通过。版本保持 `0.1.3 (4)`。
+- 真机：最终 Debug APK 已通过 `adb install -r` 保留数据覆盖安装到小米设备 `cfc8ef16`；冷启动 `TotalTime=2170 ms`，应用进程保持运行，启动日志无致命异常、`VerifyError`、`OutOfMemoryError` 或应用 ANR。设备未开启允许 ADB 注入触摸的安全选项，投屏服务默认关闭，因此浏览器实际发声仍需在设备手动开启服务后确认。
+- Debug APK：`D:\KGTTS\android-app\app\build\outputs\apk\debug\app-debug.apk`，102804728 字节，SHA-256 `01894992af818d2af6b67ea4c5d1978fed702da2868ad5541167d2d94d053b63`。
+
+## 2026-07-26 网页投屏连接、延迟与显示设置修正
+
+- 断联根因：网页命令后的完整状态广播原先依赖 Android 主线程 `Handler`；Compose 重组、锁屏宿主和其它主线程工作繁忙时，广播会长期延后甚至发送失败，表现为操作没有反馈、WebSocket `1006` 断开并自动重连。状态合并广播现改用服务端独立单线程调度器，不再经过 UI 主线程；所有网页控制命令由服务端全局串行执行器处理，既不阻塞 NanoWSD 读帧循环，也避免多个遥控端同时写入时互相覆盖。
+- 重连与音频：网页重连初始等待缩短到 `250ms`，退避上限降至 `2s`，发送异常会立即进入恢复流程。已登记的投屏音频客户端瞬断后保留 `2s` 重连宽限，防止短暂掉线立刻把“仅投屏端”音频回退到手机扬声器；服务停止时会清除该宽限状态。
+- 显示逻辑：撤销上一轮新增且与“使用正常字形 / 自适应多行”重复的“自适应 / LED”显示模式，安卓设置、投屏页、遥控器及传输协议均不再暴露 `displayMode`。投屏画面继续使用原有 LED 渲染器，编辑预览保持大字幕样式；新的投屏默认值为“使用正常字形”和“自适应多行”同时开启。
+- 持久化：投屏服务启动时直接从 `lan_cast_display_settings` 加载显示设置，网页修改后也由服务自身写入 DataStore，不再依赖主界面 Compose 收集器是否存活；前台界面仍会即时同步，但不会重复写入。快速连续调整使用修订号丢弃过期保存任务，避免旧值晚于新值落盘。
+- 自动测试：新增投屏默认值、音频重连宽限和真实 WebSocket 命令回归测试；局域网投屏全部 JavaScript 通过 `node --check`，`:app:testDebugUnitTest`、`:app:assembleDebug` 与 `:app:assembleDebugAndroidTest` 通过。单元测试共 30 个测试套件、106 项，0 失败、0 错误、0 跳过；`git diff --check` 通过。
+- 实机链路：小米设备同时连接投屏端和遥控端，连续发送 25 条显示设置、字幕样式、清屏和快捷文本相关命令，全部 ACK 成功且连接保持；最大 ACK 延迟 `84ms`，平均 `63.4ms`，两端后续 Ping/Pong 正常。停止并重启投屏服务后，字幕色、背景色、正常字形和自适应多行均正确恢复；测试颜色随后已恢复为新的白字黑底默认值。
+- 真机安装：不含临时调试入口的最终 Debug APK 已通过 `adb install -r` 覆盖安装到小米设备 `cfc8ef16`；冷启动 `TotalTime=1735ms`，进程正常运行，日志无致命异常、`VerifyError`、`OutOfMemoryError` 或应用 ANR。版本保持 `0.1.3 (4)`。
+- Debug APK：`D:\KGTTS\android-app\app\build\outputs\apk\debug\app-debug.apk`，100544114 字节，SHA-256 `3f98c5f5658e5dfaa2f67e7db7b27c763cc840ed7b57c11902e86e591b751fa6`。
+
+## 2026-07-26 Android 锁屏投屏保活与 LED 真辉光
+
+- 投屏保活：局域网投屏服务启动成功后持有非引用计数的 `PARTIAL_WAKE_LOCK` 与高性能 `WifiLock`，停止服务时按相反顺序可靠释放；服务被系统回收后的启动策略改为 `START_STICKY`，用户手动停止仍使用 `START_NOT_STICKY`。
+- 前台服务类型：投屏服务从 `specialUse` 调整为语义更准确的 `connectedDevice`，补齐 Android 14 及以上对应权限和网络状态前置权限；锁屏宿主与服务器仍保持独立生命周期，自定义锁屏不会主动关闭投屏服务。
+- 厂商后台限制：小米实机熄屏约 `8.8s` 后 WebSocket 被断开，系统日志明确记录 HyperOS Greezer 将应用唤醒锁标记为 `disabled`；标准 Doze 白名单与额外网络请求均不能绕过该厂商冻结。首次开启投屏时现在会请求忽略电池优化，运行卡片也新增“后台运行设置”入口；小米设备实测可正确解析到安全中心的应用省电详情页。
+- LED 辉光：废弃通过放大半透明几何图形模拟辉光的实现，改为离屏软件位图上的双层 `BlurMaskFilter` 加清晰字芯；外层负责宽范围低透明度光晕，内层补充近距离亮度，边缘连续衰减。
+- 字形覆盖：点阵圆点、点阵方块、正常滚动字形和自适应多行正常字形均使用同一套辉光强度与半径计算；关闭辉光时只绘制清晰字芯。正常字形加入渲染缓存、`90ms` 参数防抖和分块重叠区，避免拖动设置时频繁重建大位图或在长字幕块边界切断光晕。
+- 视觉验证：小米实机横屏同时渲染正常字形与点阵字形，正常字形保留清晰实心轮廓，点阵保持独立灯珠，两者外缘均呈柔和渐隐光晕，未发现原有硬边半透明块或明显分块接缝。
+- 自动验证：`:app:testDebugUnitTest` 与 `:app:assembleDebug` 通过，31 个测试套件共 108 项，0 失败、0 错误、0 跳过；`git diff --check` 通过。构建仅保留原有图片裁剪库的弃用警告。
+- 真机安装：不含临时验证 Activity 和 Receiver 的最终 Debug APK 已通过 `adb install -r` 覆盖安装到小米设备 `cfc8ef16`；冷启动 `TotalTime=1894ms`，进程保持运行，启动日志无应用致命异常、`VerifyError`、`OutOfMemoryError` 或应用 ANR。测试用 Doze 白名单已移除。
+- Debug APK：`D:\KGTTS\android-app\app\build\outputs\apk\debug\app-debug.apk`，102805947 字节，SHA-256 `097e354a3ed2b28ab189e5b8f5056e98b1a59ed862819703332beb75c32da325`。
+- 版本：继续使用 `0.1.3 (4)`，本轮未提交。
+
+## 2026-07-26 Android 可选后台提醒与权限弹窗统一
+
+- 可选后台权限：启用局域网投屏时不再强制先取得忽略电池优化权限；服务会立即启动。尚未授权时只显示可选说明，选择“暂不设置”不会关闭或撤销投屏功能。
+- 提醒控制：后台运行说明增加“下次不再提示”复选项，整行均可点按；勾选后写入 DataStore，后续开启投屏不再自动提示。用户仍可通过运行卡片中的“后台运行设置”主动进入系统页面。
+- 系统跳转保护：所有自动后台优化请求均移到应用内说明弹窗之后，只有用户确认“前往设置”才打开系统权限页面；已经取得豁免时不重复显示说明。
+- 统一样式：麦克风、相机、通知、悬浮窗、文件和图片读取、全部文件访问、锁屏与后台显示、投屏后台运行、无障碍稳定监听均统一复用 `PermissionPurposeDialog`，标题右侧显示对应 Material Symbol，并使用一致的确认、取消和不可误触关闭行为。
+- 信息层级：权限弹窗首屏只显示简短用途摘要；权限名称、使用场景、用途范围和隐私说明默认折叠，通过“查看详细说明”展开，并带淡入和纵向展开动画。内建文件管理器与图库不再把完整权限说明直接嵌入选择器。
+- 锁屏与无障碍：原“允许锁屏与后台显示”弹窗改为统一权限组件并补充 `lock` 图标；音量热键的无障碍建议与正式授权入口补充 `accessibility_new` 图标，详细用途与隐私说明改为可折叠展示。从未授权状态点击无障碍设置按钮时也会先显示说明。
+- 自动验证：新增投屏后台提醒默认开启测试；`:app:testDebugUnitTest` 与 `:app:assembleDebug` 通过，31 个测试套件共 109 项，0 失败、0 错误、0 跳过，`git diff --check` 通过。构建仅保留原有图片裁剪库的弃用警告。
+- 真机安装：最终 Debug APK 已通过 `adb install -r` 覆盖安装到小米设备 `cfc8ef16`；定向打开“投屏与遥控”页面成功，冷启动 `TotalTime=2195ms`，应用进程保持运行，日志无应用致命异常、`VerifyError`、`OutOfMemoryError` 或应用 ANR。
+- Debug APK：`D:\KGTTS\android-app\app\build\outputs\apk\debug\app-debug.apk`，102806845 字节，SHA-256 `383357ed2e8feb4c6c87422f5b636309d3abe43babfe705ea491de314f081dad`。
+- 版本：继续使用 `0.1.3 (4)`，本轮未提交。
+
+## 2026-07-26 Android 权限弹窗尺寸与无障碍引导修正
+
+- 尺寸稳定：权限详细说明不再使用 `AnimatedVisibility`、纵向展开或淡入淡出动画，改为稳定的条件布局；展开和收起只触发一次内容重新测量，避免弹窗窗口与内部滚动区在动画期间反复争用高度。
+- 高度恢复：详细说明状态改用随弹窗内容生命周期销毁的普通 `remember`，不再跨弹窗保留展开状态；收起时 Material 弹窗可重新按摘要内容计算包裹高度。
+- 无障碍定位：音量热键的无障碍说明属于操作引导而非普通权限用途声明，因此撤销结构化“权限名称 / 使用场景 / 用途范围 / 隐私说明”模板。
+- 引导文案：恢复原有设备兼容提示、音量键监听说明、QQ 扫一扫直达范围、隐私边界和进入系统无障碍页面后的具体操作步骤；两层引导继续保留右上角 `accessibility_new` 图标。
+- 验证：`:app:testDebugUnitTest`、`:app:assembleDebug`、`:app:assembleRelease` 和 `lintVitalRelease` 均通过，31 个测试套件共 109 项，0 失败、0 错误、0 跳过。构建仅保留原有图片裁剪库的弃用警告。
+- 真机安装：修复后的 Release APK 已通过 `adb install -r` 覆盖安装到小米设备 `cfc8ef16`；最终构建冷启动 `TotalTime=444ms`，包信息确认版本 `0.1.3 (4)` 且不包含 `DEBUGGABLE`，应用进程保持运行，日志无应用致命异常、`VerifyError`、`OutOfMemoryError` 或应用 ANR。
+- Release APK：`D:\KGTTS\android-app\app\build\outputs\apk\release\app-release.apk`，95836899 字节，SHA-256 `f01df3bdb531995e1f6982daba597c8d58649918bbfcfafcd99298d1bf8fc1ab`。
+- 版本：继续使用 `0.1.3 (4)`，本轮未提交。
+
+## 2026-07-26 Android 权限说明文案定稿
+
+- 信息结构：普通权限弹窗继续保留现有标题、权限名称和隐私说明；原“使用场景”和“用途与范围”合并为单个“用途与范围”区块，功能范围与具体用途在同一区块中分层显示。
+- 摘要文案：全部文件访问改为说明可直接浏览共享存储且无需逐个授权目录；投屏后台运行改为建议持续运行，避免熄屏后投屏和网页遥控无法连接设备。
+- 锁屏权限：小米、vivo 和 iQOO 的摘要明确说明需允许“锁屏显示”和“后台弹出界面”，否则无法正常显示自定义锁屏；其它设备使用对应的通用提示。
+- 保持范围：麦克风、相机、通知、悬浮窗及文件和图片选择等以“用于”开头的摘要保持原样；无障碍说明继续使用独立操作引导，不套用普通权限摘要结构。
+- 验证：`:app:testDebugUnitTest` 与 `:app:assembleDebug` 通过，31 个测试套件共 109 项，0 失败、0 错误、0 跳过。构建仅保留原有图片裁剪库的弃用警告；版本继续使用 `0.1.3 (4)`。
+
+## 2026-07-26 Android 调色板卡片海拔与阴影修正
+
+- 卡片海拔：调色板编辑页对齐语音包卡片，常态使用统一的 `UiTokens.CardElevation`，拖拽态提升到 `10dp`，进入和退出拖拽分别使用与语音包一致的 `120ms / 160ms` 海拔动画。
+- 阴影承载：卡片外层改用与语音包相同的水平 `2dp`、垂直 `6dp` 留白；调色板 `RecyclerView` 关闭子项裁剪，拖拽时同时将宿主条目提升到 `12dp` 层级，避免阴影被相邻条目或列表边界截断。
+- 状态清理：拖拽结束和条目回收时取消残留动画并恢复宿主层级，防止复用后的卡片继续保持抬升状态。
+- 验证：`:app:compileDebugKotlin`、`:app:testDebugUnitTest` 与 `git diff --check` 通过，31 个测试套件共 109 项，0 失败、0 错误、0 跳过。版本保持 `0.1.3 (4)`。
+- Release 构建：`:app:assembleRelease` 与 `lintVitalRelease` 通过，仅保留原有图片裁剪库的弃用警告；APK Signature Scheme v2 验证通过，签名证书 SHA-256 为 `3193af87840d767843e42770c92823b20df10b5edf03a7d618ce9f4da0f5e197`。
+- Release APK：`D:\KGTTS\android-app\app\build\outputs\apk\release\app-release.apk`，95836899 字节，SHA-256 `cba4513cc3104e1599c0217fc273686b2f9d046900897988a7a1c9e1f2d7d07c`。
+- 真机安装：Release APK 已通过 `adb install -r` 保留数据覆盖安装到小米设备 `cfc8ef16`；设备确认版本为 `0.1.3 (4)` 且不包含 `DEBUGGABLE`。冷启动 `TotalTime=504ms`，应用进程正常运行，启动日志无致命异常、`VerifyError`、`OutOfMemoryError` 或应用 ANR。
+
+## 2026-07-26 Android 快捷文本颜色编辑入口调整
+
+- 入口位置：编辑快捷文本列表不再为每个条目单独显示调色盘按钮，条目操作区恢复为编辑、拖动排序和删除；颜色入口移动到“编辑快捷文本”弹窗内。
+- 编辑样式：文本框下方新增“条目颜色”操作行，显示调色盘图标、当前色号与中文颜色名、圆形颜色样本和进入箭头；未设置颜色时显示“未设置”。
+- 保存行为：取色器和“清除条目颜色”继续复用现有实现，但选择结果先保存在弹窗草稿中；点击“保存”后与文本一起写入，取消或关闭编辑弹窗不会修改条目颜色。
+- 代码清理：移除快捷文本列表、RecyclerView 适配器、ViewHolder 和条目 Composable 中不再需要的颜色按钮回调链，颜色标记及持久化格式保持不变。
+- 验证：`:app:compileDebugKotlin`、`:app:testDebugUnitTest`、`:app:assembleRelease`、`lintVitalRelease` 与 `git diff --check` 通过，31 个测试套件共 109 项，0 失败、0 错误、0 跳过。构建仅保留原有图片裁剪库的弃用警告，版本保持 `0.1.3 (4)`。
+- Release APK：`D:\KGTTS\android-app\app\build\outputs\apk\release\app-release.apk`，95836899 字节，SHA-256 `5460e778d1650dbe9cbd3ab5688ea34aa0dde0325445f47bb677947569e55d42`；APK Signature Scheme v2 验证通过，签名证书 SHA-256 为 `3193af87840d767843e42770c92823b20df10b5edf03a7d618ce9f4da0f5e197`。
+- 真机安装：Release APK 已通过 `adb install -r` 保留数据覆盖安装到小米设备 `cfc8ef16`；设备确认版本为 `0.1.3 (4)` 且不包含 `DEBUGGABLE`。冷启动 `TotalTime=1608ms`，应用进程正常运行，启动日志无致命异常、`VerifyError`、`OutOfMemoryError` 或应用 ANR。本轮未提交。
+
+## 2026-07-26 Android LED 辉光与投屏端控件修正
+
+- 原生 LED 设置：发光效果开关和发光强度滑条不再受点阵渲染开关限制，正常字形、滚动字形和自适应多行字形均可独立启用并调整真实模糊辉光；点阵形状与密度设置仍只在点阵模式中显示。
+- 辉光可见性：双层 `BlurMaskFilter` 继续保留清晰字芯，使用感知强度曲线提高中低档位的内外光晕透明度，并适当扩大文字与灯珠的模糊半径；默认 `42%` 强度不再接近不可见，最大强度仍受明确上限约束。
+- 网页取色器：遥控器和投屏端的字幕色、背景色输入统一为 `40px` 圆形色样，移除 Chromium 原生色块的内边距与双重边框，补充悬停和键盘焦点反馈。
+- 遥控焦点：投屏端快捷文本条目和分组 Tab 使用内描边焦点框，完整高亮保持在滚动容器内部，不再被列表边缘裁剪。
+- 遥控导航：上下方向键改为先锁定最近的纵向控件行，再在该行选择横向距离最近的控件；投屏设置中的滑条不会再被更远但横向更接近的开关或按钮跳过，左右导航维持原有空间评分逻辑。
+- 浏览器验证：使用真实 Chromium 检查两类取色输入均为 `40 x 40` 圆形、无原生色样边框；快捷文本和分组 Tab 的四边焦点框完整可见；模拟设置页方向键顺序为“开关 -> 滑条 -> 下一开关”。
+- 自动验证：局域网投屏目录下 8 个 JavaScript 文件全部通过 `node --check`，`:app:testDebugUnitTest`、`:app:assembleDebug` 与 `git diff --check` 通过，31 个测试套件共 110 项，0 失败、0 错误。构建仅保留原有图片裁剪库的弃用警告。
+- Debug APK：`D:\KGTTS\android-app\app\build\outputs\apk\debug\app-debug.apk`，100425538 字节，SHA-256 `1fb24ec32bca548cae6312c50be3c0273977d2ef8d3d0858daa1ad1b552b7db8`。
+- 版本：继续使用 `0.1.3 (4)`；本轮未安装、未提交。
+
+## 2026-07-26 Android APP 0.1.4 发布
+
+- 版本：Android Debug 与 Release 的 `versionName` 更新为 `0.1.4`，`versionCode` 从 `4` 递增到 `5`，可从 `0.1.3` 保留数据覆盖升级。
+- 发布内容：集中交付投屏连接与音频稳定性、自定义锁屏和平板布局、LED 真实辉光、权限说明、调色板卡片、快捷文本颜色编辑以及网页遥控器焦点与取色器修正。
+- 文档：根目录 README 的 GitHub 发行页、版本徽章和 APK 直链统一更新到 `APP0.1.4`；应用宝、华为应用市场和训练器下载入口保持不变。
+- 自动验证：局域网投屏目录下 8 个 JavaScript 文件全部通过 `node --check`，`:app:testDebugUnitTest`、`:app:assembleRelease`、`:app:lintVitalRelease` 与 `git diff --check` 通过；31 个测试套件共 110 项，0 失败、0 错误。构建仅保留原有图片裁剪库的弃用警告。
+- Release APK：`D:\KGTTS\android-app\app\build\outputs\apk\release\app-release.apk`，95837403 字节，SHA-256 `87b788694c0b4d98f12652cf5f027e0a8cbfa8bfc7fbfe0a1c8806e792bd3c0a`；包元数据为 `0.1.4 (5)`，APK Signature Scheme v2 验证通过，签名证书 SHA-256 为 `3193af87840d767843e42770c92823b20df10b5edf03a7d618ce9f4da0f5e197`。
+- 真机安装：Release APK 已通过 `adb install -r` 保留数据覆盖安装到小米设备 `cfc8ef16`；设备确认版本为 `0.1.4 (5)` 且不包含 `DEBUGGABLE`。冷启动 `TotalTime=471ms`，应用进程正常运行，日志无应用致命异常、`VerifyError`、`OutOfMemoryError` 或应用 ANR。
+- GitHub：发行标签使用 `APP0.1.4`，发行标题使用“APP 0.1.4 发行版”，资产文件名保持 `app-release.apk`；本轮只更新 `origin`，不向 `kigscope` 远端合并或推送。

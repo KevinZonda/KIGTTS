@@ -259,6 +259,7 @@ import com.lhtstudio.kigtts.app.data.VoicePackInfo
 import com.lhtstudio.kigtts.app.data.UserPrefs
 import com.lhtstudio.kigtts.app.data.VoicePackMeta
 import com.lhtstudio.kigtts.app.data.defaultSoundboardGroups
+import com.lhtstudio.kigtts.app.data.formatColorHexAndNameZhCn
 import com.lhtstudio.kigtts.app.data.isKokoroVoiceDir
 import com.lhtstudio.kigtts.app.data.isSystemTtsVoiceDir
 import com.lhtstudio.kigtts.app.data.parseSoundboardConfig
@@ -4594,11 +4595,12 @@ internal fun QuickSubtitleItemsRecyclerCard(
 ) {
     var editTargetIndex by remember(items) { mutableStateOf<Int?>(null) }
     var editText by remember { mutableStateOf("") }
+    var editColorArgb by remember { mutableStateOf<Int?>(null) }
     var editTextFocused by remember { mutableStateOf(false) }
+    var showEditColorPicker by remember { mutableStateOf(false) }
     var showAddDialog by remember { mutableStateOf(false) }
     var addText by remember { mutableStateOf("") }
     var addTextFocused by remember { mutableStateOf(false) }
-    var colorTargetIndex by remember(items) { mutableStateOf<Int?>(null) }
 
     val cardColor = md2ElevatedCardContainerColor(UiTokens.CardElevation)
     Card(
@@ -4646,8 +4648,9 @@ internal fun QuickSubtitleItemsRecyclerCard(
                 onEditRequested = { index, value ->
                     editTargetIndex = index
                     editText = value
+                    editColorArgb = itemColors.getOrNull(index)
+                    showEditColorPicker = false
                 },
-                onColorRequested = { index -> colorTargetIndex = index },
                 onEnterSelectionMode = onEnterSelectionMode,
                 onToggleSelection = onToggleSelection,
                 parentEdgeScrollBy = parentEdgeScrollBy,
@@ -4730,7 +4733,10 @@ internal fun QuickSubtitleItemsRecyclerCard(
     val editingIndex = editTargetIndex
     if (editingIndex != null && editingIndex in items.indices) {
         KigttsDialog(
-            onDismissRequest = { editTargetIndex = null },
+            onDismissRequest = {
+                showEditColorPicker = false
+                editTargetIndex = null
+            },
             properties = DialogProperties(usePlatformDefaultWidth = false)
         ) {
             Box(
@@ -4768,13 +4774,20 @@ internal fun QuickSubtitleItemsRecyclerCard(
                                 null
                             }
                         )
+                        QuickSubtitleItemColorEditRow(
+                            colorArgb = editColorArgb,
+                            onClick = { showEditColorPicker = true }
+                        )
                         Spacer(Modifier.height(16.dp))
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.End,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Md2TextButton(onClick = { editTargetIndex = null }) {
+                            Md2TextButton(onClick = {
+                                showEditColorPicker = false
+                                editTargetIndex = null
+                            }) {
                                 Text("取消")
                             }
                             Spacer(Modifier.width(8.dp))
@@ -4782,7 +4795,11 @@ internal fun QuickSubtitleItemsRecyclerCard(
                                 val idx = editTargetIndex
                                 if (idx != null && idx in items.indices) {
                                     onItemTextChanged(idx, editText)
+                                    if (itemColors.getOrNull(idx) != editColorArgb) {
+                                        onItemColorChanged(idx, editColorArgb)
+                                    }
                                 }
+                                showEditColorPicker = false
                                 editTargetIndex = null
                             }) {
                                 Text("保存")
@@ -4794,24 +4811,58 @@ internal fun QuickSubtitleItemsRecyclerCard(
         }
     }
 
-    val coloringIndex = colorTargetIndex
-    if (coloringIndex != null && coloringIndex in items.indices) {
-        val currentColor = itemColors.getOrNull(coloringIndex)
+    if (showEditColorPicker && editingIndex != null && editingIndex in items.indices) {
         ThemeColorPickerDialog(
             title = "快捷文本颜色",
-            initialColor = currentColor?.let { Color(it) } ?: MaterialTheme.colorScheme.primary,
+            initialColor = editColorArgb?.let { Color(it) } ?: MaterialTheme.colorScheme.primary,
             colorLabel = "候选颜色",
             clearOptionLabel = "清除条目颜色",
             onClear = {
-                onItemColorChanged(coloringIndex, null)
-                colorTargetIndex = null
+                editColorArgb = null
+                showEditColorPicker = false
             },
-            onDismissRequest = { colorTargetIndex = null },
+            onDismissRequest = { showEditColorPicker = false },
             onColorSelected = { color ->
-                onItemColorChanged(coloringIndex, color.toArgb())
-                colorTargetIndex = null
+                editColorArgb = color.toArgb()
+                showEditColorPicker = false
             }
         )
+    }
+}
+
+@Composable
+private fun QuickSubtitleItemColorEditRow(
+    colorArgb: Int?,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(UiTokens.Radius))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 4.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        MsIcon("palette", contentDescription = null)
+        Column(modifier = Modifier.weight(1f)) {
+            Text("条目颜色", style = MaterialTheme.typography.bodyMedium)
+            Text(
+                text = colorArgb?.let(::formatColorHexAndNameZhCn) ?: "未设置",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        if (colorArgb != null) {
+            Box(
+                modifier = Modifier
+                    .size(28.dp)
+                    .clip(CircleShape)
+                    .background(Color(colorArgb))
+                    .border(1.dp, MaterialTheme.colorScheme.outline, CircleShape)
+            )
+        }
+        MsIcon("chevron_right", contentDescription = null)
     }
 }
 
@@ -4824,7 +4875,6 @@ internal fun QuickSubtitleItemsRecyclerList(
     selectedIndexes: Set<Int>,
     onItemsChanged: (List<String>, List<Int?>) -> Unit,
     onEditRequested: (Int, String) -> Unit,
-    onColorRequested: (Int) -> Unit,
     onEnterSelectionMode: (Int) -> Unit,
     onToggleSelection: (Int) -> Unit,
     parentEdgeScrollBy: ((Int) -> Boolean)? = null,
@@ -4834,7 +4884,6 @@ internal fun QuickSubtitleItemsRecyclerList(
     val parentComposition = rememberCompositionContext()
     val onItemsChangedState = rememberUpdatedState(onItemsChanged)
     val onEditRequestedState = rememberUpdatedState(onEditRequested)
-    val onColorRequestedState = rememberUpdatedState(onColorRequested)
     val onEnterSelectionModeState = rememberUpdatedState(onEnterSelectionMode)
     val onToggleSelectionState = rememberUpdatedState(onToggleSelection)
 
@@ -4860,7 +4909,6 @@ internal fun QuickSubtitleItemsRecyclerList(
                 parentComposition = parentComposition,
                 onItemsChanged = { changed, colors -> onItemsChangedState.value(changed, colors) },
                 onEditRequested = { index, value -> onEditRequestedState.value(index, value) },
-                onColorRequested = { index -> onColorRequestedState.value(index) },
                 onEnterSelectionMode = { index -> onEnterSelectionModeState.value(index) },
                 onToggleSelection = { index -> onToggleSelectionState.value(index) }
             )
@@ -4966,7 +5014,6 @@ internal class QuickSubtitleItemRecyclerAdapter(
     private val parentComposition: CompositionContext,
     private val onItemsChanged: (List<String>, List<Int?>) -> Unit,
     private val onEditRequested: (Int, String) -> Unit,
-    private val onColorRequested: (Int) -> Unit,
     private val onEnterSelectionMode: (Int) -> Unit,
     private val onToggleSelection: (Int) -> Unit
 ) : RecyclerView.Adapter<QuickSubtitleItemRecyclerAdapter.ItemViewHolder>() {
@@ -5025,10 +5072,6 @@ internal class QuickSubtitleItemRecyclerAdapter(
                 if (idx in items.indices) {
                     onEditRequested(idx, items[idx].text)
                 }
-            },
-            onColor = {
-                val idx = holder.bindingAdapterPosition
-                if (idx in items.indices) onColorRequested(idx)
             },
             onEnterSelectionMode = {
                 val idx = holder.bindingAdapterPosition
@@ -5156,7 +5199,6 @@ internal class QuickSubtitleItemRecyclerAdapter(
             canDelete: Boolean,
             onDelete: () -> Unit,
             onEdit: () -> Unit,
-            onColor: () -> Unit,
             onEnterSelectionMode: () -> Unit,
             onToggleSelection: () -> Unit,
             onStartDrag: () -> Unit
@@ -5172,7 +5214,6 @@ internal class QuickSubtitleItemRecyclerAdapter(
                         canDelete = canDelete,
                         onDelete = onDelete,
                         onEdit = onEdit,
-                        onColor = onColor,
                         onEnterSelectionMode = onEnterSelectionMode,
                         onToggleSelection = onToggleSelection,
                         onStartDrag = onStartDrag
@@ -5194,7 +5235,6 @@ internal fun QuickSubtitleEditableRow(
     canDelete: Boolean,
     onDelete: () -> Unit,
     onEdit: () -> Unit,
-    onColor: () -> Unit,
     onEnterSelectionMode: () -> Unit,
     onToggleSelection: () -> Unit,
     onStartDrag: () -> Unit
@@ -5280,11 +5320,6 @@ internal fun QuickSubtitleEditableRow(
                         icon = "edit",
                         contentDescription = "编辑文本",
                         onClick = onEdit
-                    )
-                    Md2IconButton(
-                        icon = "palette",
-                        contentDescription = "设置文本颜色",
-                        onClick = onColor
                     )
                     Md2IconButton(
                         icon = "drag_indicator",

@@ -6,7 +6,11 @@ import kotlin.math.min
 internal enum class LockScreenLayoutMode {
     PhonePortrait,
     PhoneLandscape,
-    Tablet
+    TabletPortrait,
+    TabletLandscape;
+
+    val isPortrait: Boolean
+        get() = this == PhonePortrait || this == TabletPortrait
 }
 
 internal object LockScreenLayoutPolicy {
@@ -23,7 +27,9 @@ internal object LockScreenLayoutPolicy {
         val safeDensity = density.takeIf { it > 0f } ?: 1f
         val smallestWidthDp = minOf(screenWidthPx, screenHeightPx) / safeDensity
         return when {
-            smallestWidthDp >= TABLET_MIN_WIDTH_DP -> LockScreenLayoutMode.Tablet
+            smallestWidthDp >= TABLET_MIN_WIDTH_DP && screenWidthPx > screenHeightPx ->
+                LockScreenLayoutMode.TabletLandscape
+            smallestWidthDp >= TABLET_MIN_WIDTH_DP -> LockScreenLayoutMode.TabletPortrait
             screenWidthPx > screenHeightPx -> LockScreenLayoutMode.PhoneLandscape
             else -> LockScreenLayoutMode.PhonePortrait
         }
@@ -37,9 +43,10 @@ internal object LockScreenLayoutPolicy {
     ): Int {
         val maxLeft = max(sideMarginPx, screenWidthPx - contentWidthPx - sideMarginPx)
         val requested = when (mode) {
-            LockScreenLayoutMode.PhonePortrait -> (screenWidthPx - contentWidthPx) / 2
+            LockScreenLayoutMode.PhonePortrait,
+            LockScreenLayoutMode.TabletPortrait -> (screenWidthPx - contentWidthPx) / 2
             LockScreenLayoutMode.PhoneLandscape,
-            LockScreenLayoutMode.Tablet -> screenWidthPx - contentWidthPx - sideMarginPx
+            LockScreenLayoutMode.TabletLandscape -> screenWidthPx - contentWidthPx - sideMarginPx
         }
         return requested.coerceIn(sideMarginPx, maxLeft)
     }
@@ -47,7 +54,6 @@ internal object LockScreenLayoutPolicy {
     fun overlayWidthPx(
         mode: LockScreenLayoutMode,
         screenWidthPx: Int,
-        screenHeightPx: Int,
         density: Float,
         sideMarginPx: Int
     ): Int {
@@ -56,14 +62,15 @@ internal object LockScreenLayoutPolicy {
         val tabletWidth = (400f * density).toInt()
         val minimumWidth = (280f * density).toInt()
         val availableWidth = when {
-            mode == LockScreenLayoutMode.Tablet && screenWidthPx > screenHeightPx ->
+            mode == LockScreenLayoutMode.TabletLandscape ->
                 screenWidthPx / 2 - sideMarginPx * 2
             else -> screenWidthPx - sideMarginPx * 2
         }
-        val requestedWidth = when {
-            mode == LockScreenLayoutMode.PhoneLandscape -> phoneLandscapeWidth
-            mode == LockScreenLayoutMode.Tablet && screenWidthPx > screenHeightPx -> tabletWidth
-            else -> phoneWidth
+        val requestedWidth = when (mode) {
+            LockScreenLayoutMode.PhonePortrait -> phoneWidth
+            LockScreenLayoutMode.PhoneLandscape -> phoneLandscapeWidth
+            LockScreenLayoutMode.TabletPortrait,
+            LockScreenLayoutMode.TabletLandscape -> tabletWidth
         }
         return min(availableWidth, requestedWidth).coerceAtLeast(minimumWidth)
     }

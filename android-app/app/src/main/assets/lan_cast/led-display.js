@@ -120,7 +120,7 @@
       input.addEventListener("change", function () { settingsChanged(false); });
     });
     byId("led-web-audio").onchange = function () { api.setAudioEnabled(this.checked); };
-    Array.prototype.forEach.call(root.querySelectorAll(".led-setting-segments button"), function (button) {
+    Array.prototype.forEach.call(root.querySelectorAll(".led-setting-segments[data-setting] button"), function (button) {
       button.onclick = function () {
         setSegment(button.parentElement.parentElement.querySelector(".led-setting-segments").dataset.setting,
           Number(button.dataset.value));

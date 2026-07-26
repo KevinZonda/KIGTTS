@@ -5,11 +5,7 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.unit.dp
 
 internal object LockScreenBackgroundPermissionGuide {
     fun vendorForDevice(): LockScreenBackgroundPermissionVendor =
@@ -73,24 +69,19 @@ internal fun LockScreenBackgroundPermissionGuideDialog(
     onDismiss: () -> Unit
 ) {
     val copy = LockScreenBackgroundPermissionPolicy.copyFor(vendor)
-    KigttsAlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("允许锁屏与后台显示") },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(copy.description)
-                Text(copy.instructions)
-            }
-        },
-        dismissButton = {
-            Md2TextButton(onClick = onDismiss) {
-                Text("稍后")
-            }
-        },
-        confirmButton = {
-            Md2TextButton(onClick = onOpenSettings) {
-                Text("打开权限设置")
-            }
-        }
+    PermissionPurposeDialog(
+        info = PermissionPurposeInfo(
+            title = "允许锁屏与后台显示",
+            iconName = "lock",
+            summary = copy.description,
+            permissionName = copy.settingsEntryLabel,
+            serviceFeature = "自定义锁屏",
+            purpose = copy.instructions,
+            privacyNote = "仅用于显示你主动启用的自定义锁屏，不会读取锁屏通知、密码或其它应用内容。",
+            confirmLabel = "打开权限设置",
+            dismissLabel = "稍后"
+        ),
+        onConfirm = onOpenSettings,
+        onDismiss = onDismiss
     )
 }

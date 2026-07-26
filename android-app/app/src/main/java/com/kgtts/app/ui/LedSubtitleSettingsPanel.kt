@@ -132,22 +132,22 @@ internal fun LedSubtitleSettingsPanel(
                         accent = accent,
                         onValueChange = { onSettingsChange(settings.copy(dotDensity = it)) }
                     )
-                    LedSwitchSetting(
-                        label = "发光效果",
-                        checked = settings.glowEnabled,
+                }
+                LedSwitchSetting(
+                    label = "发光效果",
+                    checked = settings.glowEnabled,
+                    accent = accent,
+                    onCheckedChange = { onSettingsChange(settings.copy(glowEnabled = it)) }
+                )
+                if (settings.glowEnabled) {
+                    LedSettingsSlider(
+                        label = "发光强度",
+                        value = settings.glowStrength,
+                        valueRange = 0f..1f,
+                        valueLabel = "${(settings.glowStrength * 100).roundToInt()}%",
                         accent = accent,
-                        onCheckedChange = { onSettingsChange(settings.copy(glowEnabled = it)) }
+                        onValueChange = { onSettingsChange(settings.copy(glowStrength = it)) }
                     )
-                    if (settings.glowEnabled) {
-                        LedSettingsSlider(
-                            label = "发光强度",
-                            value = settings.glowStrength,
-                            valueRange = 0f..1f,
-                            valueLabel = "${(settings.glowStrength * 100).roundToInt()}%",
-                            accent = accent,
-                            onValueChange = { onSettingsChange(settings.copy(glowStrength = it)) }
-                        )
-                    }
                 }
                 LedSettingsSlider(
                     label = "显示高度",

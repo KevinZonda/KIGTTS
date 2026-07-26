@@ -347,6 +347,14 @@ fun BuiltinFilePickerDialog(
     val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         hasReadPermission = granted
     }
+    if (readPermission != null && !hasReadPermission && readPermissionPurpose != null) {
+        PermissionPurposeDialog(
+            info = readPermissionPurpose,
+            onConfirm = { permissionLauncher.launch(readPermission) },
+            onDismiss = onDismiss
+        )
+        return
+    }
     val treePermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
         if (uri == null) return@rememberLauncherForActivityResult
         val flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
@@ -411,12 +419,7 @@ fun BuiltinFilePickerDialog(
             ) {
             Text(title, style = MaterialTheme.typography.h6)
 
-            if (readPermission != null && !hasReadPermission) {
-                readPermissionPurpose?.let { PermissionPurposeDetails(it) }
-                Button(onClick = { permissionLauncher.launch(readPermission) }) {
-                    Text("允许访问文件")
-                }
-            } else if (allFilesAccess.supported) {
+            if (allFilesAccess.supported) {
                 if (!allFilesAccess.granted) {
                     Text(
                         "若共享目录中的资源没有显示，可选择“全部文件”一次开启共享存储访问；也可以继续按目录授权或使用系统文件选择器。",
@@ -624,6 +627,14 @@ fun BuiltinGalleryPickerDialog(
     val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         hasPermission = granted
     }
+    if (!hasPermission) {
+        PermissionPurposeDialog(
+            info = galleryReadPermissionPurpose(requiredPermission),
+            onConfirm = { permissionLauncher.launch(requiredPermission) },
+            onDismiss = onDismiss
+        )
+        return
+    }
 
     var selectedAlbumId by remember { mutableStateOf<String?>(null) }
     var albumExpanded by remember { mutableStateOf(false) }
@@ -663,64 +674,49 @@ fun BuiltinGalleryPickerDialog(
             ) {
             Text(title, style = MaterialTheme.typography.h6)
 
-            if (!hasPermission) {
-                PermissionPurposeDetails(galleryReadPermissionPurpose(requiredPermission))
-                Button(onClick = { permissionLauncher.launch(requiredPermission) }) {
-                    Text("授予权限")
+            Box {
+                Md2OutlinedButton(onClick = { albumExpanded = true }) {
+                    Text(albums[selectedAlbumId] ?: "全部相册")
                 }
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End
+                BuiltinAnimatedDropdownMenu(
+                    expanded = albumExpanded,
+                    onDismissRequest = { albumExpanded = false }
                 ) {
-                    Md2TextButton(onClick = onDismiss) {
-                        Text("关闭")
-                    }
-                }
-            } else {
-                Box {
-                    Md2OutlinedButton(onClick = { albumExpanded = true }) {
-                        Text(albums[selectedAlbumId] ?: "全部相册")
-                    }
-                    BuiltinAnimatedDropdownMenu(
-                        expanded = albumExpanded,
-                        onDismissRequest = { albumExpanded = false }
-                    ) {
-                        albums.forEach { (albumId, name) ->
-                            DropdownMenuItem(
-                                onClick = {
-                                    albumExpanded = false
-                                    selectedAlbumId = albumId
-                                }
-                            ) {
-                                Text(name)
+                    albums.forEach { (albumId, name) ->
+                        DropdownMenuItem(
+                            onClick = {
+                                albumExpanded = false
+                                selectedAlbumId = albumId
                             }
+                        ) {
+                            Text(name)
                         }
                     }
                 }
+            }
 
-                LazyVerticalGrid(
-                    columns = GridCells.Adaptive(minSize = 96.dp),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(360.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    items(filtered, key = { it.uri.toString() }) { item ->
-                        BuiltinGalleryGridItem(
-                            item = item,
-                            onClick = { onPicked(item.uri) }
-                        )
-                    }
+            LazyVerticalGrid(
+                columns = GridCells.Adaptive(minSize = 96.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(360.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                items(filtered, key = { it.uri.toString() }) { item ->
+                    BuiltinGalleryGridItem(
+                        item = item,
+                        onClick = { onPicked(item.uri) }
+                    )
                 }
+            }
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End
-                ) {
-                    Md2TextButton(onClick = onDismiss) {
-                        Text("关闭")
-                    }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End
+            ) {
+                Md2TextButton(onClick = onDismiss) {
+                    Text("关闭")
                 }
             }
             }

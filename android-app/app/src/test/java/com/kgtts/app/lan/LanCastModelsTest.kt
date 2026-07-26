@@ -31,6 +31,28 @@ class LanCastModelsTest {
     }
 
     @Test
+    fun transientAudioDisconnectStaysAvailableDuringReconnectGrace() {
+        assertTrue(
+            isLanCastAudioClientAvailable(
+                running = true,
+                audioClients = 0,
+                lastSeenAtMs = 10_000L,
+                nowMs = 11_500L,
+                reconnectGraceMs = 2_000L
+            )
+        )
+        assertFalse(
+            isLanCastAudioClientAvailable(
+                running = true,
+                audioClients = 0,
+                lastSeenAtMs = 10_000L,
+                nowMs = 12_001L,
+                reconnectGraceMs = 2_000L
+            )
+        )
+    }
+
+    @Test
     fun selectedAddressChangesGeneratedUrl() {
         val first = LanCastAddress("wlan0:192.168.1.8", "Wi-Fi", "192.168.1.8")
         val second = LanCastAddress("rndis0:192.168.42.1", "USB 网络", "192.168.42.1")
@@ -73,5 +95,13 @@ class LanCastModelsTest {
         assertFalse(state.led.dotMatrix)
         assertTrue(state.led.adaptiveMultiLine)
         assertEquals(0.64f, state.led.screenBrightness)
+    }
+
+    @Test
+    fun castDisplayDefaultsToNormalAdaptiveText() {
+        val style = LanCastLedStyle()
+
+        assertFalse(style.dotMatrix)
+        assertTrue(style.adaptiveMultiLine)
     }
 }
