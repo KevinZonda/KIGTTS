@@ -168,11 +168,6 @@
       writeCookie("kigtts_remote_compact_quick_text", compactQuickTextPreference);
       renderQuickGroups();
     };
-    all("[data-display-mode]").forEach(function (button) {
-      button.onclick = function () {
-        api.sendCommand("displayMode", { mode: button.getAttribute("data-display-mode") });
-      };
-    });
     all("[data-audio-output]").forEach(function (button) {
       button.onclick = function () {
         api.sendCommand("audioOutputMode", { mode: Number(button.getAttribute("data-audio-output")) });
@@ -221,8 +216,9 @@
 
   function scheduleCastSettings() {
     window.clearTimeout(settingsTimer);
+    var settings = Object.assign({}, state.led);
     settingsTimer = window.setTimeout(function () {
-      api.sendCommand("ledSettings", { settings: state.led });
+      api.sendCommand("ledSettings", { settings: settings });
     }, 100);
   }
 
@@ -410,9 +406,6 @@
   }
 
   function renderSegments() {
-    all("[data-display-mode]").forEach(function (button) {
-      button.classList.toggle("active", button.getAttribute("data-display-mode") === state.displayMode);
-    });
     all("[data-audio-output]").forEach(function (button) {
       button.classList.toggle("active", Number(button.getAttribute("data-audio-output")) === Number(state.audioOutputMode));
     });

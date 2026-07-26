@@ -139,11 +139,7 @@ private fun LockScreenPreviewFrame(
         else -> Brush.verticalGradient(listOf(scrim, Color.Transparent, scrim))
     }
     val darkContent = LockScreenWallpaperAppearance.shouldUseDarkContent(bitmap, settings, landscape)
-    val contentColor = when {
-        bitmap == null -> MaterialTheme.colorScheme.onSurface
-        darkContent -> Color.Black.copy(alpha = 0.87f)
-        else -> Color.White
-    }
+    val contentColor = if (darkContent) Color.Black.copy(alpha = 0.87f) else Color.White
     BoxWithConstraints(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
         val longEdge = maxWidth.coerceAtMost(420.dp)
         val previewWidth = if (landscape) longEdge else longEdge * (9f / 16f)
@@ -162,7 +158,6 @@ private fun LockScreenPreviewFrame(
                     modifier = Modifier.matchParentSize().blur(settings.wallpaperBlurRadius.dp),
                     contentScale = ContentScale.Crop
                 )
-                Box(Modifier.matchParentSize().background(scrimBrush))
             } else {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     MsIcon("wallpaper", contentDescription = null, iconSize = 30.dp)
@@ -170,6 +165,7 @@ private fun LockScreenPreviewFrame(
                     Text("系统锁屏壁纸", style = MaterialTheme.typography.bodySmall)
                 }
             }
+            Box(Modifier.matchParentSize().background(scrimBrush))
             LockScreenPreviewLabels(
                 modifier = Modifier.align(
                     if (landscape) Alignment.CenterStart else Alignment.Center

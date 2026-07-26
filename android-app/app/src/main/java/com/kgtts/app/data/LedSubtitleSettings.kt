@@ -81,34 +81,63 @@ internal fun encodeLedSubtitleSettings(settings: LedSubtitleSettings): String {
     }.toString()
 }
 
-internal fun decodeLedSubtitleSettings(raw: String?): LedSubtitleSettings {
-    if (raw.isNullOrBlank()) return LedSubtitleSettings()
+internal fun defaultLanCastDisplaySettings(): LedSubtitleSettings = LedSubtitleSettings(
+    dotMatrixEnabled = false,
+    adaptiveMultiLine = true
+)
+
+internal fun decodeLedSubtitleSettings(
+    raw: String?,
+    defaults: LedSubtitleSettings = LedSubtitleSettings()
+): LedSubtitleSettings {
+    if (raw.isNullOrBlank()) return defaults
     return runCatching {
         val json = JSONObject(raw)
         LedSubtitleSettings(
-            ledColorArgb = json.optInt("ledColorArgb", LedSubtitleSettings.DEFAULT_LED_COLOR_ARGB),
+            ledColorArgb = json.optInt("ledColorArgb", defaults.ledColorArgb),
             backgroundColorArgb = json.optInt(
                 "backgroundColorArgb",
-                LedSubtitleSettings.DEFAULT_LED_BACKGROUND_ARGB
+                defaults.backgroundColorArgb
             ),
-            dotMatrixEnabled = json.optBoolean("dotMatrixEnabled", true),
-            dotShape = json.optInt("dotShape", LedSubtitleSettings.DOT_SHAPE_CIRCLE),
-            dotDensity = json.optDouble("dotDensity", 0.58).toFloat(),
-            glowEnabled = json.optBoolean("glowEnabled", true),
-            glowStrength = json.optDouble("glowStrength", 0.42).toFloat(),
-            displayHeightFraction = json.optDouble("displayHeightFraction", 0.72).toFloat(),
-            adaptiveMultiLine = json.optBoolean("adaptiveMultiLine", false),
-            scrollSpeedDpPerSecond = json.optDouble("scrollSpeedDpPerSecond", 72.0).toFloat(),
+            dotMatrixEnabled = json.optBoolean("dotMatrixEnabled", defaults.dotMatrixEnabled),
+            dotShape = json.optInt("dotShape", defaults.dotShape),
+            dotDensity = json.optDouble("dotDensity", defaults.dotDensity.toDouble()).toFloat(),
+            glowEnabled = json.optBoolean("glowEnabled", defaults.glowEnabled),
+            glowStrength = json.optDouble(
+                "glowStrength",
+                defaults.glowStrength.toDouble()
+            ).toFloat(),
+            displayHeightFraction = json.optDouble(
+                "displayHeightFraction",
+                defaults.displayHeightFraction.toDouble()
+            ).toFloat(),
+            adaptiveMultiLine = json.optBoolean(
+                "adaptiveMultiLine",
+                defaults.adaptiveMultiLine
+            ),
+            scrollSpeedDpPerSecond = json.optDouble(
+                "scrollSpeedDpPerSecond",
+                defaults.scrollSpeedDpPerSecond.toDouble()
+            ).toFloat(),
             scrollDirection = json.optInt(
                 "scrollDirection",
-                LedSubtitleSettings.SCROLL_RIGHT_TO_LEFT
+                defaults.scrollDirection
             ),
-            quickSwipeOpensQuickText = json.optBoolean("quickSwipeOpensQuickText", true),
-            loopGapDp = json.optDouble("loopGapDp", 96.0).toFloat(),
-            shortTextAlignment = json.optInt("shortTextAlignment", LedSubtitleSettings.ALIGN_CENTER),
-            keepScreenOn = json.optBoolean("keepScreenOn", true),
-            followSystemBrightness = json.optBoolean("followSystemBrightness", false),
-            screenBrightness = json.optDouble("screenBrightness", 1.0).toFloat()
+            quickSwipeOpensQuickText = json.optBoolean(
+                "quickSwipeOpensQuickText",
+                defaults.quickSwipeOpensQuickText
+            ),
+            loopGapDp = json.optDouble("loopGapDp", defaults.loopGapDp.toDouble()).toFloat(),
+            shortTextAlignment = json.optInt("shortTextAlignment", defaults.shortTextAlignment),
+            keepScreenOn = json.optBoolean("keepScreenOn", defaults.keepScreenOn),
+            followSystemBrightness = json.optBoolean(
+                "followSystemBrightness",
+                defaults.followSystemBrightness
+            ),
+            screenBrightness = json.optDouble(
+                "screenBrightness",
+                defaults.screenBrightness.toDouble()
+            ).toFloat()
         ).normalized()
-    }.getOrDefault(LedSubtitleSettings())
+    }.getOrDefault(defaults)
 }

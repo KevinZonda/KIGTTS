@@ -212,46 +212,55 @@ private fun LedNormalFontMarqueeDisplay(
         val viewportHeightPx = with(density) { maxHeight.toPx() }
         val densityScale = density.density
         val normalizedText = remember(text) { normalizeLedText(text) }
-        val textPaint = remember(
+        val defaultSettings = remember { LedSubtitleSettings() }
+        val renderSettings = remember(settings) {
+            settings.copy(
+                scrollSpeedDpPerSecond = defaultSettings.scrollSpeedDpPerSecond,
+                scrollDirection = defaultSettings.scrollDirection,
+                loopGapDp = defaultSettings.loopGapDp,
+                shortTextAlignment = defaultSettings.shortTextAlignment,
+                keepScreenOn = defaultSettings.keepScreenOn,
+                followSystemBrightness = defaultSettings.followSystemBrightness,
+                screenBrightness = defaultSettings.screenBrightness
+            )
+        }
+        var settledRenderSettings by remember { mutableStateOf(renderSettings) }
+        LaunchedEffect(renderSettings) {
+            delay(90)
+            settledRenderSettings = renderSettings
+        }
+        val strip by produceState<LedRenderedStrip?>(
+            initialValue = null,
             normalizedText,
-            settings.ledColorArgb,
-            settings.displayHeightFraction,
+            settledRenderSettings,
             typeface,
-            viewportHeightPx
+            viewportHeightPx,
+            densityScale
         ) {
-            val displayHeight = viewportHeightPx * settings.displayHeightFraction
-            AndroidPaint(AndroidPaint.ANTI_ALIAS_FLAG).apply {
-                color = settings.ledColorArgb
-                textSize = (displayHeight * 0.78f).coerceAtLeast(1f)
-                this.typeface = typeface
-                val measuredWidth = measureText(normalizedText)
-                if (measuredWidth > MAXIMUM_STRIP_WIDTH) {
-                    textSize *= (MAXIMUM_STRIP_WIDTH / measuredWidth).coerceAtLeast(0.2f)
-                }
+            value = withContext(Dispatchers.Default) {
+                renderNormalFontStrip(
+                    text = normalizedText,
+                    viewportHeightPx = viewportHeightPx,
+                    densityScale = densityScale,
+                    settings = settledRenderSettings,
+                    typeface = typeface
+                )
             }
         }
-        val textWidthPx = remember(normalizedText, textPaint.textSize, typeface) {
-            textPaint.measureText(normalizedText)
-        }
+        val rendered = strip
         val gapPx = settings.loopGapDp * densityScale
-        val cycleWidth = textWidthPx + gapPx
-        val shouldScroll = normalizedText.isNotBlank() && textWidthPx > viewportWidthPx
+        val cycleWidth = (rendered?.widthPx ?: 0f) + gapPx
+        val shouldScroll = rendered != null && rendered.widthPx > viewportWidthPx
         Canvas(modifier = Modifier.fillMaxSize()) {
-            if (normalizedText.isBlank()) return@Canvas
-            val baseline = size.height / 2f -
-                (textPaint.fontMetrics.ascent + textPaint.fontMetrics.descent) / 2f
-            fun drawTextAt(left: Float) {
-                drawIntoCanvas { canvas ->
-                    canvas.nativeCanvas.drawText(normalizedText, left, baseline, textPaint)
-                }
-            }
+            val value = rendered ?: return@Canvas
+            val top = (size.height - value.heightPx) / 2f
             if (!shouldScroll) {
                 val left = when (settings.shortTextAlignment) {
                     LedSubtitleSettings.ALIGN_START -> 0f
-                    LedSubtitleSettings.ALIGN_END -> size.width - textWidthPx
-                    else -> (size.width - textWidthPx) / 2f
+                    LedSubtitleSettings.ALIGN_END -> size.width - value.widthPx
+                    else -> (size.width - value.widthPx) / 2f
                 }.coerceAtLeast(0f)
-                drawTextAt(left)
+                drawLedStrip(value, left, top)
                 return@Canvas
             }
 
@@ -259,7 +268,7 @@ private fun LedNormalFontMarqueeDisplay(
             var left = firstLeft
             while (left > -cycleWidth) left -= cycleWidth
             while (left < size.width) {
-                drawTextAt(left)
+                drawLedStrip(value, left, top)
                 left += cycleWidth
             }
         }
@@ -373,7 +382,7 @@ private suspend fun renderLedStrip(
         .coerceIn(48, viewportHeightPx.roundToInt().coerceAtLeast(48))
     val pitchDp = 12f - value.dotDensity * 7f
     val pitchPx = (pitchDp * densityScale).roundToInt().coerceAtLeast(4)
-    val horizontalPadding = pitchPx * 2f
+    val horizontalPadding = pitchPx * 3f
     val textPaint = AndroidPaint(AndroidPaint.ANTI_ALIAS_FLAG).apply {
         color = AndroidColor.WHITE
         textSize = stripHeight * 0.78f
@@ -387,22 +396,26 @@ private suspend fun renderLedStrip(
     val totalWidth = ceil(measuredWidth / pitchPx).toInt().coerceAtLeast(1) * pitchPx
     val chunkCellCount = (2_048 / pitchPx).coerceAtLeast(1)
     val standardChunkWidth = chunkCellCount * pitchPx
+    val overscan = pitchPx * 3
     val baseline = stripHeight / 2f - (textPaint.fontMetrics.ascent + textPaint.fontMetrics.descent) / 2f
     val chunks = mutableListOf<LedBitmapChunk>()
     var chunkStart = 0
 
     while (chunkStart < totalWidth) {
         currentCoroutineContext().ensureActive()
-        val chunkWidth = minOf(standardChunkWidth, totalWidth - chunkStart)
+        val contentWidth = minOf(standardChunkWidth, totalWidth - chunkStart)
+        val renderStart = (chunkStart - overscan).coerceAtLeast(0)
+        val renderEnd = (chunkStart + contentWidth + overscan).coerceAtMost(totalWidth)
+        val chunkWidth = renderEnd - renderStart
         val mask = Bitmap.createBitmap(chunkWidth, stripHeight, Bitmap.Config.ALPHA_8)
-        AndroidCanvas(mask).drawText(text, horizontalPadding - chunkStart, baseline, textPaint)
+        AndroidCanvas(mask).drawText(text, horizontalPadding - renderStart, baseline, textPaint)
         val output = Bitmap.createBitmap(chunkWidth, stripHeight, Bitmap.Config.RGB_565)
         val canvas = AndroidCanvas(output)
         canvas.drawColor(value.backgroundColorArgb)
         drawLedCells(canvas, mask, pitchPx, value)
         mask.recycle()
-        chunks += LedBitmapChunk(chunkStart.toFloat(), output.asImageBitmap())
-        chunkStart += chunkWidth
+        chunks += LedBitmapChunk(renderStart.toFloat(), output.asImageBitmap())
+        chunkStart += contentWidth
     }
     return LedRenderedStrip(totalWidth.toFloat(), stripHeight.toFloat(), chunks)
 }
@@ -416,9 +429,30 @@ internal fun drawLedCells(
     settings: LedSubtitleSettings
 ) {
     val dotRadius = pitchPx * (0.22f + settings.dotDensity * 0.12f)
-    val glowRadius = dotRadius * (1.3f + settings.glowStrength * 1.8f)
-    val glowPaint = AndroidPaint(AndroidPaint.ANTI_ALIAS_FLAG).apply { color = settings.ledColorArgb }
-    val ledPaint = AndroidPaint(AndroidPaint.ANTI_ALIAS_FLAG).apply { color = settings.ledColorArgb }
+    val sourcePaint = AndroidPaint(AndroidPaint.ANTI_ALIAS_FLAG).apply {
+        color = settings.ledColorArgb
+    }
+    val layers = createLedPaintLayers(
+        source = sourcePaint,
+        glowEnabled = settings.glowEnabled,
+        glowStrength = settings.glowStrength,
+        glowRadiusPx = ledDotGlowRadiusPx(pitchPx, settings.glowStrength)
+    )
+    val outerBaseAlpha = layers.outerGlow?.alpha ?: 0
+    val innerBaseAlpha = layers.innerGlow?.alpha ?: 0
+    fun drawDot(x: Float, y: Float, paint: AndroidPaint) {
+        if (settings.dotShape == LedSubtitleSettings.DOT_SHAPE_SQUARE) {
+            canvas.drawRect(
+                x - dotRadius,
+                y - dotRadius,
+                x + dotRadius,
+                y + dotRadius,
+                paint
+            )
+        } else {
+            canvas.drawCircle(x, y, dotRadius, paint)
+        }
+    }
     val halfPitch = pitchPx / 2
     var y = halfPitch
     while (y < mask.height) {
@@ -426,27 +460,99 @@ internal fun drawLedCells(
         while (x < mask.width) {
             val sampleAlpha = AndroidColor.alpha(mask.getPixel(x, y))
             if (sampleAlpha >= 28) {
-                if (settings.glowEnabled && settings.glowStrength > 0f) {
-                    glowPaint.alpha = (sampleAlpha * settings.glowStrength * 0.28f)
+                layers.outerGlow?.let { paint ->
+                    paint.alpha = (outerBaseAlpha * sampleAlpha / 255f)
                         .roundToInt()
-                        .coerceIn(0, 255)
-                    canvas.drawCircle(x.toFloat(), y.toFloat(), glowRadius, glowPaint)
+                        .coerceIn(0, outerBaseAlpha)
+                    drawDot(x.toFloat(), y.toFloat(), paint)
                 }
-                ledPaint.alpha = sampleAlpha.coerceIn(64, 255)
-                if (settings.dotShape == LedSubtitleSettings.DOT_SHAPE_SQUARE) {
-                    canvas.drawRect(
-                        x - dotRadius,
-                        y - dotRadius,
-                        x + dotRadius,
-                        y + dotRadius,
-                        ledPaint
-                    )
-                } else {
-                    canvas.drawCircle(x.toFloat(), y.toFloat(), dotRadius, ledPaint)
+                layers.innerGlow?.let { paint ->
+                    paint.alpha = (innerBaseAlpha * sampleAlpha / 255f)
+                        .roundToInt()
+                        .coerceIn(0, innerBaseAlpha)
+                    drawDot(x.toFloat(), y.toFloat(), paint)
                 }
+                layers.core.alpha = sampleAlpha.coerceIn(64, 255)
+                drawDot(x.toFloat(), y.toFloat(), layers.core)
             }
             x += pitchPx
         }
         y += pitchPx
     }
+}
+
+private suspend fun renderNormalFontStrip(
+    text: String,
+    viewportHeightPx: Float,
+    densityScale: Float,
+    settings: LedSubtitleSettings,
+    typeface: Typeface
+): LedRenderedStrip? {
+    if (text.isBlank() || viewportHeightPx <= 1f) return null
+    val value = settings.normalized()
+    val contentHeight = (viewportHeightPx * value.displayHeightFraction)
+        .roundToInt()
+        .coerceIn(48, viewportHeightPx.roundToInt().coerceAtLeast(48))
+    val sourcePaint = AndroidPaint(AndroidPaint.ANTI_ALIAS_FLAG).apply {
+        color = value.ledColorArgb
+        textSize = contentHeight * 0.78f
+        this.typeface = typeface
+    }
+    var glowRadius = ledTextGlowRadiusPx(
+        sourcePaint.textSize,
+        densityScale,
+        value.glowStrength
+    )
+    val initialWidth = sourcePaint.measureText(text)
+    if (initialWidth > MAXIMUM_STRIP_WIDTH) {
+        sourcePaint.textSize *= (MAXIMUM_STRIP_WIDTH / initialWidth).coerceAtLeast(0.2f)
+        glowRadius = ledTextGlowRadiusPx(
+            sourcePaint.textSize,
+            densityScale,
+            value.glowStrength
+        )
+    }
+    val glowPadding = if (value.glowEnabled && value.glowStrength > 0f) {
+        ceil(glowRadius * 2.5f).roundToInt()
+    } else {
+        0
+    }
+    val horizontalPadding = glowPadding + (densityScale * 2f).roundToInt()
+    val totalWidth = ceil(sourcePaint.measureText(text) + horizontalPadding * 2f)
+        .roundToInt()
+        .coerceAtLeast(1)
+    val stripHeight = (contentHeight + glowPadding * 2)
+        .coerceAtMost(viewportHeightPx.roundToInt().coerceAtLeast(contentHeight))
+    val baseline = stripHeight / 2f -
+        (sourcePaint.fontMetrics.ascent + sourcePaint.fontMetrics.descent) / 2f
+    val layers = createLedPaintLayers(
+        source = sourcePaint,
+        glowEnabled = value.glowEnabled,
+        glowStrength = value.glowStrength,
+        glowRadiusPx = glowRadius
+    )
+    val standardChunkWidth = 2_048
+    val overscan = glowPadding.coerceAtLeast(1)
+    val chunks = mutableListOf<LedBitmapChunk>()
+    var chunkStart = 0
+    while (chunkStart < totalWidth) {
+        currentCoroutineContext().ensureActive()
+        val contentWidth = minOf(standardChunkWidth, totalWidth - chunkStart)
+        val renderStart = (chunkStart - overscan).coerceAtLeast(0)
+        val renderEnd = (chunkStart + contentWidth + overscan).coerceAtMost(totalWidth)
+        val output = Bitmap.createBitmap(
+            renderEnd - renderStart,
+            stripHeight,
+            Bitmap.Config.RGB_565
+        )
+        val canvas = AndroidCanvas(output)
+        canvas.drawColor(value.backgroundColorArgb)
+        val textX = horizontalPadding - renderStart.toFloat()
+        layers.outerGlow?.let { canvas.drawText(text, textX, baseline, it) }
+        layers.innerGlow?.let { canvas.drawText(text, textX, baseline, it) }
+        canvas.drawText(text, textX, baseline, layers.core)
+        chunks += LedBitmapChunk(renderStart.toFloat(), output.asImageBitmap())
+        chunkStart += contentWidth
+    }
+    return LedRenderedStrip(totalWidth.toFloat(), stripHeight.toFloat(), chunks)
 }

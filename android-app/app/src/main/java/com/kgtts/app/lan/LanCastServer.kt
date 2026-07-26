@@ -1,8 +1,6 @@
 package com.lhtstudio.kigtts.app.lan
 
 import android.content.Context
-import android.os.Handler
-import android.os.Looper
 import com.lhtstudio.kigtts.app.R
 import com.lhtstudio.kigtts.app.util.AppLogger
 import fi.iki.elonen.NanoHTTPD
@@ -11,6 +9,9 @@ import org.json.JSONObject
 import java.io.File
 import java.io.IOException
 import java.util.concurrent.CopyOnWriteArraySet
+import java.util.concurrent.Executors
+import java.util.concurrent.ScheduledExecutorService
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 
 internal class LanCastServer(
@@ -19,12 +20,14 @@ internal class LanCastServer(
     private val runtime: LanCastRuntime
 ) : NanoWSD(port) {
     private val clients = CopyOnWriteArraySet<CastSocket>()
-    private val broadcastHandler = Handler(Looper.getMainLooper())
-    private val stateBroadcastScheduled = AtomicBoolean(false)
-    private val stateBroadcastRunnable = Runnable {
-        stateBroadcastScheduled.set(false)
-        broadcastText(runtime.presentation().toJson().toString())
+    private val stateBroadcastExecutor: ScheduledExecutorService =
+        Executors.newSingleThreadScheduledExecutor { task ->
+            Thread(task, "LanCast-StateBroadcast").apply { isDaemon = true }
+        }
+    private val commandExecutor = Executors.newSingleThreadExecutor { task ->
+        Thread(task, "LanCast-Command").apply { isDaemon = true }
     }
+    private val stateBroadcastScheduled = AtomicBoolean(false)
 
     override fun openWebSocket(handshake: IHTTPSession): WebSocket = CastSocket(handshake)
 
@@ -108,15 +111,33 @@ internal class LanCastServer(
     }
 
     fun broadcastState() {
+        if (stateBroadcastExecutor.isShutdown) return
         if (stateBroadcastScheduled.compareAndSet(false, true)) {
-            broadcastHandler.postDelayed(stateBroadcastRunnable, STATE_BROADCAST_INTERVAL_MS)
+            runCatching {
+                stateBroadcastExecutor.schedule(
+                    {
+                        stateBroadcastScheduled.set(false)
+                        broadcastText(runtime.presentation().toJson().toString())
+                    },
+                    STATE_BROADCAST_INTERVAL_MS,
+                    TimeUnit.MILLISECONDS
+                )
+            }.onFailure {
+                stateBroadcastScheduled.set(false)
+                if (!stateBroadcastExecutor.isShutdown) {
+                    AppLogger.e("LanCast state broadcast scheduling failed", it)
+                }
+            }
         }
     }
 
     fun broadcastText(message: String) {
         clients.forEach { client ->
             runCatching { client.send(message) }
-                .onFailure { client.closeQuietly() }
+                .onFailure {
+                    AppLogger.e("LanCast state send failed role=${client.role}", it)
+                    client.closeQuietly()
+                }
         }
     }
 
@@ -135,8 +156,9 @@ internal class LanCastServer(
     }
 
     override fun stop() {
-        broadcastHandler.removeCallbacks(stateBroadcastRunnable)
         stateBroadcastScheduled.set(false)
+        stateBroadcastExecutor.shutdownNow()
+        commandExecutor.shutdownNow()
         clients.forEach { it.closeQuietly() }
         clients.clear()
         updateClientCounts()
@@ -249,6 +271,9 @@ internal class LanCastServer(
         ) {
             clients -= this
             updateClientCounts()
+            AppLogger.i(
+                "LanCast websocket closed role=$role code=$code remote=$initiatedByRemote reason=${reason.orEmpty()}"
+            )
         }
 
         override fun onMessage(message: WebSocketFrame) {
@@ -292,7 +317,20 @@ internal class LanCastServer(
                 }
                 return
             }
-            runCatching { send(runtime.handleCommand(raw).toString()) }
+            if (commandExecutor.isShutdown) return
+            runCatching {
+                commandExecutor.execute {
+                    runCatching { send(runtime.handleCommand(raw).toString()) }
+                        .onFailure {
+                            AppLogger.e("LanCast command response failed role=$role", it)
+                            closeQuietly()
+                        }
+                }
+            }.onFailure {
+                if (!commandExecutor.isShutdown) {
+                    AppLogger.e("LanCast command scheduling failed role=$role", it)
+                }
+            }
         }
 
         override fun onPong(pong: WebSocketFrame) = Unit

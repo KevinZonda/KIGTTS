@@ -260,6 +260,7 @@ import com.lhtstudio.kigtts.app.data.SoundboardConfig
 import com.lhtstudio.kigtts.app.data.SoundboardPresetIo
 import com.lhtstudio.kigtts.app.data.KOKORO_VOICE_NAME
 import com.lhtstudio.kigtts.app.data.LedSubtitleSettings
+import com.lhtstudio.kigtts.app.data.defaultLanCastDisplaySettings
 import com.lhtstudio.kigtts.app.data.DrawingPalette
 import com.lhtstudio.kigtts.app.data.QuickTextGestureSettings
 import com.lhtstudio.kigtts.app.data.QuickCardPackageCard
@@ -297,6 +298,7 @@ import com.lhtstudio.kigtts.app.util.LauncherMenuShortcuts
 import com.lhtstudio.kigtts.app.util.LiveSubtitleNotificationBridge
 import com.lhtstudio.kigtts.app.lan.LanCastAudioBridge
 import com.lhtstudio.kigtts.app.lan.LanCastAudioOutputMode
+import com.lhtstudio.kigtts.app.lan.LanCastBackgroundAccess
 import com.lhtstudio.kigtts.app.lan.LanCastRuntime
 import com.lhtstudio.kigtts.app.lan.LanCastService
 import com.lhtstudio.kigtts.app.util.QqScannerSupport
@@ -947,6 +949,8 @@ class MainViewModel(
             bluetoothMediaTitleSubtitle = settings.bluetoothMediaTitleSubtitle,
             liveSubtitleNotificationEnabled = settings.liveSubtitleNotificationEnabled,
             lanCastAudioOutputMode = settings.lanCastAudioOutputMode,
+            lanCastBackgroundReminderDismissed =
+                settings.lanCastBackgroundReminderDismissed,
             drawingKeepCanvasOrientationToDevice = settings.drawingKeepCanvasOrientationToDevice,
             drawingPalette = settings.drawingPalette,
             speakerVerifyEnabled = speakerVerifyEnabled,
@@ -3974,8 +3978,16 @@ class MainViewModel(
         }
     }
 
+    fun applyLanCastDisplaySettingsFromWeb(settings: LedSubtitleSettings) {
+        val normalized = settings.normalized()
+        if (uiState.lanCastDisplaySettings == normalized) return
+        lanCastDisplaySettingsSaveJob?.cancel()
+        lanCastDisplaySettingsSaveJob = null
+        uiState = uiState.copy(lanCastDisplaySettings = normalized)
+    }
+
     fun resetLanCastDisplaySettings() {
-        updateLanCastDisplaySettings(LedSubtitleSettings())
+        updateLanCastDisplaySettings(defaultLanCastDisplaySettings())
     }
 
     fun setBluetoothMediaTitleSubtitle(enabled: Boolean) {
@@ -4013,12 +4025,23 @@ class MainViewModel(
         }
     }
 
+    fun setLanCastBackgroundReminderDismissed(dismissed: Boolean) {
+        uiState = uiState.copy(lanCastBackgroundReminderDismissed = dismissed)
+        viewModelScope.launch {
+            UserPrefs.setLanCastBackgroundReminderDismissed(appContext, dismissed)
+        }
+    }
+
     fun startLanCast() {
         LanCastService.start(appContext)
     }
 
     fun stopLanCast() {
         LanCastService.stop(appContext)
+    }
+
+    fun openLanCastBackgroundSettings() {
+        LanCastBackgroundAccess.openSettings(appContext)
     }
 
     fun refreshLanCastAddresses() {

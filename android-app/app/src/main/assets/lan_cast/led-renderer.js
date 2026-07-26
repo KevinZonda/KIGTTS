@@ -43,7 +43,7 @@
     function renderMode() {
       if (!state) return;
       var editing = localPreview !== null && localPreview.length > 0;
-      var adaptive = editing || state.previewActive || state.displayMode !== "led";
+      var adaptive = editing || state.previewActive;
       canvas.style.display = adaptive ? "none" : "block";
       stage.style.display = adaptive ? "flex" : "none";
       if (adaptive) {
@@ -78,7 +78,8 @@
         stage.clientHeight - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom)
       );
       var low = 18;
-      var high = Math.max(32, Math.min(800, availableHeight * 0.78));
+      var heightFraction = Number(state.led && state.led.displayHeightFraction) || 0.72;
+      var high = Math.max(32, Math.min(800, availableHeight * heightFraction));
       if (state.autoFit === false) high = Math.min(high, state.fontSizeSp || 56);
       for (var i = 0; i < 11; i++) {
         var mid = (low + high) / 2;
@@ -227,7 +228,7 @@
 
     function drawFrame(timestamp) {
       requestAnimationFrame(drawFrame);
-      if (!state || localPreview !== null || state.previewActive || state.displayMode !== "led") return;
+      if (!state || localPreview !== null || state.previewActive) return;
       resize();
       var ratio = Math.min(window.devicePixelRatio || 1, 2);
       var width = canvas.width / ratio;

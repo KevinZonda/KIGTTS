@@ -40,6 +40,32 @@
       return primary + secondary * 0.42 + secondary * secondary / Math.max(180, primary * 8);
     }
 
+    function verticalCandidate(origin, list, active, direction) {
+      var choices = [];
+      for (var i = 0; i < list.length; i++) {
+        var candidate = list[i];
+        if (candidate === active) continue;
+        var point = center(candidate.getBoundingClientRect());
+        var primary = direction === "up" ? origin.y - point.y : point.y - origin.y;
+        if (primary <= 2) continue;
+        choices.push({
+          element: candidate,
+          primary: primary,
+          secondary: Math.abs(point.x - origin.x)
+        });
+      }
+      if (!choices.length) return null;
+      var nearestRow = Math.min.apply(null, choices.map(function (choice) { return choice.primary; }));
+      var rowTolerance = Math.max(10, Math.min(28, nearestRow * 0.3));
+      choices = choices.filter(function (choice) {
+        return choice.primary <= nearestRow + rowTolerance;
+      });
+      choices.sort(function (a, b) {
+        return a.secondary - b.secondary || a.primary - b.primary;
+      });
+      return choices[0].element;
+    }
+
     function focusInitial(list) {
       var preferred = focusScope().querySelector("[data-tv-focus-first]") || list[0];
       if (preferred) focusElement(preferred);
@@ -56,6 +82,11 @@
       var active = document.activeElement;
       if (list.indexOf(active) < 0) { focusInitial(list); return; }
       var origin = center(active.getBoundingClientRect());
+      if (direction === "up" || direction === "down") {
+        var vertical = verticalCandidate(origin, list, active, direction);
+        if (vertical) focusElement(vertical);
+        return;
+      }
       var best = null;
       var bestScore = Number.POSITIVE_INFINITY;
       for (var i = 0; i < list.length; i++) {

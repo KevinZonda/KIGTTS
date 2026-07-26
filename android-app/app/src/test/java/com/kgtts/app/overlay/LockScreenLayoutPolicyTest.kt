@@ -11,7 +11,8 @@ class LockScreenLayoutPolicyTest {
         assertTrue(LockScreenLayoutPolicy.hideClock(LockScreenLayoutMode.PhonePortrait, true))
         assertFalse(LockScreenLayoutPolicy.hideClock(LockScreenLayoutMode.PhonePortrait, false))
         assertFalse(LockScreenLayoutPolicy.hideClock(LockScreenLayoutMode.PhoneLandscape, true))
-        assertFalse(LockScreenLayoutPolicy.hideClock(LockScreenLayoutMode.Tablet, true))
+        assertFalse(LockScreenLayoutPolicy.hideClock(LockScreenLayoutMode.TabletPortrait, true))
+        assertFalse(LockScreenLayoutPolicy.hideClock(LockScreenLayoutMode.TabletLandscape, true))
     }
 
     @Test
@@ -37,15 +38,19 @@ class LockScreenLayoutPolicyTest {
     }
 
     @Test
-    fun `tablet uses the right side in either orientation`() {
+    fun `tablet portrait centers while landscape uses the right side`() {
         val portraitMode = LockScreenLayoutPolicy.mode(1600, 2560, 2f)
         val landscapeMode = LockScreenLayoutPolicy.mode(2560, 1600, 2f)
 
-        assertEquals(LockScreenLayoutMode.Tablet, portraitMode)
-        assertEquals(LockScreenLayoutMode.Tablet, landscapeMode)
+        assertEquals(LockScreenLayoutMode.TabletPortrait, portraitMode)
+        assertEquals(LockScreenLayoutMode.TabletLandscape, landscapeMode)
         assertEquals(
-            752,
+            400,
             LockScreenLayoutPolicy.overlayLeftPx(portraitMode, 1600, 800, 48)
+        )
+        assertEquals(
+            1712,
+            LockScreenLayoutPolicy.overlayLeftPx(landscapeMode, 2560, 800, 48)
         )
     }
 
@@ -65,7 +70,7 @@ class LockScreenLayoutPolicyTest {
     @Test
     fun `phone landscape host column stops before the actual overlay`() {
         val mode = LockScreenLayoutPolicy.mode(2400, 1080, 3f)
-        val width = LockScreenLayoutPolicy.overlayWidthPx(mode, 2400, 1080, 3f, 48)
+        val width = LockScreenLayoutPolicy.overlayWidthPx(mode, 2400, 3f, 48)
         val left = LockScreenLayoutPolicy.overlayLeftPx(mode, 2400, width, 48)
 
         assertEquals(1620, width)

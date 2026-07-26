@@ -164,6 +164,12 @@ body.display-page .display-view { display: block; }
   text-align: left;
   cursor: pointer;
 }
+.led-quick-item:focus-visible,
+.led-group-button:focus-visible {
+  z-index: 1;
+  outline: 0;
+  box-shadow: inset 0 0 0 3px color-mix(in srgb, var(--led-accent) 72%, white);
+}
 .led-add-current { text-align: center; color: var(--led-secondary); }
 .led-group-rail { border-left: 1px solid rgba(93,97,106,.72); }
 .led-group-button { width: 50px; height: 50px; border: 0; color: var(--led-secondary); background: transparent; }
@@ -205,7 +211,28 @@ body.display-page .display-view { display: block; }
 .led-settings-panel input[type="checkbox"]:checked { background: color-mix(in srgb, var(--led-accent) 48%, transparent); }
 .led-settings-panel input[type="checkbox"]:checked::before { transform: translateX(18px); background: var(--led-accent); }
 .led-settings-panel input[type="range"] { width: 100%; accent-color: var(--led-accent); }
-.led-color-input { width: 34px; height: 34px; border: 1px solid var(--led-outline); border-radius: 50%; padding: 0; overflow: hidden; background: transparent; }
+.led-color-input {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 40px;
+  height: 40px;
+  flex: 0 0 40px;
+  padding: 0;
+  border: 1px solid var(--led-outline);
+  border-radius: 50%;
+  background: transparent;
+  cursor: pointer;
+  overflow: hidden;
+  transition: transform 120ms ease, outline-color 120ms ease;
+}
+.led-color-input::-webkit-color-swatch-wrapper { padding: 0; border-radius: 50%; }
+.led-color-input::-webkit-color-swatch { border: 0; border-radius: 50%; }
+.led-color-input::-moz-color-swatch { border: 0; border-radius: 50%; }
+.led-color-input:hover { transform: scale(1.05); }
+.led-color-input:focus-visible {
+  outline: 2px solid var(--led-accent);
+  outline-offset: 2px;
+}
 .led-setting-block { padding: 5px 0 10px; }
 .led-setting-segments { margin-top: 8px; display: flex; gap: 4px; }
 .led-setting-segments button { flex: 1; height: 42px; border: 1px solid var(--led-outline); border-radius: 4px; color: var(--led-secondary); background: transparent; }

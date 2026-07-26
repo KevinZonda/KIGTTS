@@ -48,9 +48,12 @@ internal fun DrawingPaletteRow(
     onDelete: () -> Unit,
     onStartDrag: () -> Unit
 ) {
-    val elevation by animateDpAsState(
-        targetValue = if (dragged) 10.dp else 0.dp,
-        animationSpec = tween(150, easing = FastOutSlowInEasing),
+    val cardElevation by animateDpAsState(
+        targetValue = if (dragged) 10.dp else UiTokens.CardElevation,
+        animationSpec = tween(
+            durationMillis = if (dragged) 120 else 160,
+            easing = FastOutSlowInEasing
+        ),
         label = "drawing_palette_row_elevation"
     )
     val overlay by animateColorAsState(
@@ -58,65 +61,66 @@ internal fun DrawingPaletteRow(
         animationSpec = tween(120),
         label = "drawing_palette_row_overlay"
     )
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 2.dp, vertical = 4.dp)
-            .heightIn(min = 72.dp),
-        shape = RoundedCornerShape(UiTokens.Radius),
-        backgroundColor = md2CardContainerColor(),
-        elevation = elevation
-    ) {
-        Row(
+    Box(modifier = Modifier.padding(horizontal = 2.dp, vertical = 6.dp)) {
+        Card(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(overlay)
-                .graphicsLayer { alpha = if (dragged) 0.98f else 1f }
-                .padding(horizontal = 8.dp, vertical = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
-            verticalAlignment = Alignment.CenterVertically
+                .heightIn(min = 72.dp),
+            shape = RoundedCornerShape(UiTokens.Radius),
+            backgroundColor = md2CardContainerColor(),
+            elevation = cardElevation
         ) {
-            PaletteColorButton("亮色", "light_mode", Color(entry.lightColorArgb), onEditLight)
-            PaletteColorButton("暗色", "dark_mode", Color(entry.darkColorArgb), onEditDark)
-            Column(
+            Row(
                 modifier = Modifier
-                    .weight(1f)
-                    .padding(horizontal = 6.dp),
-                verticalArrangement = Arrangement.Center
+                    .fillMaxWidth()
+                    .background(overlay)
+                    .graphicsLayer { alpha = if (dragged) 0.98f else 1f }
+                    .padding(horizontal = 8.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = "${WindowsColorNamesZhCn.displayName(entry.lightColorArgb)} · " +
-                        WindowsColorNamesZhCn.displayName(entry.darkColorArgb),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    fontWeight = FontWeight.SemiBold
-                )
-                Text(
-                    text = "${entry.lightColorArgb.toHexColor()} · ${entry.darkColorArgb.toHexColor()}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-            Md2IconButton(
-                icon = "drag_indicator",
-                contentDescription = "拖动排序",
-                onClick = {},
-                modifier = Modifier.pointerInteropFilter { event ->
-                    when (event.actionMasked) {
-                        MotionEvent.ACTION_DOWN -> {
-                            onStartDrag()
-                            true
-                        }
-                        MotionEvent.ACTION_MOVE,
-                        MotionEvent.ACTION_UP,
-                        MotionEvent.ACTION_CANCEL -> true
-                        else -> false
-                    }
+                PaletteColorButton("亮色", "light_mode", Color(entry.lightColorArgb), onEditLight)
+                PaletteColorButton("暗色", "dark_mode", Color(entry.darkColorArgb), onEditDark)
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(horizontal = 6.dp),
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    Text(
+                        text = "${WindowsColorNamesZhCn.displayName(entry.lightColorArgb)} · " +
+                            WindowsColorNamesZhCn.displayName(entry.darkColorArgb),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Text(
+                        text = "${entry.lightColorArgb.toHexColor()} · ${entry.darkColorArgb.toHexColor()}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
                 }
-            )
-            Md2IconButton("delete", "删除颜色", onDelete)
+                Md2IconButton(
+                    icon = "drag_indicator",
+                    contentDescription = "拖动排序",
+                    onClick = {},
+                    modifier = Modifier.pointerInteropFilter { event ->
+                        when (event.actionMasked) {
+                            MotionEvent.ACTION_DOWN -> {
+                                onStartDrag()
+                                true
+                            }
+                            MotionEvent.ACTION_MOVE,
+                            MotionEvent.ACTION_UP,
+                            MotionEvent.ACTION_CANCEL -> true
+                            else -> false
+                        }
+                    }
+                )
+                Md2IconButton("delete", "删除颜色", onDelete)
+            }
         }
     }
 }
