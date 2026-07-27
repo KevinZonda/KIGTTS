@@ -367,39 +367,57 @@ private fun QuickSubtitleGuideOverlay(
         }
         val maxWidthPx = with(density) { maxWidth.toPx() }
         val maxHeightPx = with(density) { maxHeight.toPx() }
-        val cardWidth = minOf(420.dp, maxWidth - 32.dp)
+        val isDisplayGuideStep = QuickSubtitleGuideAnchor.SubtitleDisplay in step.anchors
+        val useLandscapeMenuPlacement = isDisplayGuideStep && maxWidth > maxHeight
+        val cardWidth = minOf(
+            if (useLandscapeMenuPlacement) 340.dp else 420.dp,
+            maxWidth - 32.dp
+        )
         val cardWidthPx = with(density) { cardWidth.toPx() }
         val cardHeightPx = cardSize.height.takeIf { it > 0 }?.toFloat() ?: with(density) { 210.dp.toPx() }
         val marginPx = with(density) { 16.dp.toPx() }
         val gapPx = with(density) { 12.dp.toPx() }
-        val isDisplayGuideStep = QuickSubtitleGuideAnchor.SubtitleDisplay in step.anchors
         val calloutReservePx = if (QuickSubtitleGuideAnchor.BottomBar in step.anchors) {
             with(density) { 36.dp.toPx() }
         } else {
             0f
         }
-        val cardHorizontalAdjustment = if (isDisplayGuideStep) {
+        val menuBounds = anchorBounds[QuickSubtitleGuideAnchor.TopBarMenu]
+        val centeredCardX = (maxWidthPx - cardWidthPx) / 2f
+        val cardHorizontalAdjustment = if (isDisplayGuideStep && !useLandscapeMenuPlacement) {
             with(density) { (-24).dp.toPx() }
         } else {
             0f
         }
-        val cardX = ((maxWidthPx - cardWidthPx) / 2f + cardHorizontalAdjustment).coerceIn(
+        val requestedCardX = if (useLandscapeMenuPlacement && menuBounds != null) {
+            menuBounds.right - overlayBounds.left + gapPx
+        } else {
+            centeredCardX + cardHorizontalAdjustment
+        }
+        val cardX = requestedCardX.coerceIn(
             marginPx,
             (maxWidthPx - cardWidthPx - marginPx).coerceAtLeast(marginPx)
         )
         val baseCardY = when {
-            union == null -> (maxHeightPx - cardHeightPx) / 2f
-            union.bottom + gapPx + cardHeightPx <= maxHeightPx - marginPx -> union.bottom + gapPx
+            useLandscapeMenuPlacement && menuBounds != null ->
+                menuBounds.top - overlayBounds.top
+
+            isDisplayGuideStep ->
+                maxHeightPx - cardHeightPx - marginPx
+
+            union == null ->
+                (maxHeightPx - cardHeightPx) / 2f
+
+            union.bottom + gapPx + cardHeightPx <= maxHeightPx - marginPx ->
+                union.bottom + gapPx
+
             union.top - gapPx - calloutReservePx - cardHeightPx >= marginPx ->
                 union.top - gapPx - calloutReservePx - cardHeightPx
-            else -> (maxHeightPx - cardHeightPx) / 2f
+
+            else ->
+                (maxHeightPx - cardHeightPx) / 2f
         }
-        val cardVerticalAdjustment = if (isDisplayGuideStep) {
-            with(density) { (-28).dp.toPx() }
-        } else {
-            0f
-        }
-        val cardY = (baseCardY + cardVerticalAdjustment).coerceIn(
+        val cardY = baseCardY.coerceIn(
             marginPx,
             (maxHeightPx - cardHeightPx - marginPx).coerceAtLeast(marginPx)
         )
