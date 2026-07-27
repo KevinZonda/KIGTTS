@@ -14,7 +14,7 @@ class QuickSubtitleFirstRunGuideTest {
         assertEquals(3, steps.size)
         assertEquals(setOf(QuickSubtitleGuideAnchor.QuickText), steps.first().anchors)
         assertTrue(steps.first().messages.any { "长按" in it })
-        assertTrue(steps.first().callouts.any { it.label == "长按打开候选列表" })
+        assertTrue(steps.first().callouts.any { "上滑" in it.label && "下滑" in it.label })
         assertTrue(QuickSubtitleGuideAnchor.BottomBar in steps.last().anchors)
         assertTrue(QuickSubtitleGuideAnchor.RecognitionFab in steps.last().anchors)
         assertTrue(steps.last().messages.any { "用于语音识别" in it })
@@ -50,6 +50,25 @@ class QuickSubtitleFirstRunGuideTest {
 
         assertTrue(firstStep.messages.any { "上下滑动" in it })
         assertTrue(firstStep.messages.any { "左右滑动" in it })
+        assertTrue(QuickSubtitleGuideAnchor.QuickTextGroupSwitcher in firstStep.anchors)
+        assertTrue(firstStep.callouts.any { it.label == "上下滑动切换分组" })
+    }
+
+    @Test
+    fun guideUsesActualGestureDirectionAndHidesItWhenDisabled() {
+        val reversedLandscape = quickSubtitleGuideSteps(
+            compactControls = false,
+            panelGesturesEnabled = true,
+            panelGesturesReversed = true,
+            isLandscape = true
+        ).first()
+        assertTrue(reversedLandscape.callouts.any { "右滑" in it.label && "左滑" in it.label })
+
+        val disabled = quickSubtitleGuideSteps(
+            compactControls = false,
+            panelGesturesEnabled = false
+        ).first()
+        assertTrue(disabled.callouts.any { it.label == "长按打开候选列表" })
     }
 
     @Test

@@ -2029,6 +2029,20 @@ fun SettingsScreen(
                         supportingText = "缩小快捷文本区域，并将编辑入口移到顶栏。"
                     )
                     Md2SettingSwitchRow(
+                        title = "快捷文本区域手势",
+                        checked = state.quickSubtitlePanelGesturesEnabled,
+                        onCheckedChange = { viewModel.setQuickSubtitlePanelGesturesEnabled(it) },
+                        supportingText = "竖屏上滑打开候选列表、下滑输入文本；横屏对应左滑和右滑。"
+                    )
+                    if (state.quickSubtitlePanelGesturesEnabled) {
+                        Md2SettingSwitchRow(
+                            title = "翻转快捷文本手势",
+                            checked = state.quickSubtitlePanelGesturesReversed,
+                            onCheckedChange = { viewModel.setQuickSubtitlePanelGesturesReversed(it) },
+                            supportingText = "交换打开候选列表与输入文本的手势方向。"
+                        )
+                    }
+                    Md2SettingSwitchRow(
                         title = "收起键盘后保留输入预览",
                         checked = state.quickSubtitleKeepInputPreview,
                         onCheckedChange = { viewModel.setQuickSubtitleKeepInputPreview(it) },

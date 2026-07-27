@@ -2942,6 +2942,9 @@ fun AppScaffold(viewModel: MainViewModel) {
                     replayRequestId = state.quickSubtitleGuideReplayRequestId
                 ),
             compactControls = state.quickSubtitleCompactControls,
+            panelGesturesEnabled = state.quickSubtitlePanelGesturesEnabled,
+            panelGesturesReversed = state.quickSubtitlePanelGesturesReversed,
+            isLandscape = isLandscape,
             replayRequestId = state.quickSubtitleGuideReplayRequestId,
             anchorBounds = quickSubtitleGuideAnchorBounds,
             onSelectCompactControls = viewModel::setQuickSubtitleCompactControls,

@@ -151,6 +151,8 @@ import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.input.pointer.PointerButtons
 import androidx.compose.ui.input.pointer.PointerEvent
 import androidx.compose.ui.input.pointer.PointerType
@@ -166,6 +168,7 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.platform.LocalTextToolbar
@@ -874,7 +877,7 @@ internal fun QuickSubtitleListDialog(
     onLayoutModeChange: (QuickSubtitleListPopupLayout) -> Unit,
     onSelectGroup: (Int) -> Unit,
     onDismiss: () -> Unit,
-    onSubmit: (String) -> Unit
+    onSubmit: (Long, String) -> Unit
 ) {
     if (groups.isEmpty()) return
     val configuration = LocalConfiguration.current
@@ -950,7 +953,7 @@ internal fun QuickSubtitleListDialog(
                                 grid = true,
                                 onClick = {
                                     performKeyHaptic()
-                                    onSubmit(text)
+                                    targetGroup?.let { onSubmit(it.id, text) }
                                     onDismiss()
                                 }
                             )
@@ -971,7 +974,7 @@ internal fun QuickSubtitleListDialog(
                                 grid = false,
                                 onClick = {
                                     performKeyHaptic()
-                                    onSubmit(text)
+                                    targetGroup?.let { onSubmit(it.id, text) }
                                     onDismiss()
                                 }
                             )
@@ -1345,7 +1348,11 @@ private fun QuickSubtitleActionPanelToggle(
 }
 
 @Composable
-@OptIn(ExperimentalFoundationApi::class, ExperimentalMaterialApi::class)
+@OptIn(
+    ExperimentalFoundationApi::class,
+    ExperimentalMaterialApi::class,
+    ExperimentalComposeUiApi::class
+)
 fun QuickSubtitleScreen(
     viewModel: MainViewModel,
     state: UiState,
@@ -1366,9 +1373,17 @@ fun QuickSubtitleScreen(
     val context = LocalContext.current
     val clipboard = LocalClipboardManager.current
     val focusManager = LocalFocusManager.current
+    val keyboardController = LocalSoftwareKeyboardController.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val groups = viewModel.quickSubtitleGroups
     val selectedGroupIndex = viewModel.currentQuickSubtitleGroupIndex().coerceIn(0, groups.lastIndex.coerceAtLeast(0))
+    val displayGroups = remember(
+        groups,
+        selectedGroupIndex,
+        state.quickSubtitleFrequencySortEnabled
+    ) {
+        groups.map(viewModel::quickSubtitleDisplayGroup)
+    }
     val quickItemsScrollState = rememberScrollState()
     val subtitleText = viewModel.quickSubtitleCurrentText
     val subtitleFontSizeMax = if (state.quickSubtitleAllowLargeFont) 800f else 96f
@@ -1402,6 +1417,8 @@ fun QuickSubtitleScreen(
             "more_horiz"
         }
     val performKeyHaptic = rememberKigttsKeyHaptic()
+    val inputFocusRequester = remember { FocusRequester() }
+    val inputFocusScope = rememberCoroutineScope()
     val copySubtitleText = {
         performKeyHaptic()
         val content = subtitleText.trim()
@@ -1575,10 +1592,33 @@ fun QuickSubtitleScreen(
     }
     val hasVoice = state.voiceDir != null
     var quickSubtitleListDialogVisible by rememberSaveable { mutableStateOf(false) }
+    var quickSubtitleListDialogGroups by remember { mutableStateOf(displayGroups) }
     val quickSubtitleListDialogLayoutMode = viewModel.quickSubtitleListPopupLayout
     val openQuickSubtitleListDialog = {
         performKeyHaptic()
+        quickSubtitleListDialogGroups = groups.map(viewModel::quickSubtitleDisplayGroup)
         quickSubtitleListDialogVisible = true
+    }
+    val openQuickSubtitleInput = {
+        performKeyHaptic()
+        inputFocusScope.launch {
+            yield()
+            inputFocusRequester.requestFocus()
+            keyboardController?.show()
+        }
+        Unit
+    }
+    val quickTextPanelGestureModifier = Modifier.quickSubtitlePanelGestures(
+        enabled = state.quickSubtitlePanelGesturesEnabled,
+        landscape = isLandscape,
+        reversed = state.quickSubtitlePanelGesturesReversed,
+        onOpenCandidates = openQuickSubtitleListDialog,
+        onOpenInput = openQuickSubtitleInput
+    )
+    LaunchedEffect(selectedGroupIndex, state.quickSubtitleFrequencySortEnabled) {
+        if (state.quickSubtitleFrequencySortEnabled) {
+            quickItemsScrollState.scrollTo(0)
+        }
     }
     val statusBarInsetTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val quickSubtitleTopBlankTarget =
@@ -1909,8 +1949,9 @@ fun QuickSubtitleScreen(
                                             modifier = Modifier
                                                 .weight(1f)
                                                 .fillMaxWidth()
+                                                .then(quickTextPanelGestureModifier)
                                         ) { groupIndex ->
-                                            val animatedGroup = groups.getOrNull(groupIndex)
+                                            val animatedGroup = displayGroups.getOrNull(groupIndex)
                                             val animatedQuickItems = animatedGroup?.items.orEmpty()
                                             Column(
                                                 modifier = Modifier
@@ -1929,7 +1970,8 @@ fun QuickSubtitleScreen(
                                                                     viewModel.submitQuickSubtitlePreset(
                                                                         text = text,
                                                                         hasVoice = hasVoice,
-                                                                        interruptCurrent = state.quickSubtitleInterruptQueue
+                                                                        interruptCurrent = state.quickSubtitleInterruptQueue,
+                                                                        groupId = animatedGroup?.id
                                                                     )
                                                             },
                                                             onLongClick = openQuickSubtitleListDialog
@@ -1977,6 +2019,10 @@ fun QuickSubtitleScreen(
                                             modifier = Modifier
                                                 .fillMaxWidth()
                                                 .height(40.dp)
+                                                .quickSubtitleGuideAnchor(
+                                                    QuickSubtitleGuideAnchor.QuickTextGroupSwitcher,
+                                                    recordQuickSubtitleGuideAnchor
+                                                )
                                                 .pointerInput(groups.size) {
                                                     var accumulatedDrag = 0f
                                                     var gestureGroupIndex = 0
@@ -2114,9 +2160,10 @@ fun QuickSubtitleScreen(
                                                         sizeTransform = androidx.compose.animation.SizeTransform(clip = false)
                                                     )
                                                 },
+                                                modifier = quickTextPanelGestureModifier,
                                                 label = "quick_subtitle_items_switch_landscape"
                                             ) { groupIndex ->
-                                                val animatedGroup = groups.getOrNull(groupIndex)
+                                                val animatedGroup = displayGroups.getOrNull(groupIndex)
                                                 val animatedQuickItems = animatedGroup?.items.orEmpty()
                                                 Column(
                                                     modifier = Modifier
@@ -2135,7 +2182,8 @@ fun QuickSubtitleScreen(
                                                                         performKeyHaptic()
                                                                         viewModel.submitQuickSubtitlePreset(
                                                                             text = text,
-                                                                            hasVoice = hasVoice
+                                                                            hasVoice = hasVoice,
+                                                                            groupId = animatedGroup?.id
                                                                         )
                                                                 },
                                                                 onLongClick = openQuickSubtitleListDialog
@@ -2479,9 +2527,10 @@ fun QuickSubtitleScreen(
                                                             )
                                                         }
                                                     },
+                                                    modifier = quickTextPanelGestureModifier,
                                                     label = "quick_subtitle_items_switch_portrait_compact"
                                                 ) { groupIndex ->
-                                                    val animatedGroup = groups.getOrNull(groupIndex)
+                                                    val animatedGroup = displayGroups.getOrNull(groupIndex)
                                                     val animatedQuickItems = animatedGroup?.items.orEmpty()
                                                     val compactScrollState = rememberScrollState()
                                                     val compactLeftFadeAlpha by animateFloatAsState(
@@ -2521,7 +2570,8 @@ fun QuickSubtitleScreen(
                                                                                 viewModel.submitQuickSubtitlePreset(
                                                                                     text = text,
                                                                                     hasVoice = hasVoice,
-                                                                                    interruptCurrent = state.quickSubtitleInterruptQueue
+                                                                                    interruptCurrent = state.quickSubtitleInterruptQueue,
+                                                                                    groupId = animatedGroup?.id
                                                                                 )
                                                                             },
                                                                             onLongClick = openQuickSubtitleListDialog
@@ -2602,6 +2652,10 @@ fun QuickSubtitleScreen(
                                             modifier = Modifier
                                                 .width(56.dp)
                                                 .height(110.dp)
+                                                .quickSubtitleGuideAnchor(
+                                                    QuickSubtitleGuideAnchor.QuickTextGroupSwitcher,
+                                                    recordQuickSubtitleGuideAnchor
+                                                )
                                                 .pointerInput(groups.size) {
                                                     var accumulatedDrag = 0f
                                                     var gestureGroupIndex = 0
@@ -2736,9 +2790,10 @@ fun QuickSubtitleScreen(
                                                 sizeTransform = null
                                             )
                                         },
+                                        modifier = quickTextPanelGestureModifier,
                                         label = "quick_subtitle_items_switch_portrait"
                                     ) { groupIndex ->
-                                        val animatedGroup = groups.getOrNull(groupIndex)
+                                        val animatedGroup = displayGroups.getOrNull(groupIndex)
                                         val animatedQuickItems = animatedGroup?.items.orEmpty()
                                         Row(
                                             modifier = Modifier
@@ -2760,7 +2815,8 @@ fun QuickSubtitleScreen(
                                                                 performKeyHaptic()
                                                                 viewModel.submitQuickSubtitlePreset(
                                                                     text = text,
-                                                                    hasVoice = hasVoice
+                                                                    hasVoice = hasVoice,
+                                                                    groupId = animatedGroup?.id
                                                                 )
                                                             },
                                                             onLongClick = openQuickSubtitleListDialog
@@ -3076,6 +3132,7 @@ fun QuickSubtitleScreen(
                             },
                             modifier = Modifier
                                 .weight(1f)
+                                .focusRequester(inputFocusRequester)
                                 .onFocusChanged { inputFieldFocused = it.isFocused }
                                 .kigttsTextToolbarAnchor(),
                             singleLine = true,
@@ -3164,6 +3221,7 @@ fun QuickSubtitleScreen(
                             },
                             modifier = Modifier
                                 .weight(1f)
+                                .focusRequester(inputFocusRequester)
                                 .onFocusChanged { inputFieldFocused = it.isFocused }
                                 .kigttsTextToolbarAnchor(),
                             singleLine = true,
@@ -3301,18 +3359,19 @@ fun QuickSubtitleScreen(
 
         if (quickSubtitleListDialogVisible) {
             QuickSubtitleListDialog(
-                groups = groups,
+                groups = quickSubtitleListDialogGroups,
                 initialGroupIndex = selectedGroupIndex,
                 layoutMode = quickSubtitleListDialogLayoutMode,
                 forceFullWidthTabsOnPhone = state.forceFullWidthTabsOnPhone && !ultraSmallAdaptiveWindow,
                 onLayoutModeChange = { viewModel.updateQuickSubtitleListPopupLayout(it) },
                 onSelectGroup = { viewModel.selectQuickSubtitleGroup(it) },
                 onDismiss = { quickSubtitleListDialogVisible = false },
-                onSubmit = { text ->
+                onSubmit = { groupId, text ->
                     viewModel.submitQuickSubtitlePreset(
                         text = text,
                         hasVoice = hasVoice,
-                        interruptCurrent = state.quickSubtitleInterruptQueue
+                        interruptCurrent = state.quickSubtitleInterruptQueue,
+                        groupId = groupId
                     )
                 }
             )
@@ -3926,7 +3985,9 @@ internal fun QuickSubtitleEditorScreen(
         configuration.screenHeightDp.dp - UiTokens.PageTopBlank - editorBottomPadding
     ).coerceAtLeast(420.dp)
     val groups = viewModel.quickSubtitleGroups
-    val compactControls = viewModel.uiState.quickSubtitleCompactControls
+    val editorState = viewModel.uiState
+    val compactControls = editorState.quickSubtitleCompactControls
+    val frequencySortEnabled = editorState.quickSubtitleFrequencySortEnabled
     var selectedGroupIndex by remember(groups, viewModel.quickSubtitleSelectedGroupId) {
         mutableIntStateOf(
             viewModel.currentQuickSubtitleGroupIndex().coerceIn(0, groups.lastIndex.coerceAtLeast(0))
@@ -3945,6 +4006,7 @@ internal fun QuickSubtitleEditorScreen(
     var selectedItemIndexes by remember { mutableStateOf<Set<Int>>(emptySet()) }
     var showBatchDeleteConfirm by remember { mutableStateOf(false) }
     var showBatchMoveDialog by remember { mutableStateOf(false) }
+    var showApplyFrequencyOrderConfirm by remember { mutableStateOf(false) }
 
     fun clearBatchSelection() {
         batchSelectionMode = false
@@ -4033,6 +4095,27 @@ internal fun QuickSubtitleEditorScreen(
                     onCheckedChange = { viewModel.setQuickSubtitleCompactControls(it) },
                     supportingText = "影响主界面竖屏和横屏便捷字幕。开启后会压缩快捷文本区，并把编辑入口移到顶栏。"
                 )
+                Md2SettingSwitchRow(
+                    title = "根据使用频率排序",
+                    checked = frequencySortEnabled,
+                    onCheckedChange = { viewModel.setQuickSubtitleFrequencySortEnabled(it) },
+                    supportingText = "记录快捷文本的使用次数，并在下次进入分组时更新顺序；当前列表不会突然跳动。"
+                )
+                if (frequencySortEnabled) {
+                    Md2OutlinedButton(
+                        onClick = { showApplyFrequencyOrderConfirm = true },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        MsIcon("sort", contentDescription = null)
+                        Spacer(Modifier.width(8.dp))
+                        Text("应用当前排序")
+                    }
+                    Text(
+                        text = "应用后会把当前频率顺序保存为手动顺序，并关闭自动排序。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
         }
     }
@@ -4287,26 +4370,7 @@ internal fun QuickSubtitleEditorScreen(
                 }
             } else {
             item(key = "quick_subtitle_editor_settings_card") {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(UiTokens.Radius),
-                    backgroundColor = md2CardContainerColor(),
-                    elevation = UiTokens.CardElevation
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 12.dp, vertical = 10.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Md2SettingSwitchRow(
-                            title = "紧凑快捷文本布局",
-                            checked = compactControls,
-                            onCheckedChange = { viewModel.setQuickSubtitleCompactControls(it) },
-                            supportingText = "影响主界面竖屏和横屏便捷字幕。开启后会压缩快捷文本区，并把编辑入口移到顶栏。"
-                        )
-                    }
-                }
+                settingsCard()
             }
             item(key = "groups_card") {
             Card(
@@ -4507,6 +4571,32 @@ internal fun QuickSubtitleEditorScreen(
             }
         }
         }
+    }
+
+    if (showApplyFrequencyOrderConfirm) {
+        KigttsAlertDialog(
+            onDismissRequest = { showApplyFrequencyOrderConfirm = false },
+            title = { Text("应用当前排序？") },
+            text = {
+                Text("所有分组会按当前使用频率重新排列，并保存为手动顺序。自动排序随后会关闭。")
+            },
+            confirmButton = {
+                Md2TextButton(
+                    onClick = {
+                        showApplyFrequencyOrderConfirm = false
+                        viewModel.applyCurrentQuickSubtitleFrequencyOrder()
+                        toast(context, "已应用当前排序")
+                    }
+                ) {
+                    Text("应用")
+                }
+            },
+            dismissButton = {
+                Md2TextButton(onClick = { showApplyFrequencyOrderConfirm = false }) {
+                    Text("取消")
+                }
+            }
+        )
     }
 
     if (showBatchDeleteConfirm) {

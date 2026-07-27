@@ -257,6 +257,7 @@ import com.lhtstudio.kigtts.app.data.KOKORO_VOICE_NAME
 import com.lhtstudio.kigtts.app.data.LedSubtitleSettings
 import com.lhtstudio.kigtts.app.data.DrawingPalette
 import com.lhtstudio.kigtts.app.data.QuickTextGestureSettings
+import com.lhtstudio.kigtts.app.data.QuickSubtitleUsageStats
 import com.lhtstudio.kigtts.app.data.SYSTEM_TTS_VOICE_NAME
 import com.lhtstudio.kigtts.app.data.VoicePackInfo
 import com.lhtstudio.kigtts.app.data.UserPrefs
@@ -451,6 +452,10 @@ data class UiState(
     val quickSubtitleAutoFit: Boolean = true,
     val quickSubtitleAllowLargeFont: Boolean = false,
     val quickSubtitleCompactControls: Boolean = false,
+    val quickSubtitleFrequencySortEnabled: Boolean = false,
+    val quickSubtitleUsageStats: QuickSubtitleUsageStats = QuickSubtitleUsageStats(),
+    val quickSubtitlePanelGesturesEnabled: Boolean = true,
+    val quickSubtitlePanelGesturesReversed: Boolean = false,
     val quickSubtitleFirstRunGuideCompleted: Boolean = false,
     val quickSubtitleGuideReplayRequestId: Int = 0,
     val quickSubtitleKeepInputPreview: Boolean = true,

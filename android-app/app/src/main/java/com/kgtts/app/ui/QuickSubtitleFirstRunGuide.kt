@@ -62,6 +62,7 @@ import kotlin.math.roundToInt
 
 internal enum class QuickSubtitleGuideAnchor {
     QuickText,
+    QuickTextGroupSwitcher,
     SubtitleDisplay,
     DisplayActions,
     BottomBar,
@@ -98,13 +99,34 @@ internal val LocalQuickSubtitleGuideAnchorRecorder = staticCompositionLocalOf<
 > { { _, _ -> } }
 
 internal fun quickSubtitleGuideSteps(
-    compactControls: Boolean
+    compactControls: Boolean,
+    panelGesturesEnabled: Boolean = true,
+    panelGesturesReversed: Boolean = false,
+    isLandscape: Boolean = false
 ): List<QuickSubtitleGuideStep> = listOf(
     QuickSubtitleGuideStep(
         title = if (compactControls) "紧凑快捷文本" else "快捷文本与分组",
-        anchors = setOf(QuickSubtitleGuideAnchor.QuickText),
+        anchors = buildSet {
+            add(QuickSubtitleGuideAnchor.QuickText)
+            if (compactControls) add(QuickSubtitleGuideAnchor.QuickTextGroupSwitcher)
+        },
         messages = buildList {
             add("点按快捷文本会立即更新大字幕；长按任意条目可打开完整候选列表。")
+            if (panelGesturesEnabled) {
+                val candidateDirection = when {
+                    isLandscape && panelGesturesReversed -> "右滑"
+                    isLandscape -> "左滑"
+                    panelGesturesReversed -> "下滑"
+                    else -> "上滑"
+                }
+                val inputDirection = when {
+                    isLandscape && panelGesturesReversed -> "左滑"
+                    isLandscape -> "右滑"
+                    panelGesturesReversed -> "上滑"
+                    else -> "下滑"
+                }
+                add("$candidateDirection 可打开候选列表，$inputDirection 可直接输入文本。")
+            }
             if (compactControls) {
                 add("竖屏可在右侧分组选择器上下滑动切组；横屏使用底部分组选择器左右滑动。")
                 add("编辑快捷文本的入口位于页面顶栏。")
@@ -112,12 +134,39 @@ internal fun quickSubtitleGuideSteps(
                 add("使用分组栏切换内容，右侧编辑按钮可管理分组和快捷文本。")
             }
         },
-        callouts = listOf(
-            QuickSubtitleGuideCallout(
-                QuickSubtitleGuideAnchor.QuickText,
+        callouts = buildList {
+            val quickTextLabel = if (!panelGesturesEnabled) {
                 "长按打开候选列表"
+            } else {
+                val candidateDirection = when {
+                    isLandscape && panelGesturesReversed -> "右滑"
+                    isLandscape -> "左滑"
+                    panelGesturesReversed -> "下滑"
+                    else -> "上滑"
+                }
+                val inputDirection = when {
+                    isLandscape && panelGesturesReversed -> "左滑"
+                    isLandscape -> "右滑"
+                    panelGesturesReversed -> "上滑"
+                    else -> "下滑"
+                }
+                "长按或${candidateDirection}打开候选\n${inputDirection}打开文本输入"
+            }
+            add(
+                QuickSubtitleGuideCallout(
+                    QuickSubtitleGuideAnchor.QuickText,
+                    quickTextLabel
+                )
             )
-        )
+            if (compactControls) {
+                add(
+                    QuickSubtitleGuideCallout(
+                        QuickSubtitleGuideAnchor.QuickTextGroupSwitcher,
+                        if (isLandscape) "左右滑动切换分组" else "上下滑动切换分组"
+                    )
+                )
+            }
+        }
     ),
     QuickSubtitleGuideStep(
         title = "大字幕与快捷操作",
@@ -191,6 +240,9 @@ internal fun shouldPresentQuickSubtitleGuide(
 internal fun QuickSubtitleFirstRunGuideCoordinator(
     visible: Boolean,
     compactControls: Boolean,
+    panelGesturesEnabled: Boolean,
+    panelGesturesReversed: Boolean,
+    isLandscape: Boolean,
     replayRequestId: Int,
     anchorBounds: Map<QuickSubtitleGuideAnchor, Rect>,
     onSelectCompactControls: (Boolean) -> Unit,
@@ -228,8 +280,18 @@ internal fun QuickSubtitleFirstRunGuideCoordinator(
         return
     }
 
-    val steps = remember(compactControls) {
-        quickSubtitleGuideSteps(compactControls)
+    val steps = remember(
+        compactControls,
+        panelGesturesEnabled,
+        panelGesturesReversed,
+        isLandscape
+    ) {
+        quickSubtitleGuideSteps(
+            compactControls = compactControls,
+            panelGesturesEnabled = panelGesturesEnabled,
+            panelGesturesReversed = panelGesturesReversed,
+            isLandscape = isLandscape
+        )
     }
     val currentIndex = stepIndex.coerceIn(0, steps.lastIndex)
     BackHandler { postponedForVisit = true }
