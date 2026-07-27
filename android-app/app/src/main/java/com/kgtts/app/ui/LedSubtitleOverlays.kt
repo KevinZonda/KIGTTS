@@ -118,7 +118,7 @@ internal fun LedOverlayIconButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    IconButton(
+    KigttsIconButton(
         onClick = onClick,
         enabled = enabled,
         modifier = modifier

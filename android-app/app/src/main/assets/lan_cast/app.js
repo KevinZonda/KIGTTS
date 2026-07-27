@@ -13,6 +13,7 @@
   var pageClosing = false;
   var audioContext = null;
   var audioEnabled = false;
+  var audioRequested = !remotePage;
   var audioActivationRevision = 0;
   var nextAudioTime = 0;
   var fileSources = {};
@@ -27,8 +28,8 @@
       background: "#000000",
       dotMatrix: false,
       dotShape: 0,
-      dotSize: 8,
-      dotGap: 2,
+      dotRowsPerLine: 24,
+      dotSizeFraction: 0.58,
       speed: 72,
       direction: 0,
       loopGap: 96,
@@ -244,8 +245,9 @@
     snackbarTimer = window.setTimeout(function () { bar.classList.remove("visible"); }, 2200);
   }
 
-  function setAudioEnabled(enabled) {
+  function setAudioEnabled(enabled, automatic) {
     if (remotePage) return;
+    audioRequested = enabled;
     var revision = ++audioActivationRevision;
     if (window.KigttsLedDisplay) window.KigttsLedDisplay.setAudioEnabled(enabled);
     if (!enabled) {
@@ -254,12 +256,14 @@
       if (audioContext && audioContext.state === "running") audioContext.suspend();
       sendRaw({ type: "audioReady", enabled: false });
       if (window.KigttsLedDisplay) window.KigttsLedDisplay.setAudioEnabled(false);
+      if (window.KigttsLedDisplay) window.KigttsLedDisplay.setAudioActivationRequired(false);
       showSnackbar("投屏端音频已关闭");
       return;
     }
     var AudioCtor = window.AudioContext || window.webkitAudioContext;
     if (!AudioCtor) {
       showSnackbar("投屏端浏览器不支持音频");
+      audioRequested = false;
       if (window.KigttsLedDisplay) window.KigttsLedDisplay.setAudioEnabled(false);
       return;
     }
@@ -269,6 +273,7 @@
       resumeRequest = audioContext.resume();
     } catch (_) {
       audioEnabled = false;
+      audioRequested = false;
       if (window.KigttsLedDisplay) window.KigttsLedDisplay.setAudioEnabled(false);
       showSnackbar("投屏端浏览器无法启动音频");
       return;
@@ -280,13 +285,17 @@
       nextAudioTime = audioContext.currentTime + 0.08;
       sendRaw({ type: "audioReady", enabled: true });
       if (window.KigttsLedDisplay) window.KigttsLedDisplay.setAudioEnabled(true);
-      showSnackbar("投屏端音频已开启");
+      if (window.KigttsLedDisplay) window.KigttsLedDisplay.setAudioActivationRequired(false);
+      if (!automatic) showSnackbar("投屏端音频已开启");
     }).catch(function () {
       if (revision !== audioActivationRevision) return;
       audioEnabled = false;
       sendRaw({ type: "audioReady", enabled: false });
-      if (window.KigttsLedDisplay) window.KigttsLedDisplay.setAudioEnabled(false);
-      showSnackbar("浏览器阻止了音频播放，请再次点击开启");
+      if (window.KigttsLedDisplay) {
+        window.KigttsLedDisplay.setAudioEnabled(audioRequested);
+        window.KigttsLedDisplay.setAudioActivationRequired(audioRequested);
+      }
+      if (!automatic) showSnackbar("请确认启用投屏端音频");
     });
   }
 
@@ -358,8 +367,9 @@
     var x = clientX === null ? rect.width / 2 : clientX - rect.left;
     var y = clientY === null ? rect.height / 2 : clientY - rect.top;
     var radius = Math.hypot(Math.max(x, rect.width - x), Math.max(y, rect.height - y));
-    var ripple = document.createElement("span");
+    var ripple = document.createElement("i");
     ripple.className = "mui-ripple";
+    ripple.setAttribute("aria-hidden", "true");
     ripple.style.width = ripple.style.height = radius * 2 + "px";
     ripple.style.left = x - radius + "px";
     ripple.style.top = y - radius + "px";
@@ -405,5 +415,6 @@
   });
 
   bindEvents();
+  if (!remotePage && audioRequested) setAudioEnabled(true, true);
   connect(false);
 })();

@@ -45,8 +45,9 @@ internal object LockScreenLayoutPolicy {
         val requested = when (mode) {
             LockScreenLayoutMode.PhonePortrait,
             LockScreenLayoutMode.TabletPortrait -> (screenWidthPx - contentWidthPx) / 2
-            LockScreenLayoutMode.PhoneLandscape,
-            LockScreenLayoutMode.TabletLandscape -> screenWidthPx - contentWidthPx - sideMarginPx
+            LockScreenLayoutMode.PhoneLandscape -> screenWidthPx - contentWidthPx - sideMarginPx
+            LockScreenLayoutMode.TabletLandscape ->
+                screenWidthPx * 3 / 4 - contentWidthPx / 2
         }
         return requested.coerceIn(sideMarginPx, maxLeft)
     }

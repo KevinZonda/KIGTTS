@@ -39,6 +39,7 @@ import kotlin.math.ceil
 import kotlin.math.abs
 import kotlin.math.exp
 import kotlin.math.roundToInt
+import kotlin.math.sqrt
 
 private data class LedBitmapChunk(
     val startX: Float,
@@ -318,7 +319,6 @@ internal fun LedMarqueeDisplay(
                 renderLedStrip(
                     text = normalizedText,
                     viewportHeightPx = viewportHeightPx,
-                    densityScale = densityScale,
                     settings = settledRenderSettings,
                     typeface = typeface
                 )
@@ -371,7 +371,6 @@ private fun normalizeLedText(text: String): String {
 private suspend fun renderLedStrip(
     text: String,
     viewportHeightPx: Float,
-    densityScale: Float,
     settings: LedSubtitleSettings,
     typeface: Typeface
 ): LedRenderedStrip? {
@@ -380,18 +379,18 @@ private suspend fun renderLedStrip(
     val stripHeight = (viewportHeightPx * value.displayHeightFraction)
         .roundToInt()
         .coerceIn(48, viewportHeightPx.roundToInt().coerceAtLeast(48))
-    val pitchDp = 12f - value.dotDensity * 7f
-    val pitchPx = (pitchDp * densityScale).roundToInt().coerceAtLeast(4)
-    val horizontalPadding = pitchPx * 3f
     val textPaint = AndroidPaint(AndroidPaint.ANTI_ALIAS_FLAG).apply {
         color = AndroidColor.WHITE
         textSize = stripHeight * 0.78f
         this.typeface = typeface
     }
-    val initialWidth = textPaint.measureText(text) + horizontalPadding * 2f
+    val initialWidth = textPaint.measureText(text)
     if (initialWidth > MAXIMUM_STRIP_WIDTH) {
         textPaint.textSize *= (MAXIMUM_STRIP_WIDTH / initialWidth).coerceAtLeast(0.2f)
     }
+    val lineHeightPx = textPaint.fontMetrics.run { descent - ascent }
+    val pitchPx = ledCellPitchPx(lineHeightPx, value.dotRowsPerLine)
+    val horizontalPadding = pitchPx * 3f
     val measuredWidth = textPaint.measureText(text) + horizontalPadding * 2f
     val totalWidth = ceil(measuredWidth / pitchPx).toInt().coerceAtLeast(1) * pitchPx
     val chunkCellCount = (2_048 / pitchPx).coerceAtLeast(1)
@@ -428,7 +427,7 @@ internal fun drawLedCells(
     pitchPx: Int,
     settings: LedSubtitleSettings
 ) {
-    val dotRadius = pitchPx * (0.22f + settings.dotDensity * 0.12f)
+    val dotHalfExtent = ledDotHalfExtentPx(pitchPx, settings)
     val sourcePaint = AndroidPaint(AndroidPaint.ANTI_ALIAS_FLAG).apply {
         color = settings.ledColorArgb
     }
@@ -443,14 +442,14 @@ internal fun drawLedCells(
     fun drawDot(x: Float, y: Float, paint: AndroidPaint) {
         if (settings.dotShape == LedSubtitleSettings.DOT_SHAPE_SQUARE) {
             canvas.drawRect(
-                x - dotRadius,
-                y - dotRadius,
-                x + dotRadius,
-                y + dotRadius,
+                x - dotHalfExtent,
+                y - dotHalfExtent,
+                x + dotHalfExtent,
+                y + dotHalfExtent,
                 paint
             )
         } else {
-            canvas.drawCircle(x, y, dotRadius, paint)
+            canvas.drawCircle(x, y, dotHalfExtent, paint)
         }
     }
     val halfPitch = pitchPx / 2
@@ -479,6 +478,29 @@ internal fun drawLedCells(
         }
         y += pitchPx
     }
+}
+
+internal fun ledCellPitchPx(lineHeightPx: Float, rowsPerLine: Int): Int {
+    val rows = rowsPerLine.coerceIn(
+        LedSubtitleSettings.MIN_DOT_ROWS_PER_LINE,
+        LedSubtitleSettings.MAX_DOT_ROWS_PER_LINE
+    )
+    return (lineHeightPx / rows).roundToInt().coerceAtLeast(2)
+}
+
+internal fun ledDotHalfExtentPx(
+    pitchPx: Int,
+    settings: LedSubtitleSettings
+): Float {
+    val maximumDiameter = if (settings.dotShape == LedSubtitleSettings.DOT_SHAPE_CIRCLE) {
+        pitchPx * sqrt(2f)
+    } else {
+        pitchPx.toFloat()
+    }
+    return maximumDiameter * settings.dotSizeFraction.coerceIn(
+        LedSubtitleSettings.MIN_DOT_SIZE_FRACTION,
+        LedSubtitleSettings.MAX_DOT_SIZE_FRACTION
+    ) / 2f
 }
 
 private suspend fun renderNormalFontStrip(

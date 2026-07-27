@@ -123,7 +123,7 @@
       for (var start = 0; start < totalWidth; start += chunkSize) {
         chunks.push(buildChunk(text, font, height, padding, start, Math.min(chunkSize, totalWidth - start), led));
       }
-      return { width: totalWidth, height: Math.ceil(height), chunks: chunks };
+      return { width: totalWidth, height: Math.ceil(height), chunks: chunks, lineHeight: fontSize * 1.15 };
     }
 
     function buildAdaptiveSurface(text, width, height) {
@@ -155,7 +155,12 @@
       for (var line = 0; line < layout.lines.length; line++) {
         alpha.fillText(layout.lines[line], x, blockTop + layout.lineHeight * (line + 0.5));
       }
-      return { width: width, height: height, chunks: [{ x: 0, canvas: colorizeAlpha(alphaCanvas, led) }] };
+      return {
+        width: width,
+        height: height,
+        chunks: [{ x: 0, canvas: colorizeAlpha(alphaCanvas, led, layout.lineHeight) }],
+        lineHeight: layout.lineHeight
+      };
     }
 
     function adaptiveLayout(text, fontSize, maxWidth) {
@@ -187,10 +192,11 @@
       alpha.textBaseline = "middle";
       alpha.fillStyle = "#fff";
       alpha.fillText(text, padding - start, height / 2);
-      return { x: start, canvas: colorizeAlpha(alphaCanvas, led) };
+      var fontSize = Number((/([0-9.]+)px/.exec(font) || [0, 40])[1]);
+      return { x: start, canvas: colorizeAlpha(alphaCanvas, led, fontSize * 1.15) };
     }
 
-    function colorizeAlpha(alphaCanvas, led) {
+    function colorizeAlpha(alphaCanvas, led, lineHeight) {
       var alpha = alphaCanvas.getContext("2d");
       if (!led.dotMatrix) {
         alpha.globalCompositeOperation = "source-in";
@@ -203,8 +209,10 @@
       result.height = alphaCanvas.height;
       var out = result.getContext("2d");
       var pixels = alpha.getImageData(0, 0, alphaCanvas.width, alphaCanvas.height).data;
-      var dot = Math.max(3, Number(led.dotSize) || 8);
-      var pitch = dot + Math.max(1, Number(led.dotGap) || 2);
+      var rows = Math.max(8, Math.min(48, Number(led.dotRowsPerLine) || 24));
+      var pitch = Math.max(2, Number(lineHeight) / rows);
+      var sizeFraction = Math.max(0.1, Math.min(1, Number(led.dotSizeFraction) || 0.58));
+      var dot = pitch * sizeFraction * (Number(led.dotShape) === 1 ? 1 : Math.SQRT2);
       out.fillStyle = led.color || "#ffffff";
       for (var y = pitch / 2; y < result.height; y += pitch) {
         for (var x = pitch / 2; x < result.width; x += pitch) {
@@ -235,12 +243,13 @@
       var height = canvas.height / ratio;
       var text = displayText(state) || " ";
       var led = state.led || {};
-      var key = [text, width, height, led.color, led.dotMatrix, led.dotShape, led.dotSize, led.dotGap,
-        led.displayHeightFraction, led.adaptiveMultiLine, led.shortTextAlignment, state.bold, state.fontWeight].join("|");
+      var key = [text, width, height, led.color, led.dotMatrix, led.dotShape, led.dotRowsPerLine,
+        led.dotSizeFraction, led.displayHeightFraction, led.adaptiveMultiLine, led.shortTextAlignment,
+        led.loopGap, state.bold, state.fontWeight].join("|");
       if (key !== surfaceKey) {
         surfaceKey = key;
         surface = led.adaptiveMultiLine ? buildAdaptiveSurface(text, width, height) : buildSurface(text, height);
-        marqueeX = Number(led.direction) === 1 ? -surface.width : width;
+        marqueeX = 0;
         inertiaVelocity = 0;
         lastFrameAt = timestamp;
       }
@@ -269,14 +278,22 @@
           marqueeX += (Number(led.direction) === 1 ? speed : -speed) * elapsed;
         }
       }
-      wrapMarquee(width, Math.max(24, Number(led.loopGap) || 96));
-      drawSurface(ctx, surface, marqueeX, y, width);
+      var gap = Math.max(24, Number(led.loopGap) || 96);
+      var cycle = surface.width + gap;
+      wrapMarquee(cycle);
+      var copyX = marqueeX;
+      while (copyX > 0) copyX -= cycle;
+      while (copyX + surface.width < 0) copyX += cycle;
+      while (copyX < width) {
+        drawSurface(ctx, surface, copyX, y, width);
+        copyX += cycle;
+      }
     }
 
-    function wrapMarquee(width, gap) {
+    function wrapMarquee(cycle) {
       if (!surface) return;
-      if (marqueeX < -surface.width - gap) marqueeX = width;
-      if (marqueeX > width + gap) marqueeX = -surface.width;
+      while (marqueeX <= -cycle) marqueeX += cycle;
+      while (marqueeX > 0) marqueeX -= cycle;
     }
 
     function beginDrag() { dragActive = true; inertiaVelocity = 0; }

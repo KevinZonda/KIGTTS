@@ -1,5 +1,6 @@
 package com.lhtstudio.kigtts.app.lan
 
+import com.lhtstudio.kigtts.app.data.LedSubtitleSettings
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -90,9 +91,8 @@ internal data class LanCastLedStyle(
     val backgroundArgb: Int = 0xFF000000.toInt(),
     val dotMatrix: Boolean = false,
     val dotShape: Int = 0,
-    val dotDensity: Float = 0.58f,
-    val dotSize: Float = 8f,
-    val dotGap: Float = 2f,
+    val dotRowsPerLine: Int = LedSubtitleSettings.DEFAULT_DOT_ROWS_PER_LINE,
+    val dotSizeFraction: Float = LedSubtitleSettings.DEFAULT_DOT_SIZE_FRACTION,
     val glowEnabled: Boolean = true,
     val glowStrength: Float = 0.42f,
     val displayHeightFraction: Float = 0.72f,
@@ -192,9 +192,8 @@ internal data class LanCastPresentationState(
             put("background", led.backgroundArgb.toCssColor())
             put("dotMatrix", led.dotMatrix)
             put("dotShape", led.dotShape)
-            put("dotDensity", led.dotDensity.toDouble())
-            put("dotSize", led.dotSize.toDouble())
-            put("dotGap", led.dotGap.toDouble())
+            put("dotRowsPerLine", led.dotRowsPerLine)
+            put("dotSizeFraction", led.dotSizeFraction.toDouble())
             put("glowEnabled", led.glowEnabled)
             put("glowStrength", led.glowStrength.toDouble())
             put("displayHeightFraction", led.displayHeightFraction.toDouble())

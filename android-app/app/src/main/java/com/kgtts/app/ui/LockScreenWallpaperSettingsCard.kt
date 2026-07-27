@@ -39,6 +39,12 @@ internal fun LockScreenWallpaperSettingsCard(
     onSettingsChange: (LockScreenSettings) -> Unit
 ) {
     var showScrimColorPicker by remember { mutableStateOf(false) }
+    val openScrimColorPicker = rememberKigttsHapticClick {
+        showScrimColorPicker = true
+    }
+    val hapticScrimStyleChange = rememberKigttsHapticValueChange<LockScreenScrimStyle> { style ->
+        onSettingsChange(settings.copy(scrimStyle = style))
+    }
     Md2SettingsCard(title = "锁屏壁纸") {
         LockScreenWallpaperPreview(
             settings = settings,
@@ -87,7 +93,7 @@ internal fun LockScreenWallpaperSettingsCard(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clickable { showScrimColorPicker = true }
+                .clickable(onClick = openScrimColorPicker)
                 .padding(vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -120,7 +126,7 @@ internal fun LockScreenWallpaperSettingsCard(
             LockScreenScrimStyle.entries.forEach { style ->
                 Tab(
                     selected = settings.scrimStyle == style,
-                    onClick = { onSettingsChange(settings.copy(scrimStyle = style)) },
+                    onClick = { hapticScrimStyleChange(style) },
                     text = {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             MsIcon(

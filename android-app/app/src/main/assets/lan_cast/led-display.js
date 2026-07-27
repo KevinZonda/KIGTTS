@@ -9,7 +9,7 @@
   var locked = false;
   var selectedGroupId = null;
   var playOnSend = true;
-  var audioEnabled = false;
+  var audioEnabled = true;
   var controlsTimer = 0;
   var guideTimer = 0;
   var settingsTimer = 0;
@@ -111,7 +111,8 @@
       setDialogVisible(false);
       api.sendCommand("resetLedSettings");
     };
-    var ids = ["led-normal-font", "led-adaptive-multiline", "led-color", "led-background-color", "led-density",
+    var ids = ["led-normal-font", "led-adaptive-multiline", "led-color", "led-background-color",
+      "led-dot-rows", "led-dot-size",
       "led-glow-enabled", "led-glow-strength", "led-height", "led-speed", "led-quick-swipe",
       "led-gap", "led-keep-awake", "led-follow-brightness", "led-brightness"];
     ids.forEach(function (id) {
@@ -120,6 +121,7 @@
       input.addEventListener("change", function () { settingsChanged(false); });
     });
     byId("led-web-audio").onchange = function () { api.setAudioEnabled(this.checked); };
+    byId("audio-activation-button").onclick = function () { api.setAudioEnabled(true); };
     Array.prototype.forEach.call(root.querySelectorAll(".led-setting-segments[data-setting] button"), function (button) {
       button.onclick = function () {
         setSegment(button.parentElement.parentElement.querySelector(".led-setting-segments").dataset.setting,
@@ -271,7 +273,8 @@
     setChecked("led-normal-font", !led.dotMatrix);
     setValue("led-color", led.color || "#ffffff");
     setValue("led-background-color", led.background || "#000000");
-    setValue("led-density", led.dotDensity);
+    setValue("led-dot-rows", led.dotRowsPerLine);
+    setValue("led-dot-size", led.dotSizeFraction);
     setChecked("led-glow-enabled", led.glowEnabled);
     setValue("led-glow-strength", led.glowStrength);
     setValue("led-height", led.displayHeightFraction);
@@ -292,11 +295,11 @@
 
   function settingsChanged(debounce) {
     if (!state) return;
-    var density = numberValue("led-density");
     var led = {
       color: byId("led-color").value, background: byId("led-background-color").value,
       dotMatrix: !byId("led-normal-font").checked, dotShape: segmentValue("dotShape"),
-      dotDensity: density, dotSize: 4 + density * 8, dotGap: 1 + (1 - density) * 5,
+      dotRowsPerLine: Math.round(numberValue("led-dot-rows")),
+      dotSizeFraction: numberValue("led-dot-size"),
       glowEnabled: byId("led-glow-enabled").checked, glowStrength: numberValue("led-glow-strength"),
       displayHeightFraction: numberValue("led-height"),
       adaptiveMultiLine: byId("led-adaptive-multiline").checked, speed: numberValue("led-speed"),
@@ -337,7 +340,8 @@
   }
 
   function updateSettingLabels() {
-    byId("led-density-value").textContent = Math.round(numberValue("led-density") * 100) + "%";
+    byId("led-dot-rows-value").textContent = Math.round(numberValue("led-dot-rows")) + " 行";
+    byId("led-dot-size-value").textContent = Math.round(numberValue("led-dot-size") * 100) + "%";
     byId("led-glow-value").textContent = Math.round(numberValue("led-glow-strength") * 100) + "%";
     byId("led-height-value").textContent = Math.round(numberValue("led-height") * 100) + "%";
     byId("led-speed-value").textContent = Math.round(numberValue("led-speed")) + " dp/s";
@@ -470,6 +474,15 @@
     }
   }
   function setAudioEnabled(enabled) { audioEnabled = enabled; if (byId("led-web-audio")) byId("led-web-audio").checked = enabled; }
+  function setAudioActivationRequired(required) {
+    var prompt = byId("audio-activation-prompt");
+    if (prompt) prompt.hidden = !required;
+  }
 
-  window.KigttsLedDisplay = { init: init, applyState: applyState, setAudioEnabled: setAudioEnabled };
+  window.KigttsLedDisplay = {
+    init: init,
+    applyState: applyState,
+    setAudioEnabled: setAudioEnabled,
+    setAudioActivationRequired: setAudioActivationRequired
+  };
 })();

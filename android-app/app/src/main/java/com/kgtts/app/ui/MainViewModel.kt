@@ -3634,6 +3634,37 @@ class MainViewModel(
         }
     }
 
+    fun resetTtsSettingsToDefaults() {
+        val defaults = UserPrefs.AppSettings()
+        uiState = uiState.copy(
+            ttsDisabled = defaults.ttsDisabled,
+            playbackGainPercent = defaults.playbackGainPercent,
+            audioFocusAvoidanceMode = defaults.audioFocusAvoidanceMode,
+            piperNoiseScale = defaults.piperNoiseScale,
+            piperLengthScale = defaults.piperLengthScale,
+            piperNoiseW = defaults.piperNoiseW,
+            piperSentenceSilence = defaults.piperSentenceSilence
+        )
+        SoundboardManager.setPlaybackGainPercent(defaults.playbackGainPercent)
+        SoundboardManager.setAudioFocusAvoidanceMode(appContext, defaults.audioFocusAvoidanceMode)
+        realtimeHost?.apply {
+            setTtsDisabled(defaults.ttsDisabled)
+            setPlaybackGainPercent(defaults.playbackGainPercent)
+            setAudioFocusAvoidanceMode(defaults.audioFocusAvoidanceMode)
+            setPiperNoiseScale(defaults.piperNoiseScale)
+            setPiperLengthScale(defaults.piperLengthScale)
+            setPiperNoiseW(defaults.piperNoiseW)
+            setPiperSentenceSilenceSec(defaults.piperSentenceSilence)
+            setSuppressAsrAutoSpeak(
+                defaults.ttsDisabled ||
+                    (uiState.pushToTalkMode && uiState.pushToTalkConfirmInputMode)
+            )
+        }
+        viewModelScope.launch {
+            UserPrefs.resetTtsSettings(appContext)
+        }
+    }
+
     fun setKeepAlive(enabled: Boolean) {
         val running = uiState.running
         uiState = uiState.copy(keepAlive = enabled)
@@ -4739,6 +4770,37 @@ class MainViewModel(
         realtimeHost?.setSpeechEnhancementMode(normalized)
         viewModelScope.launch {
             UserPrefs.setSpeechEnhancementMode(appContext, normalized)
+        }
+    }
+
+    fun resetMicrophoneSettingsToDefaults() {
+        val defaults = UserPrefs.AppSettings()
+        val wasRunning = uiState.running
+        uiState = uiState.copy(
+            echoSuppression = defaults.echoSuppression,
+            communicationMode = defaults.communicationMode,
+            preferredInputType = defaults.preferredInputType,
+            aec3Enabled = defaults.aec3Enabled,
+            aec3Status = if (defaults.aec3Enabled) "初始化中" else "未启用",
+            denoiserMode = defaults.denoiserMode,
+            speechEnhancementMode = defaults.speechEnhancementMode
+        )
+        realtimeHost?.apply {
+            setUseVoiceCommunication(defaults.echoSuppression)
+            setCommunicationMode(defaults.communicationMode)
+            setPreferredInputType(defaults.preferredInputType)
+            setUseAec3(defaults.aec3Enabled)
+            setDenoiserMode(defaults.denoiserMode)
+            setSpeechEnhancementMode(defaults.speechEnhancementMode)
+        }
+        viewModelScope.launch {
+            UserPrefs.resetMicrophoneSettings(appContext)
+        }
+        if (wasRunning) {
+            restartJob?.cancel()
+            restartJob = viewModelScope.launch {
+                realtimeHost?.restartRecorder()
+            }
         }
     }
 

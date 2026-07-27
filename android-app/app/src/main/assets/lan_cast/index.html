@@ -78,7 +78,8 @@
         <label class="led-setting-row"><span>背景颜色</span><input id="led-background-color" class="led-color-input" type="color"></label>
         <div id="led-dot-settings">
           <div class="led-setting-block"><span>点阵形状</span><div class="led-setting-segments" data-setting="dotShape"><button data-value="0" aria-label="圆点"><span class="material-symbols">circle</span></button><button data-value="1" aria-label="方点"><span class="material-symbols">square</span></button></div></div>
-          <label class="led-slider-row"><span>点阵密度 <output id="led-density-value"></output></span><input id="led-density" type="range" min="0" max="1" step="0.01"></label>
+          <label class="led-slider-row"><span>每行 LED 行数 <output id="led-dot-rows-value"></output></span><input id="led-dot-rows" type="range" min="8" max="48" step="1"></label>
+          <label class="led-slider-row"><span>灯珠尺寸 <output id="led-dot-size-value"></output></span><input id="led-dot-size" type="range" min="0.1" max="1" step="0.01"></label>
           <label class="led-setting-row"><span>发光效果</span><input id="led-glow-enabled" type="checkbox" role="switch"></label>
           <label id="led-glow-strength-row" class="led-slider-row"><span>发光强度 <output id="led-glow-value"></output></span><input id="led-glow-strength" type="range" min="0" max="1" step="0.01"></label>
         </div>
@@ -98,7 +99,7 @@
         <label class="led-setting-row"><span>保持屏幕常亮</span><input id="led-keep-awake" type="checkbox" role="switch"></label>
         <label class="led-setting-row"><span>亮度跟随系统</span><input id="led-follow-brightness" type="checkbox" role="switch"></label>
         <label id="led-brightness-row" class="led-slider-row"><span>屏幕亮度 <output id="led-brightness-value"></output></span><input id="led-brightness" type="range" min="0.1" max="1" step="0.01"></label>
-        <label class="led-setting-row"><span>投屏端音频</span><input id="led-web-audio" type="checkbox" role="switch"></label>
+        <label class="led-setting-row"><span>投屏端音频</span><input id="led-web-audio" type="checkbox" role="switch" checked></label>
         <button id="led-reset-settings" class="led-reset-button"><span class="material-symbols">settings_backup_restore</span><span>恢复投屏默认设置</span></button>
       </div>
     </aside>
@@ -109,6 +110,10 @@
         <p>确定恢复全部投屏显示设置？</p>
         <div><button id="led-reset-cancel">取消</button><button id="led-reset-confirm">恢复</button></div>
       </div>
+    </div>
+    <div id="audio-activation-prompt" class="audio-activation-prompt" hidden>
+      <span>浏览器需要确认后才能播放投屏音频</span>
+      <button id="audio-activation-button" type="button">启用音频</button>
     </div>
   </main>
 
@@ -201,7 +206,8 @@
           <label class="setting-row"><span>背景颜色</span><input id="remote-led-background" type="color"></label>
           <div id="remote-dot-options">
             <div class="setting-block"><span>点阵形状</span><div class="segmented compact-segments" data-cast-setting="dotShape"><button class="segment" data-value="0"><span class="material-symbols">circle</span><span>圆点</span></button><button class="segment" data-value="1"><span class="material-symbols">square</span><span>方点</span></button></div></div>
-            <label class="slider-row"><span>点阵密度 <output id="remote-density-value"></output></span><input id="remote-density" type="range" min="0" max="1" step="0.01"></label>
+            <label class="slider-row"><span>每行 LED 行数 <output id="remote-dot-rows-value"></output></span><input id="remote-dot-rows" type="range" min="8" max="48" step="1"></label>
+            <label class="slider-row"><span>灯珠尺寸 <output id="remote-dot-size-value"></output></span><input id="remote-dot-size" type="range" min="0.1" max="1" step="0.01"></label>
             <label class="setting-row"><span>发光效果</span><input id="remote-glow-enabled" type="checkbox" role="switch"></label>
             <label id="remote-glow-row" class="slider-row"><span>发光强度 <output id="remote-glow-value"></output></span><input id="remote-glow" type="range" min="0" max="1" step="0.01"></label>
           </div>

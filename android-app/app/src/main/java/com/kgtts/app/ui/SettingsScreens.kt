@@ -884,6 +884,7 @@ fun SettingsScreen(
         modifier: Modifier = Modifier,
         showDivider: Boolean = true
     ) {
+        val hapticOnClick = rememberKigttsHapticClick(onClick)
         Column(modifier = modifier.fillMaxWidth()) {
             Row(
                 modifier = Modifier
@@ -892,7 +893,7 @@ fun SettingsScreen(
                     .clickable(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = rememberRipple(bounded = true),
-                        onClick = onClick
+                        onClick = hapticOnClick
                     )
                     .padding(vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -1062,6 +1063,7 @@ fun SettingsScreen(
 
     @Composable
     fun RecognitionSettingsContent() {
+        var showMicrophoneResetConfirmation by rememberSaveable { mutableStateOf(false) }
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Md2StaggeredFloatIn(index = 0) {
                 Md2SettingsCard(title = "语音识别资源包") {
@@ -1453,6 +1455,14 @@ fun SettingsScreen(
                         }
                     }
                     Text("回声消除状态：${state.aec3Status}", style = MaterialTheme.typography.bodySmall)
+                    Md2TextButton(
+                        onClick = { showMicrophoneResetConfirmation = true },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        MsIcon("settings_backup_restore", contentDescription = null)
+                        Spacer(Modifier.width(8.dp))
+                        Text("恢复默认值")
+                    }
                 }
             }
 
@@ -1561,10 +1571,33 @@ fun SettingsScreen(
                 }
             }
         }
+        if (showMicrophoneResetConfirmation) {
+            KigttsAlertDialog(
+                onDismissRequest = { showMicrophoneResetConfirmation = false },
+                title = { Text("恢复麦克风设置") },
+                text = {
+                    Text("将首选麦克风、回声处理和降噪方式恢复为默认值？")
+                },
+                confirmButton = {
+                    Md2TextButton(
+                        onClick = {
+                            showMicrophoneResetConfirmation = false
+                            viewModel.resetMicrophoneSettingsToDefaults()
+                        }
+                    ) { Text("恢复") }
+                },
+                dismissButton = {
+                    Md2TextButton(
+                        onClick = { showMicrophoneResetConfirmation = false }
+                    ) { Text("取消") }
+                }
+            )
+        }
     }
 
     @Composable
     fun AudioSettingsContent() {
+        var showTtsResetConfirmation by rememberSaveable { mutableStateOf(false) }
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
 
             Md2StaggeredFloatIn(index = 0) {
@@ -1679,6 +1712,14 @@ fun SettingsScreen(
                         onValueChange = { viewModel.setPiperSentenceSilence(it) },
                         valueRange = 0f..2f
                     )
+                    Md2TextButton(
+                        onClick = { showTtsResetConfirmation = true },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        MsIcon("settings_backup_restore", contentDescription = null)
+                        Spacer(Modifier.width(8.dp))
+                        Text("恢复默认值")
+                    }
                 }
             }
 
@@ -1777,6 +1818,26 @@ fun SettingsScreen(
                 }
             }
 
+        }
+        if (showTtsResetConfirmation) {
+            KigttsAlertDialog(
+                onDismissRequest = { showTtsResetConfirmation = false },
+                title = { Text("恢复语音合成设置") },
+                text = { Text("将朗读、播放和语音合成参数恢复为默认值？") },
+                confirmButton = {
+                    Md2TextButton(
+                        onClick = {
+                            showTtsResetConfirmation = false
+                            viewModel.resetTtsSettingsToDefaults()
+                        }
+                    ) { Text("恢复") }
+                },
+                dismissButton = {
+                    Md2TextButton(
+                        onClick = { showTtsResetConfirmation = false }
+                    ) { Text("取消") }
+                }
+            )
         }
     }
 
@@ -1913,15 +1974,16 @@ fun SettingsScreen(
             Md2StaggeredFloatIn(index = 3) {
                 Md2SettingsCard(title = "便捷字幕显示") {
                     QuickSubtitleGuideSettingsEntry(onClick = onOpenQuickSubtitleGuide)
+                    val openRestorePresets = rememberKigttsHapticClick {
+                        restoreQuickTextSelectedGroupIds = defaultSelectedQuickSubtitlePresetGroupIds()
+                        restoreQuickTextExpandedGroupIds = emptyList()
+                        restoreQuickTextPresetDialogVisible = true
+                    }
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(4.dp))
-                            .clickable {
-                                restoreQuickTextSelectedGroupIds = defaultSelectedQuickSubtitlePresetGroupIds()
-                                restoreQuickTextExpandedGroupIds = emptyList()
-                                restoreQuickTextPresetDialogVisible = true
-                            }
+                            .clickable(onClick = openRestorePresets)
                             .padding(horizontal = 2.dp, vertical = 8.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(12.dp)

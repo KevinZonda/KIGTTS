@@ -12,7 +12,8 @@ class LedSubtitleSettingsTest {
             ledColorArgb = 0x00112233,
             backgroundColorArgb = 0x00445566,
             dotShape = 9,
-            dotDensity = 3f,
+            dotRowsPerLine = 99,
+            dotSizeFraction = 3f,
             glowStrength = -1f,
             displayHeightFraction = 2f,
             scrollSpeedDpPerSecond = 1f,
@@ -25,7 +26,8 @@ class LedSubtitleSettingsTest {
         assertEquals(0xFF112233.toInt(), value.ledColorArgb)
         assertEquals(0xFF445566.toInt(), value.backgroundColorArgb)
         assertEquals(LedSubtitleSettings.DOT_SHAPE_SQUARE, value.dotShape)
-        assertEquals(1f, value.dotDensity)
+        assertEquals(LedSubtitleSettings.MAX_DOT_ROWS_PER_LINE, value.dotRowsPerLine)
+        assertEquals(1f, value.dotSizeFraction)
         assertEquals(0f, value.glowStrength)
         assertEquals(0.92f, value.displayHeightFraction)
         assertEquals(24f, value.scrollSpeedDpPerSecond)
@@ -91,5 +93,13 @@ class LedSubtitleSettingsTest {
 
         assertEquals(original, normalized)
         assertFalse(normalized.dotMatrixEnabled)
+    }
+
+    @Test
+    fun legacyDensityMigratesToRowsPerLine() {
+        val migrated = decodeLedSubtitleSettings("""{"version":4,"dotDensity":0.58}""")
+
+        assertEquals(24, migrated.dotRowsPerLine)
+        assertEquals(LedSubtitleSettings.DEFAULT_DOT_SIZE_FRACTION, migrated.dotSizeFraction)
     }
 }

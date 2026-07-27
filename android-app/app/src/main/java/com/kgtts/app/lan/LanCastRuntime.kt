@@ -20,6 +20,7 @@ import org.json.JSONObject
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
+import kotlin.math.roundToInt
 
 internal object LanCastRuntime {
     const val DEFAULT_PORT = 8765
@@ -371,16 +372,29 @@ internal object LanCastRuntime {
     }
 
     private fun parseLedStyle(source: JSONObject, current: LanCastLedStyle): LanCastLedStyle {
-        val density = source.optDouble("dotDensity", current.dotDensity.toDouble())
-            .toFloat().coerceIn(0f, 1f)
+        val rowsPerLine = if (source.has("dotRowsPerLine")) {
+            source.optInt("dotRowsPerLine", current.dotRowsPerLine)
+        } else {
+            val legacyDensity = source.optDouble("dotDensity", 0.58)
+                .toFloat().coerceIn(0f, 1f)
+            (8f + legacyDensity * 28f).roundToInt()
+        }.coerceIn(
+            LedSubtitleSettings.MIN_DOT_ROWS_PER_LINE,
+            LedSubtitleSettings.MAX_DOT_ROWS_PER_LINE
+        )
         return current.copy(
             colorArgb = source.optCssColor("color", current.colorArgb),
             backgroundArgb = source.optCssColor("background", current.backgroundArgb),
             dotMatrix = source.optBoolean("dotMatrix", current.dotMatrix),
             dotShape = source.optInt("dotShape", current.dotShape).coerceIn(0, 1),
-            dotDensity = density,
-            dotSize = 4f + density * 8f,
-            dotGap = 1f + (1f - density) * 5f,
+            dotRowsPerLine = rowsPerLine,
+            dotSizeFraction = source.optDouble(
+                "dotSizeFraction",
+                current.dotSizeFraction.toDouble()
+            ).toFloat().coerceIn(
+                LedSubtitleSettings.MIN_DOT_SIZE_FRACTION,
+                LedSubtitleSettings.MAX_DOT_SIZE_FRACTION
+            ),
             glowEnabled = source.optBoolean("glowEnabled", current.glowEnabled),
             glowStrength = source.optDouble("glowStrength", current.glowStrength.toDouble())
                 .toFloat().coerceIn(0f, 1f),
@@ -434,9 +448,8 @@ internal object LanCastRuntime {
         backgroundArgb = backgroundColorArgb,
         dotMatrix = dotMatrixEnabled,
         dotShape = dotShape,
-        dotDensity = dotDensity,
-        dotSize = 4f + dotDensity * 8f,
-        dotGap = 1f + (1f - dotDensity) * 5f,
+        dotRowsPerLine = dotRowsPerLine,
+        dotSizeFraction = dotSizeFraction,
         glowEnabled = glowEnabled,
         glowStrength = glowStrength,
         displayHeightFraction = displayHeightFraction,
@@ -457,7 +470,8 @@ internal object LanCastRuntime {
             backgroundColorArgb = backgroundArgb,
             dotMatrixEnabled = dotMatrix,
             dotShape = dotShape,
-            dotDensity = dotDensity,
+            dotRowsPerLine = dotRowsPerLine,
+            dotSizeFraction = dotSizeFraction,
             glowEnabled = glowEnabled,
             glowStrength = glowStrength,
             displayHeightFraction = displayHeightFraction,

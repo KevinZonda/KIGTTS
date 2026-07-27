@@ -40,6 +40,7 @@ internal fun DrawingCustomColorWheel(
     onClick: () -> Unit
 ) {
     val borderColor = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
+    val hapticOnClick = rememberKigttsHapticClick(onClick)
     Surface(
         modifier = Modifier
             .size(22.dp)
@@ -47,7 +48,7 @@ internal fun DrawingCustomColorWheel(
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = rememberRipple(bounded = true),
-                onClick = onClick
+                onClick = hapticOnClick
             ),
         shape = CircleShape,
         color = Color.Transparent,

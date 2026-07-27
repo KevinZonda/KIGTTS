@@ -20,7 +20,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.Divider
-import androidx.compose.material.IconButton
 import androidx.compose.material.Slider
 import androidx.compose.material.SliderDefaults
 import androidx.compose.material.Surface
@@ -85,7 +84,7 @@ internal fun LedSubtitleSettingsPanel(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text("LED 设置", modifier = Modifier.weight(1f), fontWeight = FontWeight.Medium)
-                IconButton(onClick = onClose) {
+                KigttsIconButton(onClick = onClose) {
                     MsIcon("close", contentDescription = "关闭设置", tint = LedSettingsContent)
                 }
             }
@@ -125,12 +124,26 @@ internal fun LedSubtitleSettingsPanel(
                         onSelected = { onSettingsChange(settings.copy(dotShape = it)) }
                     )
                     LedSettingsSlider(
-                        label = "点阵密度",
-                        value = settings.dotDensity,
-                        valueRange = 0f..1f,
-                        valueLabel = "${(settings.dotDensity * 100).roundToInt()}%",
+                        label = "每行 LED 行数",
+                        value = settings.dotRowsPerLine.toFloat(),
+                        valueRange = LedSubtitleSettings.MIN_DOT_ROWS_PER_LINE.toFloat()..
+                            LedSubtitleSettings.MAX_DOT_ROWS_PER_LINE.toFloat(),
+                        valueLabel = "${settings.dotRowsPerLine} 行",
                         accent = accent,
-                        onValueChange = { onSettingsChange(settings.copy(dotDensity = it)) }
+                        onValueChange = {
+                            onSettingsChange(settings.copy(dotRowsPerLine = it.roundToInt()))
+                        }
+                    )
+                    LedSettingsSlider(
+                        label = "灯珠尺寸",
+                        value = settings.dotSizeFraction,
+                        valueRange = LedSubtitleSettings.MIN_DOT_SIZE_FRACTION..
+                            LedSubtitleSettings.MAX_DOT_SIZE_FRACTION,
+                        valueLabel = "${(settings.dotSizeFraction * 100).roundToInt()}%",
+                        accent = accent,
+                        onValueChange = {
+                            onSettingsChange(settings.copy(dotSizeFraction = it))
+                        }
                     )
                 }
                 LedSwitchSetting(
@@ -304,11 +317,12 @@ private fun LedSettingsSectionTitle(text: String) {
 
 @Composable
 private fun LedColorSettingRow(label: String, color: Color, onClick: () -> Unit) {
+    val hapticOnClick = rememberKigttsHapticClick(onClick)
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .height(48.dp)
-            .clickable(onClick = onClick),
+            .clickable(onClick = hapticOnClick),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(label, modifier = Modifier.weight(1f))
@@ -355,17 +369,18 @@ private fun LedSwitchSetting(
     accent: Color,
     onCheckedChange: (Boolean) -> Unit
 ) {
+    val hapticOnCheckedChange = rememberKigttsHapticValueChange(onCheckedChange)
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .height(48.dp)
-            .clickable { onCheckedChange(!checked) },
+            .clickable { hapticOnCheckedChange(!checked) },
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(label, modifier = Modifier.weight(1f))
         Switch(
             checked = checked,
-            onCheckedChange = onCheckedChange,
+            onCheckedChange = hapticOnCheckedChange,
             colors = SwitchDefaults.colors(
                 checkedThumbColor = accent,
                 checkedTrackColor = accent.copy(alpha = 0.52f),
@@ -384,6 +399,7 @@ private fun LedSegmentedSetting(
     accent: Color,
     onSelected: (Int) -> Unit
 ) {
+    val hapticOnSelected = rememberKigttsHapticValueChange(onSelected)
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(label)
         Row(
@@ -396,7 +412,7 @@ private fun LedSegmentedSetting(
                     modifier = Modifier
                         .weight(1f)
                         .height(42.dp)
-                        .clickable { onSelected(index) },
+                        .clickable { hapticOnSelected(index) },
                     shape = RoundedCornerShape(UiTokens.Radius),
                     color = if (selected) accent.copy(alpha = 0.24f) else Color.Transparent,
                     border = androidx.compose.foundation.BorderStroke(

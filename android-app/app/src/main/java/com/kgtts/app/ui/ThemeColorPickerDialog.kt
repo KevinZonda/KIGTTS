@@ -70,6 +70,9 @@ internal fun ThemeColorPickerDialog(
     var hue by rememberSaveable(initialHex) { mutableFloatStateOf(initialHsl[0]) }
     var saturation by rememberSaveable(initialHex) { mutableFloatStateOf(initialHsl[1]) }
     var lightness by rememberSaveable(initialHex) { mutableFloatStateOf(initialHsl[2]) }
+    val performHaptic = rememberKigttsKeyHaptic()
+    val hapticOnClear = onClear?.let { rememberKigttsHapticClick(it) }
+    val hapticOnEditPalette = onEditPalette?.let { rememberKigttsHapticClick(it) }
 
     fun syncFromHex(hex: String) {
         val normalized = normalizeHexColorOrNull(hex) ?: return
@@ -101,7 +104,10 @@ internal fun ThemeColorPickerDialog(
                         modifier = Modifier
                             .size(30.dp)
                             .background(parseHexColor(hex), CircleShape)
-                            .clickable { syncFromHex(hex) }
+                            .clickable {
+                                performHaptic()
+                                syncFromHex(hex)
+                            }
                     )
                 }
             }
@@ -216,7 +222,7 @@ internal fun ThemeColorPickerDialog(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clickable(onClick = onClear)
+                        .clickable(onClick = hapticOnClear ?: onClear)
                         .padding(vertical = 10.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -234,7 +240,7 @@ internal fun ThemeColorPickerDialog(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clickable(onClick = onEditPalette)
+                        .clickable(onClick = hapticOnEditPalette ?: onEditPalette)
                         .padding(vertical = 10.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {

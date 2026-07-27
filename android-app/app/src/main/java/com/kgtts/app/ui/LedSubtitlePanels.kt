@@ -32,7 +32,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.Divider
-import androidx.compose.material.IconButton
 import androidx.compose.material.OutlinedTextField
 import androidx.compose.material.Surface
 import androidx.compose.material.Text
@@ -251,18 +250,19 @@ internal fun LedSubtitleQuickTextPanel(
                     val group = groups.getOrNull(groupIndex)
                     LazyColumn(modifier = Modifier.fillMaxSize()) {
                         itemsIndexed(group?.items.orEmpty()) { itemIndex, text ->
+                            val hapticSubmit = rememberKigttsHapticClick {
+                                onInteraction()
+                                viewModel.submitQuickSubtitlePreset(
+                                    text = text,
+                                    hasVoice = hasVoice,
+                                    interruptCurrent = state.quickSubtitleInterruptQueue
+                                )
+                            }
                             Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .height(68.dp)
-                                    .clickable {
-                                        onInteraction()
-                                        viewModel.submitQuickSubtitlePreset(
-                                            text = text,
-                                            hasVoice = hasVoice,
-                                            interruptCurrent = state.quickSubtitleInterruptQueue
-                                        )
-                                    }
+                                    .clickable(onClick = hapticSubmit)
                                     .quickSubtitleItemColorMarker(
                                         group?.itemColorArgb(itemIndex),
                                         QuickSubtitleItemColorEdge.Left
@@ -278,17 +278,18 @@ internal fun LedSubtitleQuickTextPanel(
                             )
                         }
                         item {
+                            val hapticAdd = rememberKigttsHapticClick {
+                                onInteraction()
+                                viewModel.addQuickSubtitleItem(
+                                    groupIndex = groupIndex,
+                                    value = viewModel.quickSubtitleCurrentText
+                                )
+                            }
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .height(52.dp)
-                                    .clickable {
-                                        onInteraction()
-                                        viewModel.addQuickSubtitleItem(
-                                            groupIndex = groupIndex,
-                                            value = viewModel.quickSubtitleCurrentText
-                                        )
-                                    },
+                                    .clickable(onClick = hapticAdd),
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.Center
                             ) {
@@ -310,6 +311,10 @@ internal fun LedSubtitleQuickTextPanel(
                         .fillMaxHeight()
                 ) {
                     itemsIndexed(groups) { index, group ->
+                        val hapticSelectGroup = rememberKigttsHapticClick {
+                            onInteraction()
+                            viewModel.selectQuickSubtitleGroup(index)
+                        }
                         val selected = index == selectedIndex
                         val selectionBackground by animateColorAsState(
                             targetValue = if (selected) {
@@ -330,10 +335,7 @@ internal fun LedSubtitleQuickTextPanel(
                                 .fillMaxWidth()
                                 .height(50.dp)
                                 .background(selectionBackground)
-                                .clickable {
-                                    onInteraction()
-                                    viewModel.selectQuickSubtitleGroup(index)
-                                },
+                                .clickable(onClick = hapticSelectGroup),
                             contentAlignment = Alignment.Center
                         ) {
                             MsIcon(
@@ -373,7 +375,7 @@ private fun LedPanelIconButton(
     enabled: Boolean = true,
     onClick: () -> Unit
 ) {
-    IconButton(
+    KigttsIconButton(
         onClick = onClick,
         enabled = enabled,
         modifier = Modifier.size(44.dp)
