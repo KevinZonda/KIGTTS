@@ -16,6 +16,7 @@ internal class LockScreenHostLayoutController(
     private val backgroundView: View,
     private val timeView: TextClock,
     private val dateView: TextView,
+    private val batteryView: TextView,
     private val unlockHint: LinearLayout,
     private val dp: (Int) -> Int
 ) {
@@ -72,6 +73,7 @@ internal class LockScreenHostLayoutController(
     private fun detachReusableViews() {
         (timeView.parent as? ViewGroup)?.removeView(timeView)
         (dateView.parent as? ViewGroup)?.removeView(dateView)
+        (batteryView.parent as? ViewGroup)?.removeView(batteryView)
         (unlockHint.parent as? ViewGroup)?.removeView(unlockHint)
         (backgroundView.parent as? ViewGroup)?.removeView(backgroundView)
     }
@@ -82,10 +84,12 @@ internal class LockScreenHostLayoutController(
         gravity = horizontalGravity
         timeView.gravity = horizontalGravity
         dateView.gravity = horizontalGravity
+        batteryView.gravity = horizontalGravity
         val horizontalPadding = if (timeAndDateAlignedStart) dp(28) else 0
         setPadding(horizontalPadding, 0, horizontalPadding, 0)
         addView(timeView, wrapContentParams())
         addView(dateView, wrapContentParams().apply { topMargin = dp(8) })
+        addView(batteryView, wrapContentParams().apply { topMargin = dp(4) })
     }
 
     private fun applyPortrait(mode: LockScreenLayoutMode, timeGroup: LinearLayout) {

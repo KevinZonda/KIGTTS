@@ -124,7 +124,7 @@ internal fun LedSubtitleSettingsPanel(
                         onSelected = { onSettingsChange(settings.copy(dotShape = it)) }
                     )
                     LedSettingsSlider(
-                        label = "每行 LED 行数",
+                        label = "灯珠密度",
                         value = settings.dotRowsPerLine.toFloat(),
                         valueRange = LedSubtitleSettings.MIN_DOT_ROWS_PER_LINE.toFloat()..
                             LedSubtitleSettings.MAX_DOT_ROWS_PER_LINE.toFloat(),

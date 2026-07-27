@@ -209,7 +209,7 @@
       result.height = alphaCanvas.height;
       var out = result.getContext("2d");
       var pixels = alpha.getImageData(0, 0, alphaCanvas.width, alphaCanvas.height).data;
-      var rows = Math.max(8, Math.min(48, Number(led.dotRowsPerLine) || 24));
+      var rows = Math.max(8, Math.min(256, Number(led.dotRowsPerLine) || 24));
       var pitch = Math.max(2, Number(lineHeight) / rows);
       var sizeFraction = Math.max(0.1, Math.min(1, Number(led.dotSizeFraction) || 0.58));
       var dot = pitch * sizeFraction * (Number(led.dotShape) === 1 ? 1 : Math.SQRT2);

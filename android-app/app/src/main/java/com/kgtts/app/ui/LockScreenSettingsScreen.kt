@@ -86,7 +86,7 @@ internal fun LockScreenSettingsEntryCard(
             Column(modifier = Modifier.weight(1f)) {
                 Text("锁屏样式设置", fontWeight = FontWeight.SemiBold)
                 Text(
-                    "壁纸、时间日期、农历和字体",
+                    "壁纸、时间日期、电量和字体",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -240,6 +240,13 @@ internal fun LockScreenSettingsScreen(
             )
         }
 
+        LockScreenBatterySettingsCard(
+            settings = settings,
+            onSettingsChange = { updated ->
+                viewModel.updateLockScreenSettings { updated }
+            }
+        )
+
         Md2SettingsCard(title = "锁屏字体") {
             Md2SettingSwitchRow(
                 title = "锁屏使用系统字体",
@@ -249,7 +256,7 @@ internal fun LockScreenSettingsScreen(
                 }
             )
             Text(
-                "仅影响时间、日期和滑动解锁提示，不影响锁屏中的快捷操作面板。",
+                "仅影响时间、日期、电量状态和滑动解锁提示，不影响锁屏中的快捷操作面板。",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )

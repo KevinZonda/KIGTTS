@@ -12,7 +12,7 @@ class LedSubtitleSettingsTest {
             ledColorArgb = 0x00112233,
             backgroundColorArgb = 0x00445566,
             dotShape = 9,
-            dotRowsPerLine = 99,
+            dotRowsPerLine = 999,
             dotSizeFraction = 3f,
             glowStrength = -1f,
             displayHeightFraction = 2f,
@@ -27,6 +27,7 @@ class LedSubtitleSettingsTest {
         assertEquals(0xFF445566.toInt(), value.backgroundColorArgb)
         assertEquals(LedSubtitleSettings.DOT_SHAPE_SQUARE, value.dotShape)
         assertEquals(LedSubtitleSettings.MAX_DOT_ROWS_PER_LINE, value.dotRowsPerLine)
+        assertEquals(256, LedSubtitleSettings.MAX_DOT_ROWS_PER_LINE)
         assertEquals(1f, value.dotSizeFraction)
         assertEquals(0f, value.glowStrength)
         assertEquals(0.92f, value.displayHeightFraction)

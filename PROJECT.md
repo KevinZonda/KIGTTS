@@ -769,3 +769,14 @@
 - 平板横屏：锁屏悬浮面板改为居中放置在右半区，时间和滑动解锁区域居中放置在左半区；启用时间居左时增加独立内边距，避免内容贴近屏幕左缘。
 - 验证：局域网投屏 JavaScript 全部通过 `node --check`，`:app:testDebugUnitTest` 通过，32 个测试套件共 114 项，0 失败、0 错误、0 跳过；新增旧点阵设置迁移、灯珠几何和右半区定位测试。真实 Chromium 验证了新设置控件、24dp 连续循环间距、音频自动启用，以及非快捷文本状态更新不会重建滚动列表。`git diff --check` 通过，版本保持 `0.1.4 (5)`。
 - Release 构建：`:app:assembleRelease` 与 `:app:lintVitalRelease` 通过，仅保留现有图片裁剪库弃用警告和 Android SDK XML 工具版本提示。APK 位于 `D:\KGTTS\android-app\app\build\outputs\apk\release\app-release.apk`，95838239 字节，SHA-256 `2af7aa7afe187ceca103d2d8381a83282dc6eaf96ae04993248b43b77259035e`；本轮未安装、未提交。
+
+## 2026-07-27 Android 锁屏电量与 LED 密度设置补充
+
+- 分组图标：编辑便捷字幕分组时，当前图标预览和图标选择宫格强制使用普通前景色，不再跟随主题色染色；选中项背景提示保持不变。
+- 解锁反馈：自定义锁屏的滑动手势达到解锁阈值并松手时触发一次系统虚拟按键震动，未达到阈值的回弹不震动。
+- LED 密度：Android LED 设置、投屏设置、投屏显示页和网页遥控器统一将“每行 LED 行数”改名为“灯珠密度”，可调上限从 48 提高到 256；原设置值和默认 24 保持兼容。
+- 锁屏电量：时间和日期下方可选显示当前电量及充电状态，默认关闭；提供“简洁”和“完整”两种文案样式，并支持始终显示或仅在充电、低于阈值时显示。
+- 电量阈值：低电量阈值默认 30%，可在 1% 至 100% 间调整；条件判断按“低于阈值”执行，等于阈值时不显示。锁屏存续期间通过系统电量广播实时更新，字体、明暗色、自定义壁纸可读性和入场淡入均沿用时间日期区域。
+- 设置预览：锁屏设置页新增独立“电量状态”卡片，壁纸预览同步读取设备当前电量并按真实显示策略呈现；锁屏字体说明同步覆盖电量状态文字。
+- 验证：局域网投屏目录下 8 个 JavaScript 文件全部通过 `node --check`；`:app:testDebugUnitTest`、`:app:assembleRelease`、`:app:lintVitalRelease` 与 `git diff --check` 通过，32 个测试套件共 116 项，0 失败、0 错误、0 跳过。版本保持 `0.1.4 (5)`。
+- Release APK：`D:\KGTTS\android-app\app\build\outputs\apk\release\app-release.apk`，95854619 字节，SHA-256 `032e96a16486a7c5ed5afaa92aa944227adea037eaeee7aedc590bc1e900ccf1`；已通过 `adb install -r` 保留数据覆盖安装到小米设备 `cfc8ef16`，设备确认版本为 `0.1.4 (5)`。

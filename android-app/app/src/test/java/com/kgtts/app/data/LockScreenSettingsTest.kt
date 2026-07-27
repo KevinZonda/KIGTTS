@@ -19,6 +19,10 @@ class LockScreenSettingsTest {
         assertFalse(settings.useSystemFont)
         assertFalse(settings.useSeparateClockFont)
         assertFalse(settings.showLunarDate)
+        assertFalse(settings.showBatteryStatus)
+        assertEquals(LockScreenBatteryStyle.Compact, settings.batteryStyle)
+        assertFalse(settings.batteryOnlyWhenChargingOrLow)
+        assertEquals(30, settings.lowBatteryThreshold)
     }
 
     @Test
@@ -56,10 +60,63 @@ class LockScreenSettingsTest {
     fun `out of range wallpaper effects are clamped`() {
         val decoded = LockScreenSettings(
             wallpaperBlurRadius = 99f,
-            scrimOpacity = -2f
+            scrimOpacity = -2f,
+            lowBatteryThreshold = 999
         ).normalized()
 
         assertEquals(30f, decoded.wallpaperBlurRadius)
         assertEquals(0f, decoded.scrimOpacity)
+        assertEquals(100, decoded.lowBatteryThreshold)
     }
+
+    @Test
+    fun `battery status respects charging and strict low threshold policy`() {
+        val settings = LockScreenSettings(
+            showBatteryStatus = true,
+            batteryOnlyWhenChargingOrLow = true,
+            lowBatteryThreshold = 30
+        )
+
+        assertTrue(
+            settings.shouldShowBatteryStatus(
+                LockScreenBatteryStatus(percentage = 29, isCharging = false, isFull = false)
+            )
+        )
+        assertFalse(
+            settings.shouldShowBatteryStatus(
+                LockScreenBatteryStatus(percentage = 30, isCharging = false, isFull = false)
+            )
+        )
+        assertTrue(
+            settings.shouldShowBatteryStatus(
+                LockScreenBatteryStatus(percentage = 80, isCharging = true, isFull = false)
+            )
+        )
+    }
+
+    @Test
+    fun `battery styles format concise and detailed labels`() {
+        val charging = LockScreenBatteryStatus(
+            percentage = 76,
+            isCharging = true,
+            isFull = false
+        )
+        val idle = charging.copy(isCharging = false)
+
+        assertEquals(
+            "76% · 正在充电",
+            LockScreenSettings(
+                showBatteryStatus = true,
+                batteryStyle = LockScreenBatteryStyle.Compact
+            ).formatBatteryStatus(charging)
+        )
+        assertEquals(
+            "电量 76% · 未充电",
+            LockScreenSettings(
+                showBatteryStatus = true,
+                batteryStyle = LockScreenBatteryStyle.Detailed
+            ).formatBatteryStatus(idle)
+        )
+    }
+
 }
