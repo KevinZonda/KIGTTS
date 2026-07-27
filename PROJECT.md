@@ -780,3 +780,16 @@
 - 设置预览：锁屏设置页新增独立“电量状态”卡片，壁纸预览同步读取设备当前电量并按真实显示策略呈现；锁屏字体说明同步覆盖电量状态文字。
 - 验证：局域网投屏目录下 8 个 JavaScript 文件全部通过 `node --check`；`:app:testDebugUnitTest`、`:app:assembleRelease`、`:app:lintVitalRelease` 与 `git diff --check` 通过，32 个测试套件共 116 项，0 失败、0 错误、0 跳过。版本保持 `0.1.4 (5)`。
 - Release APK：`D:\KGTTS\android-app\app\build\outputs\apk\release\app-release.apk`，95854619 字节，SHA-256 `032e96a16486a7c5ed5afaa92aa944227adea037eaeee7aedc590bc1e900ccf1`；已通过 `adb install -r` 保留数据覆盖安装到小米设备 `cfc8ef16`，设备确认版本为 `0.1.4 (5)`。
+
+## 2026-07-27 Android 快捷文本词频排序与区域手势
+
+- 词频排序：编辑快捷文本页面新增“根据使用频率排序”开关；主界面和悬浮窗点击快捷文本或候选列表条目时记录分组内使用次数，次数相同时继续保持原手动顺序。
+- 稳定刷新：点击条目后当前列表不立即重排；重新进入页面、切换分组、重新展开悬浮窗或重新打开候选列表时才应用新的频率顺序，并从列表起点展示，避免滚动位置突然跳动。
+- 固化排序：编辑页新增“应用当前排序”，二次确认后将所有分组的当前频率顺序写入原有手动列表，同时关闭自动排序；条目颜色跟随文本一起重排，预设导入导出格式不变。
+- 区域手势：便捷字幕快捷文本区域支持竖屏上滑打开候选列表、下滑聚焦输入框并拉起键盘；横屏对应左滑和右滑。悬浮窗展开态使用相同逻辑，手势只覆盖条目容器，不覆盖紧凑模式分组切换器。
+- 手势设置：设置的“便捷字幕显示”卡片新增快捷文本区域手势总开关与方向翻转开关；主界面和悬浮窗共用持久化设置。
+- 使用引导：首步引导按当前横竖屏、手势开关和翻转状态显示真实操作方向；紧凑模式分组切换器增加独立高亮框和箭头气泡，竖屏提示上下滑动、横屏提示左右滑动。
+- 自动验证：`:app:compileDebugKotlin`、`:app:testDebugUnitTest`、`:app:assembleDebug`、`:app:assembleRelease`、`:app:lintVitalRelease` 与 `git diff --check` 通过，34 个测试套件共 121 项，0 失败、0 错误、0 跳过。新增词频排序稳定性、分组隔离、手势方向翻转和引导状态测试；构建仅保留现有图片裁剪库弃用警告和 Android SDK XML 工具版本提示。
+- Release APK：`D:\KGTTS\android-app\app\build\outputs\apk\release\app-release.apk`，95871003 字节，SHA-256 `c90ae3c4f954e361c56970c7cac782272dc71a5cfa7ee4119432fb90c03512c1`；APK Signature Scheme v2 验证通过，签名证书 SHA-256 为 `3193af87840d767843e42770c92823b20df10b5edf03a7d618ce9f4da0f5e197`。
+- 真机安装：Release APK 已通过 `adb install -r` 保留数据覆盖安装到小米设备 `cfc8ef16`；设备确认版本为 `0.1.4 (5)` 且不包含 `DEBUGGABLE`。冷启动 `TotalTime=533ms`，应用进程与前台 Activity 正常，日志无应用致命异常、`VerifyError`、`OutOfMemoryError` 或应用 ANR。
+- GitHub：本轮提交至 `github-main-clean`，随后以非快进合并同步到 `main`；仅推送 `origin`，不向 `kigscope` 远端推送。

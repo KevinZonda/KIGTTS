@@ -942,6 +942,10 @@ class MainViewModel(
             quickSubtitleAutoFit = settings.quickSubtitleAutoFit,
             quickSubtitleAllowLargeFont = settings.quickSubtitleAllowLargeFont,
             quickSubtitleCompactControls = settings.quickSubtitleCompactControls,
+            quickSubtitleFrequencySortEnabled = settings.quickSubtitleFrequencySortEnabled,
+            quickSubtitleUsageStats = settings.quickSubtitleUsageStats,
+            quickSubtitlePanelGesturesEnabled = settings.quickSubtitlePanelGesturesEnabled,
+            quickSubtitlePanelGesturesReversed = settings.quickSubtitlePanelGesturesReversed,
             quickSubtitleFirstRunGuideCompleted = settings.quickSubtitleFirstRunGuideCompleted,
             quickSubtitleKeepInputPreview = settings.quickSubtitleKeepInputPreview,
             ledSubtitleSettings = settings.ledSubtitleSettings,
@@ -1145,10 +1149,14 @@ class MainViewModel(
     fun submitQuickSubtitlePreset(
         text: String,
         hasVoice: Boolean = true,
-        interruptCurrent: Boolean = uiState.quickSubtitleInterruptQueue
+        interruptCurrent: Boolean = uiState.quickSubtitleInterruptQueue,
+        groupId: Long? = null
     ) {
         val message = text.trim()
         if (message.isEmpty()) return
+        if (groupId != null) {
+            recordQuickSubtitleUsage(groupId, message)
+        }
         commitQuickSubtitleCurrentText(message)
         markQuickSubtitleContentSubmitted()
         if (quickSubtitlePlayOnSend && hasVoice) {
@@ -1162,6 +1170,42 @@ class MainViewModel(
             uiState = uiState.copy(status = "已更新字幕文本")
         }
         saveQuickSubtitleConfig()
+    }
+
+    private fun recordQuickSubtitleUsage(groupId: Long, text: String) {
+        val nextStats = uiState.quickSubtitleUsageStats.increment(groupId, text)
+        if (nextStats == uiState.quickSubtitleUsageStats) return
+        uiState = uiState.copy(quickSubtitleUsageStats = nextStats)
+        viewModelScope.launch {
+            UserPrefs.recordQuickSubtitleUsage(appContext, groupId, text)
+        }
+    }
+
+    fun quickSubtitleDisplayGroup(group: QuickSubtitleGroup): QuickSubtitleGroup {
+        if (!uiState.quickSubtitleFrequencySortEnabled || group.items.size < 2) return group
+        val indices = uiState.quickSubtitleUsageStats.sortedIndices(group.id, group.items)
+        val colors = group.itemColors.alignedQuickSubtitleItemColors(group.items.size)
+        return group.copy(
+            items = indices.map(group.items::get),
+            itemColors = indices.map(colors::get).compactQuickSubtitleItemColors()
+        )
+    }
+
+    fun applyCurrentQuickSubtitleFrequencyOrder() {
+        val stats = uiState.quickSubtitleUsageStats
+        quickSubtitleGroups = quickSubtitleGroups.map { group ->
+            val indices = stats.sortedIndices(group.id, group.items)
+            val colors = group.itemColors.alignedQuickSubtitleItemColors(group.items.size)
+            group.copy(
+                items = indices.map(group.items::get),
+                itemColors = indices.map(colors::get).compactQuickSubtitleItemColors()
+            )
+        }
+        uiState = uiState.copy(quickSubtitleFrequencySortEnabled = false)
+        saveQuickSubtitleConfig()
+        viewModelScope.launch {
+            UserPrefs.setQuickSubtitleFrequencySortEnabled(appContext, false)
+        }
     }
 
     fun updateQuickSubtitleInputText(text: String) {
@@ -3950,6 +3994,27 @@ class MainViewModel(
         uiState = uiState.copy(quickSubtitleCompactControls = enabled)
         viewModelScope.launch {
             UserPrefs.setQuickSubtitleCompactControls(appContext, enabled)
+        }
+    }
+
+    fun setQuickSubtitleFrequencySortEnabled(enabled: Boolean) {
+        uiState = uiState.copy(quickSubtitleFrequencySortEnabled = enabled)
+        viewModelScope.launch {
+            UserPrefs.setQuickSubtitleFrequencySortEnabled(appContext, enabled)
+        }
+    }
+
+    fun setQuickSubtitlePanelGesturesEnabled(enabled: Boolean) {
+        uiState = uiState.copy(quickSubtitlePanelGesturesEnabled = enabled)
+        viewModelScope.launch {
+            UserPrefs.setQuickSubtitlePanelGesturesEnabled(appContext, enabled)
+        }
+    }
+
+    fun setQuickSubtitlePanelGesturesReversed(reversed: Boolean) {
+        uiState = uiState.copy(quickSubtitlePanelGesturesReversed = reversed)
+        viewModelScope.launch {
+            UserPrefs.setQuickSubtitlePanelGesturesReversed(appContext, reversed)
         }
     }
 

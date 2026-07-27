@@ -194,6 +194,14 @@ object UserPrefs {
     private val KEY_QUICK_SUBTITLE_ALLOW_LARGE_FONT =
         booleanPreferencesKey("quick_subtitle_allow_large_font")
     private val KEY_QUICK_SUBTITLE_COMPACT_CONTROLS = booleanPreferencesKey("quick_subtitle_compact_controls")
+    private val KEY_QUICK_SUBTITLE_FREQUENCY_SORT_ENABLED =
+        booleanPreferencesKey("quick_subtitle_frequency_sort_enabled")
+    private val KEY_QUICK_SUBTITLE_USAGE_STATS =
+        stringPreferencesKey("quick_subtitle_usage_stats")
+    private val KEY_QUICK_SUBTITLE_PANEL_GESTURES_ENABLED =
+        booleanPreferencesKey("quick_subtitle_panel_gestures_enabled")
+    private val KEY_QUICK_SUBTITLE_PANEL_GESTURES_REVERSED =
+        booleanPreferencesKey("quick_subtitle_panel_gestures_reversed")
     private val KEY_QUICK_SUBTITLE_FIRST_RUN_GUIDE_COMPLETED =
         booleanPreferencesKey("quick_subtitle_first_run_guide_completed")
     private val KEY_QUICK_SUBTITLE_LIST_POPUP_GRID_MODE =
@@ -309,6 +317,10 @@ object UserPrefs {
         val quickSubtitleAutoFit: Boolean = true,
         val quickSubtitleAllowLargeFont: Boolean = false,
         val quickSubtitleCompactControls: Boolean = false,
+        val quickSubtitleFrequencySortEnabled: Boolean = false,
+        val quickSubtitleUsageStats: QuickSubtitleUsageStats = QuickSubtitleUsageStats(),
+        val quickSubtitlePanelGesturesEnabled: Boolean = true,
+        val quickSubtitlePanelGesturesReversed: Boolean = false,
         val quickSubtitleFirstRunGuideCompleted: Boolean = false,
         val quickSubtitleListPopupGridMode: Boolean = true,
         val quickSubtitleKeepInputPreview: Boolean = true,
@@ -645,6 +657,14 @@ object UserPrefs {
             quickSubtitleAutoFit = this[KEY_QUICK_SUBTITLE_AUTO_FIT] ?: true,
             quickSubtitleAllowLargeFont = this[KEY_QUICK_SUBTITLE_ALLOW_LARGE_FONT] ?: false,
             quickSubtitleCompactControls = this[KEY_QUICK_SUBTITLE_COMPACT_CONTROLS] ?: false,
+            quickSubtitleFrequencySortEnabled =
+                this[KEY_QUICK_SUBTITLE_FREQUENCY_SORT_ENABLED] ?: false,
+            quickSubtitleUsageStats =
+                QuickSubtitleUsageStats.fromJson(this[KEY_QUICK_SUBTITLE_USAGE_STATS]),
+            quickSubtitlePanelGesturesEnabled =
+                this[KEY_QUICK_SUBTITLE_PANEL_GESTURES_ENABLED] ?: true,
+            quickSubtitlePanelGesturesReversed =
+                this[KEY_QUICK_SUBTITLE_PANEL_GESTURES_REVERSED] ?: false,
             quickSubtitleFirstRunGuideCompleted = resolveQuickSubtitleFirstRunGuideCompleted(
                 stored = this[KEY_QUICK_SUBTITLE_FIRST_RUN_GUIDE_COMPLETED],
                 onboardingCompleted = this[KEY_ONBOARDING_COMPLETED] ?: false
@@ -1237,6 +1257,33 @@ object UserPrefs {
     suspend fun setQuickSubtitleCompactControls(context: Context, enabled: Boolean) {
         context.dataStore.edit { prefs ->
             prefs[KEY_QUICK_SUBTITLE_COMPACT_CONTROLS] = enabled
+        }
+    }
+
+    suspend fun setQuickSubtitleFrequencySortEnabled(context: Context, enabled: Boolean) {
+        context.dataStore.edit { prefs ->
+            prefs[KEY_QUICK_SUBTITLE_FREQUENCY_SORT_ENABLED] = enabled
+        }
+    }
+
+    suspend fun recordQuickSubtitleUsage(context: Context, groupId: Long, text: String) {
+        context.dataStore.edit { prefs ->
+            val next = QuickSubtitleUsageStats
+                .fromJson(prefs[KEY_QUICK_SUBTITLE_USAGE_STATS])
+                .increment(groupId, text)
+            prefs[KEY_QUICK_SUBTITLE_USAGE_STATS] = next.toJson()
+        }
+    }
+
+    suspend fun setQuickSubtitlePanelGesturesEnabled(context: Context, enabled: Boolean) {
+        context.dataStore.edit { prefs ->
+            prefs[KEY_QUICK_SUBTITLE_PANEL_GESTURES_ENABLED] = enabled
+        }
+    }
+
+    suspend fun setQuickSubtitlePanelGesturesReversed(context: Context, reversed: Boolean) {
+        context.dataStore.edit { prefs ->
+            prefs[KEY_QUICK_SUBTITLE_PANEL_GESTURES_REVERSED] = reversed
         }
     }
 
