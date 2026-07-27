@@ -838,12 +838,14 @@ open class FloatingOverlayService : Service() {
                     textAlignment = View.TEXT_ALIGNMENT_VIEW_START
                 }
             val colorMarker = View(parent.context)
+            applyMiniQuickTextLineHeight(textView)
             val root =
                 FrameLayout(parent.context).apply {
                     layoutParams = RecyclerView.LayoutParams(dp(112), dp(88))
                     minimumWidth = dp(112)
                     minimumHeight = dp(88)
-                    clipChildren = true
+                    clipChildren = false
+                    clipToPadding = false
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                         foreground = selectableDrawable()
                     }
@@ -12269,6 +12271,25 @@ open class FloatingOverlayService : Service() {
         )
     }
 
+    private fun applyMiniQuickTextLineHeight(textView: TextView) {
+        val targetLineHeight = resolveOverlayStableLineHeightPx(
+            textSizePx = textView.textSize,
+            scaledDensity = TypedValue.applyDimension(
+                TypedValue.COMPLEX_UNIT_SP,
+                1f,
+                resources.displayMetrics
+            ),
+            explicitMultiplier = MINI_QUICK_TEXT_LINE_HEIGHT_MULTIPLIER
+        )
+        val metrics = textView.paint.fontMetricsInt
+        val fontHeight = (metrics.descent - metrics.ascent).coerceAtLeast(1)
+        textView.setLineSpacing((targetLineHeight - fontHeight).toFloat(), 1f)
+        overlayFontApplier.applyStableLineHeight(
+            textView,
+            MINI_QUICK_TEXT_LINE_HEIGHT_MULTIPLIER
+        )
+    }
+
     private fun overlayItemDividerColor(): Int =
         ColorUtils.setAlphaComponent(overlayOutlineColor(), 46)
 
@@ -12492,6 +12513,7 @@ open class FloatingOverlayService : Service() {
         private const val NOTIFICATION_ID = 3204
         private const val OWNER_TAG = "overlay"
         private const val FAB_SIZE_DP = 56
+        private const val MINI_QUICK_TEXT_LINE_HEIGHT_MULTIPLIER = 1.15f
         private const val ACTION_STOP = "com.lhtstudio.kigtts.app.action.OVERLAY_STOP"
         private const val ACTION_REFRESH = "com.lhtstudio.kigtts.app.action.OVERLAY_REFRESH"
         private const val ACTION_OPEN_PANEL = "com.lhtstudio.kigtts.app.action.OVERLAY_OPEN_PANEL"

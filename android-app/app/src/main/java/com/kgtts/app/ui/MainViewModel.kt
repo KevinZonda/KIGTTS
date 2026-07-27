@@ -589,6 +589,7 @@ class MainViewModel(
         private set
     private var quickSubtitleNextGroupId = 10L
     private var quickSubtitleSaving = false
+    private var pendingQuickSubtitleSavePayload: String? = null
     private var lastAppliedQuickSubtitleRequestId = 0L
     private var lastAppliedRecognizedSubtitleId = Long.MIN_VALUE
     private var soundboardNextGroupId = 2L
@@ -1047,8 +1048,6 @@ class MainViewModel(
     }
 
     private fun saveQuickSubtitleConfig() {
-        if (quickSubtitleSaving) return
-        quickSubtitleSaving = true
         val root = JSONObject().apply {
             put("selectedGroupId", quickSubtitleSelectedGroupId)
             put("fontSizeSp", quickSubtitleFontSizeSp.toDouble())
@@ -1073,10 +1072,25 @@ class MainViewModel(
             put("groups", groupsArr)
         }
         val payload = root.toString()
+        if (quickSubtitleSaving) {
+            pendingQuickSubtitleSavePayload = payload
+            return
+        }
+        quickSubtitleSaving = true
         viewModelScope.launch {
             try {
-                UserPrefs.setQuickSubtitleConfig(appContext, payload)
-                realtimeHost?.publishQuickSubtitleConfig(payload)
+                var nextPayload = payload
+                while (true) {
+                    UserPrefs.setQuickSubtitleConfig(appContext, nextPayload)
+                    realtimeHost?.publishQuickSubtitleConfig(nextPayload)
+                    val pending = pendingQuickSubtitleSavePayload
+                    if (pending == null || pending == nextPayload) {
+                        pendingQuickSubtitleSavePayload = null
+                        break
+                    }
+                    pendingQuickSubtitleSavePayload = null
+                    nextPayload = pending
+                }
             } finally {
                 quickSubtitleSaving = false
             }
@@ -1677,26 +1691,24 @@ class MainViewModel(
         saveQuickSubtitleConfig()
     }
 
-    fun updateQuickSubtitleItem(groupIndex: Int, itemIndex: Int, value: String) {
-        if (groupIndex !in quickSubtitleGroups.indices) return
-        val g = quickSubtitleGroups[groupIndex]
-        if (itemIndex !in g.items.indices) return
-        val items = g.items.toMutableList()
-        items[itemIndex] = value
-        val next = quickSubtitleGroups.toMutableList()
-        next[groupIndex] = g.copy(items = items)
-        quickSubtitleGroups = next
-        saveQuickSubtitleConfig()
-    }
-
-    fun updateQuickSubtitleItemColor(groupIndex: Int, itemIndex: Int, colorArgb: Int?) {
+    fun updateQuickSubtitleItem(
+        groupIndex: Int,
+        itemIndex: Int,
+        value: String,
+        colorArgb: Int?
+    ) {
         if (groupIndex !in quickSubtitleGroups.indices) return
         val group = quickSubtitleGroups[groupIndex]
         if (itemIndex !in group.items.indices) return
+        val items = group.items.toMutableList()
+        items[itemIndex] = value
         val colors = group.itemColors.alignedQuickSubtitleItemColors(group.items.size).toMutableList()
         colors[itemIndex] = colorArgb
         val next = quickSubtitleGroups.toMutableList()
-        next[groupIndex] = group.copy(itemColors = colors.compactQuickSubtitleItemColors())
+        next[groupIndex] = group.copy(
+            items = items,
+            itemColors = colors.compactQuickSubtitleItemColors()
+        )
         quickSubtitleGroups = next
         saveQuickSubtitleConfig()
     }

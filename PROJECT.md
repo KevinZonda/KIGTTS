@@ -803,3 +803,23 @@
 - Release APK：`D:\KGTTS\android-app\app\build\outputs\apk\release\app-release.apk`，95871003 字节，SHA-256 `c2f2bd6aec2c3bc3adf15e8adf3e7af5e0be37de00ceae4c6ba6b611633383a2`；签名证书 SHA-256 为 `3193af87840d767843e42770c92823b20df10b5edf03a7d618ce9f4da0f5e197`。
 - 真机安装：Release APK 已通过 `adb install -r` 保留数据覆盖安装到小米设备 `cfc8ef16`；冷启动 `TotalTime=473ms`，应用进程正常运行，日志无应用致命异常、`VerifyError`、`OutOfMemoryError` 或应用 ANR。
 - GitHub：本轮提交至 `github-main-clean`，随后以非快进合并同步到 `main`；仅推送 `origin`，不向 `kigscope` 远端推送。
+
+## 2026-07-27 Android 悬浮窗自定义字体裁剪补充修正
+
+- 问题定位：初次解除手势宿主和列表裁剪后，系统字体可完整显示，但自定义字体第三行仍可能被截断；原因是自定义字体的字形外延会超出条目绘制边界，而快捷文本条目自身的根容器仍在裁剪子视图。
+- 修正方式：补充关闭条目根容器的子项及内边距裁剪，保留原有字号、行距、内边距、条目高度、文本位置和颜色条位置。
+- 自动验证：`:app:testDebugUnitTest`、`:app:assembleRelease`、`:app:lintVitalRelease` 与 `git diff --check` 通过，34 个测试套件共 121 项，0 失败、0 错误、0 跳过。版本保持 `0.1.4 (5)`。
+- Release APK：`D:\KGTTS\android-app\app\build\outputs\apk\release\app-release.apk`，95871003 字节，SHA-256 `71572c3a52be011a589496f36dc232156b223557e597ea88348c23a93eb0d21c`；签名证书 SHA-256 为 `3193af87840d767843e42770c92823b20df10b5edf03a7d618ce9f4da0f5e197`。
+- 真机安装：Release APK 已通过 `adb install -r` 保留数据覆盖安装到小米设备 `cfc8ef16`；设备确认版本为 `0.1.4 (5)`，冷启动 `TotalTime=823ms`，应用进程正常运行，日志无应用致命异常、`VerifyError`、`OutOfMemoryError` 或应用 ANR。
+
+## 2026-07-27 Android 快捷文本颜色、布局引导与悬浮窗行高修正
+
+- 布局选择：首次进入便捷字幕的“选择快捷文本布局”弹窗中，选中项不再增加海拔和阴影，仅通过主题色底色、描边和单选状态区分。
+- 颜色保存：编辑快捷文本改为一次性提交文本和条目颜色，避免连续调用保存时颜色请求被正在执行的文本保存忽略；快捷文本配置保存器改为串行处理首个和最新快照，连续编辑不再丢失最后一次修改。
+- 状态同步：每个持久化快照完成后同步发布给实时宿主，主界面状态即时更新，悬浮窗按顺序接收最终颜色配置，解决颜色更新延迟和小概率未保存。
+- 悬浮窗行高：竖屏迷你快捷文本的系统字体和第三方字体统一强制使用 `1.15×` 紧凑行高；系统字体直接按实际字体度量设置，第三方字体通过字体应用器修正到相同目标，三行文本在不同设备上保持一致。
+- 引导布局：第二步说明卡向左上偏移，减少与大字幕操作气泡互相遮挡；第三步在横屏下把语音识别和发送气泡移动到对应按钮上方，竖屏位置保持不变。
+- 自动验证：`:app:testDebugUnitTest`、`:app:assembleRelease`、`:app:lintVitalRelease` 与 `git diff --check` 通过，34 个测试套件共 123 项，0 失败、0 错误、0 跳过；新增紧凑行高和横屏气泡位置测试。版本保持 `0.1.4 (5)`。
+- Release APK：`D:\KGTTS\android-app\app\build\outputs\apk\release\app-release.apk`，95871003 字节，SHA-256 `23eef9b5820ab008c07170ec00fd63641c9a540dc4a68a883345c109d33c171d`；签名证书 SHA-256 为 `3193af87840d767843e42770c92823b20df10b5edf03a7d618ce9f4da0f5e197`。
+- 真机安装：Release APK 已通过 `adb install -r` 保留数据覆盖安装到小米设备 `cfc8ef16`；设备确认版本为 `0.1.4 (5)`，冷启动 `TotalTime=1331ms`，应用进程正常运行，日志无应用致命异常、`VerifyError`、`OutOfMemoryError` 或应用 ANR。
+- GitHub：本轮提交至 `github-main-clean`，随后以非快进合并同步到 `main`；仅推送 `origin`，不向 `kigscope` 远端推送。

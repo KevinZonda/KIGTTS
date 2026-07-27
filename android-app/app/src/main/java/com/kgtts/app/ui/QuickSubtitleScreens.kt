@@ -4308,11 +4308,13 @@ internal fun QuickSubtitleEditorScreen(
                 onItemsChanged = { reordered, colors ->
                     viewModel.setQuickSubtitleItems(selectedGroupIndex, reordered, colors)
                 },
-                onItemTextChanged = { itemIndex, value ->
-                    viewModel.updateQuickSubtitleItem(selectedGroupIndex, itemIndex, value)
-                },
-                onItemColorChanged = { itemIndex, colorArgb ->
-                    viewModel.updateQuickSubtitleItemColor(selectedGroupIndex, itemIndex, colorArgb)
+                onItemChanged = { itemIndex, value, colorArgb ->
+                    viewModel.updateQuickSubtitleItem(
+                        selectedGroupIndex,
+                        itemIndex,
+                        value,
+                        colorArgb
+                    )
                 },
                 onEnterSelectionMode = { index -> enterBatchSelection(index) },
                 onToggleSelection = { index -> toggleBatchSelection(index) }
@@ -4558,11 +4560,13 @@ internal fun QuickSubtitleEditorScreen(
                     onItemsChanged = { reordered, colors ->
                         viewModel.setQuickSubtitleItems(selectedGroupIndex, reordered, colors)
                     },
-                    onItemTextChanged = { itemIndex, value ->
-                        viewModel.updateQuickSubtitleItem(selectedGroupIndex, itemIndex, value)
-                    },
-                    onItemColorChanged = { itemIndex, colorArgb ->
-                        viewModel.updateQuickSubtitleItemColor(selectedGroupIndex, itemIndex, colorArgb)
+                    onItemChanged = { itemIndex, value, colorArgb ->
+                        viewModel.updateQuickSubtitleItem(
+                            selectedGroupIndex,
+                            itemIndex,
+                            value,
+                            colorArgb
+                        )
                     },
                     onEnterSelectionMode = { index -> enterBatchSelection(index) },
                     onToggleSelection = { index -> toggleBatchSelection(index) }
@@ -4687,8 +4691,7 @@ internal fun QuickSubtitleItemsRecyclerCard(
     parentEdgeScrollBy: ((Int) -> Boolean)? = null,
     onAdd: (String) -> Unit,
     onItemsChanged: (List<String>, List<Int?>) -> Unit,
-    onItemTextChanged: (Int, String) -> Unit,
-    onItemColorChanged: (Int, Int?) -> Unit,
+    onItemChanged: (Int, String, Int?) -> Unit,
     onEnterSelectionMode: (Int) -> Unit,
     onToggleSelection: (Int) -> Unit
 ) {
@@ -4893,10 +4896,7 @@ internal fun QuickSubtitleItemsRecyclerCard(
                             Md2TextButton(onClick = {
                                 val idx = editTargetIndex
                                 if (idx != null && idx in items.indices) {
-                                    onItemTextChanged(idx, editText)
-                                    if (itemColors.getOrNull(idx) != editColorArgb) {
-                                        onItemColorChanged(idx, editColorArgb)
-                                    }
+                                    onItemChanged(idx, editText, editColorArgb)
                                 }
                                 showEditColorPicker = false
                                 editTargetIndex = null

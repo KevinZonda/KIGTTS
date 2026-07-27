@@ -92,7 +92,7 @@ private fun QuickSubtitleModeChoice(
             width = if (selected) 2.dp else 1.dp,
             color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
         ),
-        elevation = if (selected) 2.dp else 0.dp
+        elevation = 0.dp
     ) {
         Column(
             modifier = Modifier.padding(14.dp),

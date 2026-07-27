@@ -72,6 +72,34 @@ class QuickSubtitleFirstRunGuideTest {
     }
 
     @Test
+    fun landscapeInputAndSendCalloutsArePlacedAboveTheirButtons() {
+        assertEquals(
+            GuideCalloutPlacement.Above,
+            calloutPlacement(
+                QuickSubtitleGuideAnchor.RecognitionFab,
+                verticalActions = false,
+                isLandscape = true
+            )
+        )
+        assertEquals(
+            GuideCalloutPlacement.Above,
+            calloutPlacement(
+                QuickSubtitleGuideAnchor.BottomSend,
+                verticalActions = false,
+                isLandscape = true
+            )
+        )
+        assertEquals(
+            GuideCalloutPlacement.Left,
+            calloutPlacement(
+                QuickSubtitleGuideAnchor.BottomSend,
+                verticalActions = false,
+                isLandscape = false
+            )
+        )
+    }
+
+    @Test
     fun legacyUsersDoNotReceiveAFirstRunPopupAfterUpgrade() {
         assertTrue(
             resolveQuickSubtitleFirstRunGuideCompleted(
