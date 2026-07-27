@@ -734,6 +734,20 @@ object UserPrefs {
         }
     }
 
+    suspend fun resetMicrophoneSettings(context: Context) {
+        val defaults = AppSettings()
+        context.dataStore.edit { prefs ->
+            prefs[KEY_ECHO_SUPPRESSION] = defaults.echoSuppression
+            prefs[KEY_COMMUNICATION_MODE] = defaults.communicationMode
+            prefs[KEY_PREFERRED_INPUT_TYPE] = defaults.preferredInputType
+            prefs[KEY_AEC3_ENABLED] = defaults.aec3Enabled
+            prefs[KEY_DENOISER_MODE] = defaults.denoiserMode
+            prefs[KEY_SPEECH_ENHANCEMENT_MODE] = defaults.speechEnhancementMode
+            prefs[KEY_SPEECH_ENHANCEMENT_ENABLED] =
+                SpeechEnhancementMode.isEnabled(defaults.speechEnhancementMode)
+        }
+    }
+
     suspend fun setClassicVadEnabled(context: Context, enabled: Boolean) {
         context.dataStore.edit { prefs ->
             prefs[KEY_CLASSIC_VAD_ENABLED] = enabled
@@ -872,6 +886,19 @@ object UserPrefs {
     suspend fun setPiperSentenceSilence(context: Context, value: Float) {
         context.dataStore.edit { prefs ->
             prefs[KEY_PIPER_SENTENCE_SILENCE] = value.coerceIn(0f, 2f)
+        }
+    }
+
+    suspend fun resetTtsSettings(context: Context) {
+        val defaults = AppSettings()
+        context.dataStore.edit { prefs ->
+            prefs[KEY_TTS_DISABLED] = defaults.ttsDisabled
+            prefs[KEY_PLAYBACK_GAIN_PERCENT] = defaults.playbackGainPercent
+            prefs[KEY_AUDIO_FOCUS_AVOIDANCE_MODE] = defaults.audioFocusAvoidanceMode
+            prefs[KEY_PIPER_NOISE_SCALE] = defaults.piperNoiseScale
+            prefs[KEY_PIPER_LENGTH_SCALE] = defaults.piperLengthScale
+            prefs[KEY_PIPER_NOISE_W] = defaults.piperNoiseW
+            prefs[KEY_PIPER_SENTENCE_SILENCE] = defaults.piperSentenceSilence
         }
     }
 

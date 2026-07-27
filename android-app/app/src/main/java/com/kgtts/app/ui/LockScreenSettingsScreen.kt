@@ -56,6 +56,7 @@ internal fun LockScreenSettingsEntryCard(
     permissionEntryLabel: String?,
     onOpenPermissionGuide: () -> Unit
 ) {
+    val hapticOnOpen = rememberKigttsHapticClick(onOpen)
     Md2SettingsCard(title = "自定义锁屏") {
         Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -76,7 +77,7 @@ internal fun LockScreenSettingsEntryCard(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clickable(onClick = onOpen)
+                .clickable(onClick = hapticOnOpen)
                 .padding(vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -169,6 +170,7 @@ internal fun LockScreenSettingsScreen(
                 ?: clockFontFallbackName(settings)
         }
     }
+    val hapticOpenClockFontSettings = rememberKigttsHapticClick(onOpenClockFontSettings)
 
     CenteredPageColumn(maxWidth = UiTokens.WideContentMaxWidth, scroll = scroll) {
         Spacer(Modifier.height(UiTokens.PageTopBlank))
@@ -269,7 +271,7 @@ internal fun LockScreenSettingsScreen(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clickable(onClick = onOpenClockFontSettings)
+                        .clickable(onClick = hapticOpenClockFontSettings)
                         .padding(vertical = 9.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(12.dp)

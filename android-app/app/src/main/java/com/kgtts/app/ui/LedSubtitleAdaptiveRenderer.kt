@@ -144,8 +144,8 @@ private suspend fun renderAdaptiveLedFrame(
     val output = Bitmap.createBitmap(widthPx, heightPx, Bitmap.Config.ARGB_8888)
     val outputCanvas = AndroidCanvas(output)
     if (value.dotMatrixEnabled) {
-        val pitchDp = 12f - value.dotDensity * 7f
-        val pitchPx = (pitchDp * densityScale).roundToInt().coerceAtLeast(4)
+        val lineHeightPx = bestLayout.height.toFloat() / bestLayout.lineCount.coerceAtLeast(1)
+        val pitchPx = ledCellPitchPx(lineHeightPx, value.dotRowsPerLine)
         drawLedCells(outputCanvas, mask, pitchPx, value)
     } else {
         val textBitmapPaint = AndroidPaint(AndroidPaint.ANTI_ALIAS_FLAG).apply {

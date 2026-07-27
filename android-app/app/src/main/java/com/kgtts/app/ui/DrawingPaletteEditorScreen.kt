@@ -89,7 +89,7 @@ internal fun DrawingPaletteEditorScreen(
     SideEffect {
         onTopBarActionsChange(
             DrawingPaletteTopBarActions(
-                canConfirm = hasChanges,
+                canConfirm = true,
                 canAdd = draft.entries.size < DrawingPalette.MAX_ENTRIES,
                 onAdd = { addEntry() },
                 onConfirm = { saveAndClose() },

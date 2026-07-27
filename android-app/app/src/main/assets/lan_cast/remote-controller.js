@@ -7,6 +7,7 @@
   var themeMode = readCookie("kigtts_remote_theme") || "system";
   var compactQuickTextPreference = readCookie("kigtts_remote_compact_quick_text");
   var settingsTimer = 0;
+  var renderedQuickKey = "";
   var quickCollapsed = false;
   var localInputPreview = "";
   var systemTheme = window.matchMedia ? window.matchMedia("(prefers-color-scheme: dark)") : null;
@@ -182,7 +183,8 @@
       };
     });
     [
-      "remote-normal-font", "remote-adaptive-multiline", "remote-led-color", "remote-led-background", "remote-density",
+      "remote-normal-font", "remote-adaptive-multiline", "remote-led-color", "remote-led-background",
+      "remote-dot-rows", "remote-dot-size",
       "remote-glow-enabled", "remote-glow", "remote-height", "remote-speed",
       "remote-quick-swipe", "remote-gap", "remote-keep-awake",
       "remote-follow-brightness", "remote-brightness"
@@ -199,7 +201,8 @@
     led.dotMatrix = !byId("remote-normal-font").checked;
     led.color = byId("remote-led-color").value;
     led.background = byId("remote-led-background").value;
-    led.dotDensity = Number(byId("remote-density").value);
+    led.dotRowsPerLine = Math.round(Number(byId("remote-dot-rows").value));
+    led.dotSizeFraction = Number(byId("remote-dot-size").value);
     led.glowEnabled = byId("remote-glow-enabled").checked;
     led.glowStrength = Number(byId("remote-glow").value);
     led.displayHeightFraction = Number(byId("remote-height").value);
@@ -298,8 +301,17 @@
     preview.style.fontSize = Math.max(18, low - .5) + "px";
   }
 
-  function renderQuickGroups() {
+  function renderQuickGroups(animate) {
     var groups = state.groups || [];
+    var nextKey = JSON.stringify([
+      compactQuickTextPreference,
+      String(selectedGroupId),
+      groups.map(function (group) {
+        return [String(group.id), group.title, group.icon, group.items || []];
+      })
+    ]);
+    if (nextKey === renderedQuickKey) return;
+    renderedQuickKey = nextKey;
     var tabs = byId("group-tabs");
     var items = byId("quick-items");
     tabs.innerHTML = "";
@@ -346,9 +358,11 @@
     add.setAttribute("aria-label", "添加当前字幕");
     add.onclick = function () { api.sendCommand("addCurrentText", { groupId: selected.id }); };
     items.appendChild(add);
-    items.classList.remove("switching");
-    void items.offsetWidth;
-    items.classList.add("switching");
+    if (animate !== false) {
+      items.classList.remove("switching");
+      void items.offsetWidth;
+      items.classList.add("switching");
+    }
     renderResponsiveGroupSelector();
   }
 
@@ -417,7 +431,8 @@
     byId("remote-normal-font").checked = !led.dotMatrix;
     byId("remote-led-color").value = led.color || "#ffffff";
     byId("remote-led-background").value = led.background || "#000000";
-    byId("remote-density").value = led.dotDensity;
+    byId("remote-dot-rows").value = led.dotRowsPerLine;
+    byId("remote-dot-size").value = led.dotSizeFraction;
     byId("remote-glow-enabled").checked = led.glowEnabled;
     byId("remote-glow").value = led.glowStrength;
     byId("remote-height").value = led.displayHeightFraction;
@@ -432,7 +447,8 @@
     byId("remote-glow-row").hidden = !led.glowEnabled;
     byId("remote-scroll-options").hidden = led.adaptiveMultiLine === true;
     byId("remote-brightness-row").hidden = led.followSystemBrightness;
-    byId("remote-density-value").textContent = Math.round(led.dotDensity * 100) + "%";
+    byId("remote-dot-rows-value").textContent = Math.round(led.dotRowsPerLine) + " 行";
+    byId("remote-dot-size-value").textContent = Math.round(led.dotSizeFraction * 100) + "%";
     byId("remote-glow-value").textContent = Math.round(led.glowStrength * 100) + "%";
     byId("remote-height-value").textContent = Math.round(led.displayHeightFraction * 100) + "%";
     byId("remote-speed-value").textContent = Math.round(led.speed) + " dp/s";

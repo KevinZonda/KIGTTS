@@ -134,13 +134,20 @@ internal class LockScreenHostLayoutController(
             overlayWidth,
             sideMargin
         )
-        val columnWidth = LockScreenLayoutPolicy.hostColumnWidthPx(
-            overlayLeftPx = overlayLeft,
-            contentStartInsetPx = root.paddingLeft,
-            startMarginPx = sideMargin,
-            overlayGapPx = dp(24),
-            minimumWidthPx = dp(220)
-        )
+        val columnWidth = if (mode == LockScreenLayoutMode.TabletLandscape) {
+            (screenWidth / 2 - sideMargin * 2).coerceAtLeast(dp(220))
+        } else {
+            LockScreenLayoutPolicy.hostColumnWidthPx(
+                overlayLeftPx = overlayLeft,
+                contentStartInsetPx = root.paddingLeft,
+                startMarginPx = sideMargin,
+                overlayGapPx = dp(24),
+                minimumWidthPx = dp(220)
+            )
+        }
+        if (timeAndDateAlignedStart && mode == LockScreenLayoutMode.TabletLandscape) {
+            timeGroup.setPadding(dp(48), 0, dp(24), 0)
+        }
         val leftColumn = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER

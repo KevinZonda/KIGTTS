@@ -1,12 +1,10 @@
 package com.lhtstudio.kigtts.app.ui
 
 import android.view.MotionEvent
-import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -27,7 +25,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.input.pointer.pointerInteropFilter
 import androidx.compose.ui.semantics.contentDescription
@@ -56,11 +53,7 @@ internal fun DrawingPaletteRow(
         ),
         label = "drawing_palette_row_elevation"
     )
-    val overlay by animateColorAsState(
-        targetValue = if (dragged) MaterialTheme.colorScheme.primary.copy(alpha = 0.08f) else Color.Transparent,
-        animationSpec = tween(120),
-        label = "drawing_palette_row_overlay"
-    )
+    val hapticClick = rememberKigttsKeyHaptic()
     Box(modifier = Modifier.padding(horizontal = 2.dp, vertical = 6.dp)) {
         Card(
             modifier = Modifier
@@ -73,8 +66,6 @@ internal fun DrawingPaletteRow(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(overlay)
-                    .graphicsLayer { alpha = if (dragged) 0.98f else 1f }
                     .padding(horizontal = 8.dp, vertical = 8.dp),
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
                 verticalAlignment = Alignment.CenterVertically
@@ -109,6 +100,7 @@ internal fun DrawingPaletteRow(
                     modifier = Modifier.pointerInteropFilter { event ->
                         when (event.actionMasked) {
                             MotionEvent.ACTION_DOWN -> {
+                                hapticClick()
                                 onStartDrag()
                                 true
                             }
@@ -128,11 +120,12 @@ internal fun DrawingPaletteRow(
 @Composable
 private fun PaletteColorButton(label: String, icon: String, color: Color, onClick: () -> Unit) {
     val iconColor = if (color.luminance() > 0.52f) Color(0xFF111417) else Color.White
+    val hapticOnClick = rememberKigttsHapticClick(onClick)
     Surface(
         modifier = Modifier
             .size(40.dp)
             .semantics { contentDescription = "编辑${label}主题颜色" }
-            .clickable(onClick = onClick),
+            .clickable(onClick = hapticOnClick),
         shape = CircleShape,
         color = color,
         contentColor = iconColor,

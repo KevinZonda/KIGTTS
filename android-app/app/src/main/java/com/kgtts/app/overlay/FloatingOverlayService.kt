@@ -181,6 +181,8 @@ open class FloatingOverlayService : Service() {
         return true
     }
     protected open fun onOverlayVisibilityChanged(panelVisible: Boolean, miniVisible: Boolean) = Unit
+
+    protected open fun shouldSyncTopStatusContent(): Boolean = true
     protected open suspend fun awaitOverlayHostReady() = Unit
     protected open fun overlayWindowToken(): IBinder? = null
     protected open fun onOverlayWindowsInitialized() = Unit
@@ -4437,7 +4439,11 @@ open class FloatingOverlayService : Service() {
             else -> "mic"
         }
         val topAudioIcon = if (settings.ttsDisabled) "graphic_eq_off" else "graphic_eq"
-        syncTopStatusContent(latestText)
+        if (shouldSyncTopStatusContent()) {
+            syncTopStatusContent(latestText)
+        } else {
+            showTopStatusLogo()
+        }
         panelStatusMicIconView?.text = topMicIcon
         panelStatusEqIconView?.text = topAudioIcon
         panelStatusMicProgressView?.progress = (inputLevel * 1000f).roundToInt().coerceIn(0, 1000)

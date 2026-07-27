@@ -247,6 +247,32 @@ body.display-page .display-view { display: block; }
 .led-dialog-card > div { display: flex; justify-content: flex-end; gap: 8px; }
 .led-dialog-card button { min-width: 72px; min-height: 40px; border: 0; color: var(--led-accent); background: transparent; }
 
+.audio-activation-prompt {
+  position: absolute;
+  z-index: 14;
+  left: 50%;
+  bottom: max(22px, env(safe-area-inset-bottom));
+  width: min(440px, calc(100% - 32px));
+  min-height: 56px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 8px 8px 16px;
+  border-radius: 4px;
+  color: var(--led-panel-text);
+  background: #292a2e;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .54);
+}
+.audio-activation-prompt span { flex: 1; }
+.audio-activation-prompt button {
+  min-height: 40px;
+  padding: 0 14px;
+  border: 0;
+  color: var(--led-accent);
+  background: transparent;
+}
+
 .display-view button:focus-visible,
 .display-view input:focus-visible { outline: 3px solid var(--led-accent); outline-offset: 2px; }
 .display-view.led-brightness-filter { filter: brightness(var(--led-brightness,1)); }

@@ -7,7 +7,8 @@ data class LedSubtitleSettings(
     val backgroundColorArgb: Int = DEFAULT_LED_BACKGROUND_ARGB,
     val dotMatrixEnabled: Boolean = true,
     val dotShape: Int = DOT_SHAPE_CIRCLE,
-    val dotDensity: Float = 0.58f,
+    val dotRowsPerLine: Int = DEFAULT_DOT_ROWS_PER_LINE,
+    val dotSizeFraction: Float = DEFAULT_DOT_SIZE_FRACTION,
     val glowEnabled: Boolean = true,
     val glowStrength: Float = 0.42f,
     val displayHeightFraction: Float = 0.72f,
@@ -25,7 +26,14 @@ data class LedSubtitleSettings(
         ledColorArgb = opaque(ledColorArgb),
         backgroundColorArgb = opaque(backgroundColorArgb),
         dotShape = dotShape.coerceIn(DOT_SHAPE_CIRCLE, DOT_SHAPE_SQUARE),
-        dotDensity = dotDensity.coerceIn(0f, 1f),
+        dotRowsPerLine = dotRowsPerLine.coerceIn(
+            MIN_DOT_ROWS_PER_LINE,
+            MAX_DOT_ROWS_PER_LINE
+        ),
+        dotSizeFraction = dotSizeFraction.coerceIn(
+            MIN_DOT_SIZE_FRACTION,
+            MAX_DOT_SIZE_FRACTION
+        ),
         glowStrength = glowStrength.coerceIn(0f, 1f),
         displayHeightFraction = displayHeightFraction.coerceIn(0.35f, 0.92f),
         scrollSpeedDpPerSecond = scrollSpeedDpPerSecond.coerceIn(
@@ -43,6 +51,12 @@ data class LedSubtitleSettings(
         const val DEFAULT_LED_BACKGROUND_ARGB: Int = -16777216 // #000000
         const val DOT_SHAPE_CIRCLE = 0
         const val DOT_SHAPE_SQUARE = 1
+        const val DEFAULT_DOT_ROWS_PER_LINE = 24
+        const val MIN_DOT_ROWS_PER_LINE = 8
+        const val MAX_DOT_ROWS_PER_LINE = 48
+        const val DEFAULT_DOT_SIZE_FRACTION = 0.58f
+        const val MIN_DOT_SIZE_FRACTION = 0.1f
+        const val MAX_DOT_SIZE_FRACTION = 1f
         const val SCROLL_RIGHT_TO_LEFT = 0
         const val SCROLL_LEFT_TO_RIGHT = 1
         const val ALIGN_START = 0
@@ -60,12 +74,13 @@ data class LedSubtitleSettings(
 internal fun encodeLedSubtitleSettings(settings: LedSubtitleSettings): String {
     val value = settings.normalized()
     return JSONObject().apply {
-        put("version", 4)
+        put("version", 5)
         put("ledColorArgb", value.ledColorArgb)
         put("backgroundColorArgb", value.backgroundColorArgb)
         put("dotMatrixEnabled", value.dotMatrixEnabled)
         put("dotShape", value.dotShape)
-        put("dotDensity", value.dotDensity.toDouble())
+        put("dotRowsPerLine", value.dotRowsPerLine)
+        put("dotSizeFraction", value.dotSizeFraction.toDouble())
         put("glowEnabled", value.glowEnabled)
         put("glowStrength", value.glowStrength.toDouble())
         put("displayHeightFraction", value.displayHeightFraction.toDouble())
@@ -93,6 +108,17 @@ internal fun decodeLedSubtitleSettings(
     if (raw.isNullOrBlank()) return defaults
     return runCatching {
         val json = JSONObject(raw)
+        val migratedRows = when {
+            json.has("dotRowsPerLine") -> json.optInt(
+                "dotRowsPerLine",
+                defaults.dotRowsPerLine
+            )
+            json.has("dotDensity") -> {
+                val legacyDensity = json.optDouble("dotDensity", 0.58).toFloat().coerceIn(0f, 1f)
+                (8f + legacyDensity * 28f).toInt()
+            }
+            else -> defaults.dotRowsPerLine
+        }
         LedSubtitleSettings(
             ledColorArgb = json.optInt("ledColorArgb", defaults.ledColorArgb),
             backgroundColorArgb = json.optInt(
@@ -101,7 +127,11 @@ internal fun decodeLedSubtitleSettings(
             ),
             dotMatrixEnabled = json.optBoolean("dotMatrixEnabled", defaults.dotMatrixEnabled),
             dotShape = json.optInt("dotShape", defaults.dotShape),
-            dotDensity = json.optDouble("dotDensity", defaults.dotDensity.toDouble()).toFloat(),
+            dotRowsPerLine = migratedRows,
+            dotSizeFraction = json.optDouble(
+                "dotSizeFraction",
+                defaults.dotSizeFraction.toDouble()
+            ).toFloat(),
             glowEnabled = json.optBoolean("glowEnabled", defaults.glowEnabled),
             glowStrength = json.optDouble(
                 "glowStrength",

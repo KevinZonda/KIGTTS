@@ -70,6 +70,8 @@ internal class LockScreenFloatingOverlayService : FloatingOverlayService() {
 
     override fun supportsCollapsedFabState(): Boolean = false
 
+    override fun shouldSyncTopStatusContent(): Boolean = hostEntryRevealDispatched
+
     override fun runAfterOverlayHostUnlock(action: () -> Unit): Boolean {
         val requester = hostUnlockRequester
         if (requester == null) {

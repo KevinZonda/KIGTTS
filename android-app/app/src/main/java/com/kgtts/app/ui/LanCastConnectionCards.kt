@@ -97,6 +97,9 @@ internal fun LanCastAddressCard(viewModel: MainViewModel, status: LanCastStatus)
                 Text("未检测到局域网地址，请确认手机已连接 Wi-Fi 或局域网。")
             } else {
                 status.addresses.forEachIndexed { index, address ->
+                    val selectAddress = rememberKigttsHapticClick {
+                        viewModel.selectLanCastAddress(address.id)
+                    }
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -104,14 +107,14 @@ internal fun LanCastAddressCard(viewModel: MainViewModel, status: LanCastStatus)
                             .clickable(
                                 interactionSource = remember { MutableInteractionSource() },
                                 indication = rememberRipple()
-                            ) { viewModel.selectLanCastAddress(address.id) }
+                            ) { selectAddress() }
                             .padding(vertical = 8.dp, horizontal = 2.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
                         RadioButton(
                             selected = status.selectedAddress?.id == address.id,
-                            onClick = { viewModel.selectLanCastAddress(address.id) }
+                            onClick = selectAddress
                         )
                         Column(modifier = Modifier.weight(1f)) {
                             Text(address.address, fontWeight = FontWeight.Medium)
@@ -139,6 +142,8 @@ internal fun LanCastQrCard(status: LanCastStatus) {
     val context = LocalContext.current
     val clipboard = LocalClipboardManager.current
     var qrTab by rememberSaveable { mutableStateOf(LanCastQrTab.Display) }
+    val hapticQrTabChange = rememberKigttsHapticValueChange<LanCastQrTab> { qrTab = it }
+    val hapticCopy = rememberKigttsKeyHaptic()
     val selectedUrl = status.url(qrTab.path)
     val qrBitmap by produceState<android.graphics.Bitmap?>(null, selectedUrl) {
         value = selectedUrl?.let { url ->
@@ -156,7 +161,7 @@ internal fun LanCastQrCard(status: LanCastStatus) {
                 LanCastQrTab.entries.forEach { tab ->
                     Tab(
                         selected = qrTab == tab,
-                        onClick = { qrTab = tab },
+                        onClick = { hapticQrTabChange(tab) },
                         text = {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 MsIcon(tab.icon, contentDescription = null)
@@ -202,6 +207,7 @@ internal fun LanCastQrCard(status: LanCastStatus) {
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(4.dp))
                             .clickable {
+                                hapticCopy()
                                 selectedUrl?.let {
                                     clipboard.setText(AnnotatedString(it))
                                     toast(context, "连接地址已复制")

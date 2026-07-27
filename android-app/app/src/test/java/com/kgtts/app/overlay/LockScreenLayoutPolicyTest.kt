@@ -49,9 +49,23 @@ class LockScreenLayoutPolicyTest {
             LockScreenLayoutPolicy.overlayLeftPx(portraitMode, 1600, 800, 48)
         )
         assertEquals(
-            1712,
+            1520,
             LockScreenLayoutPolicy.overlayLeftPx(landscapeMode, 2560, 800, 48)
         )
+    }
+
+    @Test
+    fun `tablet landscape centers overlay in the right half`() {
+        val screenWidth = 2560
+        val contentWidth = 800
+        val left = LockScreenLayoutPolicy.overlayLeftPx(
+            LockScreenLayoutMode.TabletLandscape,
+            screenWidth,
+            contentWidth,
+            48
+        )
+
+        assertEquals(screenWidth * 3 / 4, left + contentWidth / 2)
     }
 
     @Test

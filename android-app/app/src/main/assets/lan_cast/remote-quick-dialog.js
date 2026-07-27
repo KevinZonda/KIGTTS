@@ -10,6 +10,7 @@
   var pressX = 0;
   var pressY = 0;
   var suppressClickUntil = 0;
+  var renderedKey = "";
 
   function byId(id) { return document.getElementById(id); }
 
@@ -117,6 +118,15 @@
     var selected = findGroup(groups, selectedGroupId) || groups[0];
     if (!selected) return;
     selectedGroupId = selected.id;
+    var nextKey = JSON.stringify([
+      layout,
+      String(selectedGroupId),
+      groups.map(function (group) {
+        return [String(group.id), group.title, group.icon, group.items || []];
+      })
+    ]);
+    if (!animate && nextKey === renderedKey) return;
+    renderedKey = nextKey;
     var items = byId("quick-dialog-items");
     items.className = "quick-dialog-items " + layout;
     items.innerHTML = "";

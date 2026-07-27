@@ -89,8 +89,23 @@ internal fun LanCastDisplaySettingsDialog(
                     onSettingsChange(settings.copy(dotShape = 1))
                 }
             }
-            CastSettingsSlider("点阵密度", settings.dotDensity, 0f..1f, "${(settings.dotDensity * 100).roundToInt()}%") {
-                onSettingsChange(settings.copy(dotDensity = it))
+            CastSettingsSlider(
+                "每行 LED 行数",
+                settings.dotRowsPerLine.toFloat(),
+                LedSubtitleSettings.MIN_DOT_ROWS_PER_LINE.toFloat()..
+                    LedSubtitleSettings.MAX_DOT_ROWS_PER_LINE.toFloat(),
+                "${settings.dotRowsPerLine} 行"
+            ) {
+                onSettingsChange(settings.copy(dotRowsPerLine = it.roundToInt()))
+            }
+            CastSettingsSlider(
+                "灯珠尺寸",
+                settings.dotSizeFraction,
+                LedSubtitleSettings.MIN_DOT_SIZE_FRACTION..
+                    LedSubtitleSettings.MAX_DOT_SIZE_FRACTION,
+                "${(settings.dotSizeFraction * 100).roundToInt()}%"
+            ) {
+                onSettingsChange(settings.copy(dotSizeFraction = it))
             }
             Md2SettingSwitchRow("发光效果", settings.glowEnabled, {
                 onSettingsChange(settings.copy(glowEnabled = it))
@@ -213,8 +228,9 @@ private fun CastSettingsSection(title: String) {
 
 @Composable
 private fun CastColorRow(label: String, argb: Int, onClick: () -> Unit) {
+    val hapticOnClick = rememberKigttsHapticClick(onClick)
     Row(
-        modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp).clickable(onClick = onClick),
+        modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp).clickable(onClick = hapticOnClick),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(label, modifier = Modifier.weight(1f))
