@@ -823,3 +823,13 @@
 - Release APK：`D:\KGTTS\android-app\app\build\outputs\apk\release\app-release.apk`，95871003 字节，SHA-256 `23eef9b5820ab008c07170ec00fd63641c9a540dc4a68a883345c109d33c171d`；签名证书 SHA-256 为 `3193af87840d767843e42770c92823b20df10b5edf03a7d618ce9f4da0f5e197`。
 - 真机安装：Release APK 已通过 `adb install -r` 保留数据覆盖安装到小米设备 `cfc8ef16`；设备确认版本为 `0.1.4 (5)`，冷启动 `TotalTime=1331ms`，应用进程正常运行，日志无应用致命异常、`VerifyError`、`OutOfMemoryError` 或应用 ANR。
 - GitHub：本轮提交至 `github-main-clean`，随后以非快进合并同步到 `main`；仅推送 `origin`，不向 `kigscope` 远端推送。
+
+## 2026-07-27 Android 第二步使用引导横竖屏避让修正
+
+- 横屏定位：第二步说明卡使用独立的紧凑宽度，定位到顶栏菜单按钮右侧并与菜单顶部对齐，避开大字幕右侧操作按钮及其气泡。
+- 竖屏定位：第二步说明卡固定贴近屏幕底部，不再落在大字幕底部操作按钮气泡所在高度；说明卡会在实测高度更新后保持底部边距。
+- 其它步骤：第一步、第三步及第二步所有高亮框和气泡锚点保持不变；横屏第三步语音识别和发送气泡仍位于按钮上方。
+- 自动验证：`:app:testDebugUnitTest`、`:app:assembleRelease`、`:app:lintVitalRelease` 与 `git diff --check` 通过，34 个测试套件共 123 项，0 失败、0 错误、0 跳过。版本保持 `0.1.4 (5)`。
+- Release APK：`D:\KGTTS\android-app\app\build\outputs\apk\release\app-release.apk`，95871003 字节，SHA-256 `b6b30f6b8be240fb140916b16bd6d39942af78f47214e34030d5686f73b3a1dd`；签名证书 SHA-256 为 `3193af87840d767843e42770c92823b20df10b5edf03a7d618ce9f4da0f5e197`。
+- 真机安装：Release APK 已通过 `adb install -r` 保留数据覆盖安装到小米设备 `cfc8ef16`；设备确认版本为 `0.1.4 (5)`，冷启动 `TotalTime=808ms`，应用进程正常运行，日志无应用致命异常、`VerifyError`、`OutOfMemoryError` 或应用 ANR。
+- GitHub：本轮提交至 `github-main-clean`，随后以非快进合并同步到 `main`；仅推送 `origin`，不向 `kigscope` 远端推送。
