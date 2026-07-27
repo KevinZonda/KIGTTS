@@ -48,4 +48,16 @@ class OverlayFontMetricsTest {
             )
         )
     }
+
+    @Test
+    fun compactMiniQuickTextLineHeightFitsThreeLines() {
+        assertEquals(
+            19,
+            resolveOverlayStableLineHeightPx(
+                textSizePx = 16f,
+                scaledDensity = 1f,
+                explicitMultiplier = 1.15f
+            )
+        )
+    }
 }

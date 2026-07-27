@@ -56,6 +56,7 @@ internal fun QuickSubtitleGuideCallouts(
     if (overlayBounds == Rect.Zero || screenSize.width <= 0 || screenSize.height <= 0) return
     val actionBounds = anchorBounds[QuickSubtitleGuideAnchor.DisplayActions]
     val verticalActions = actionBounds != null && actionBounds.height > actionBounds.width
+    val isLandscape = screenSize.width > screenSize.height
     var visibleCalloutCount by remember(callouts) { mutableIntStateOf(0) }
     LaunchedEffect(callouts, initialDelayMillis) {
         visibleCalloutCount = 0
@@ -74,7 +75,7 @@ internal fun QuickSubtitleGuideCallouts(
                 right = windowTarget.right - overlayBounds.left,
                 bottom = windowTarget.bottom - overlayBounds.top
             )
-            val placement = calloutPlacement(callout.anchor, verticalActions)
+            val placement = calloutPlacement(callout.anchor, verticalActions, isLandscape)
             GuideArrowBubble(
                 label = callout.label,
                 target = target,
@@ -253,9 +254,10 @@ private class GuideBubbleShape(
     }
 }
 
-private fun calloutPlacement(
+internal fun calloutPlacement(
     anchor: QuickSubtitleGuideAnchor,
-    verticalActions: Boolean
+    verticalActions: Boolean,
+    isLandscape: Boolean
 ): GuideCalloutPlacement = when (anchor) {
     QuickSubtitleGuideAnchor.QuickText -> GuideCalloutPlacement.InsideTop
     QuickSubtitleGuideAnchor.SubtitleDisplay -> GuideCalloutPlacement.InsideBottom
@@ -276,7 +278,9 @@ private fun calloutPlacement(
     QuickSubtitleGuideAnchor.TopBarFullscreen -> GuideCalloutPlacement.Below
 
     QuickSubtitleGuideAnchor.BottomSend,
-    QuickSubtitleGuideAnchor.RecognitionFab -> GuideCalloutPlacement.Left
+    QuickSubtitleGuideAnchor.RecognitionFab -> {
+        if (isLandscape) GuideCalloutPlacement.Above else GuideCalloutPlacement.Left
+    }
     else -> GuideCalloutPlacement.Above
 }
 
@@ -288,7 +292,7 @@ private fun calloutHorizontalOffset(anchor: QuickSubtitleGuideAnchor): Dp = when
     else -> 0.dp
 }
 
-private enum class GuideCalloutPlacement {
+internal enum class GuideCalloutPlacement {
     Above,
     Below,
     Left,

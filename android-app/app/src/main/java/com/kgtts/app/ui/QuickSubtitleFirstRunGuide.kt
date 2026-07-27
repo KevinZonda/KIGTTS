@@ -372,12 +372,21 @@ private fun QuickSubtitleGuideOverlay(
         val cardHeightPx = cardSize.height.takeIf { it > 0 }?.toFloat() ?: with(density) { 210.dp.toPx() }
         val marginPx = with(density) { 16.dp.toPx() }
         val gapPx = with(density) { 12.dp.toPx() }
+        val isDisplayGuideStep = QuickSubtitleGuideAnchor.SubtitleDisplay in step.anchors
         val calloutReservePx = if (QuickSubtitleGuideAnchor.BottomBar in step.anchors) {
             with(density) { 36.dp.toPx() }
         } else {
             0f
         }
-        val cardX = ((maxWidthPx - cardWidthPx) / 2f).coerceAtLeast(marginPx)
+        val cardHorizontalAdjustment = if (isDisplayGuideStep) {
+            with(density) { (-24).dp.toPx() }
+        } else {
+            0f
+        }
+        val cardX = ((maxWidthPx - cardWidthPx) / 2f + cardHorizontalAdjustment).coerceIn(
+            marginPx,
+            (maxWidthPx - cardWidthPx - marginPx).coerceAtLeast(marginPx)
+        )
         val baseCardY = when {
             union == null -> (maxHeightPx - cardHeightPx) / 2f
             union.bottom + gapPx + cardHeightPx <= maxHeightPx - marginPx -> union.bottom + gapPx
@@ -385,8 +394,8 @@ private fun QuickSubtitleGuideOverlay(
                 union.top - gapPx - calloutReservePx - cardHeightPx
             else -> (maxHeightPx - cardHeightPx) / 2f
         }
-        val cardVerticalAdjustment = if (QuickSubtitleGuideAnchor.SubtitleDisplay in step.anchors) {
-            with(density) { 28.dp.toPx() }
+        val cardVerticalAdjustment = if (isDisplayGuideStep) {
+            with(density) { (-28).dp.toPx() }
         } else {
             0f
         }
