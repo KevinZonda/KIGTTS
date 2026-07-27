@@ -842,3 +842,15 @@
 - Release APK：`D:\KGTTS\android-app\app\build\outputs\apk\release\app-release.apk`，95871003 字节，SHA-256 `236d296133d8a75ca5842a7a83981291882483217063aebf3a56d61df6a0e518`；签名证书 SHA-256 为 `3193af87840d767843e42770c92823b20df10b5edf03a7d618ce9f4da0f5e197`。
 - 真机安装：Release APK 已通过 `adb install -r` 保留数据覆盖安装到小米设备 `cfc8ef16`；设备确认版本为 `0.1.4 (5)`，冷启动 `TotalTime=426ms`，应用进程正常运行，日志无应用致命异常、`VerifyError`、`OutOfMemoryError` 或应用 ANR。
 - GitHub：本轮提交至 `github-main-clean`，随后以非快进合并同步到 `main`；仅推送 `origin`，不向 `kigscope` 远端推送。
+
+## 2026-07-27 Android APP 0.1.5 发布
+
+- 版本：Android Debug 与 Release 的 `versionName` 更新为 `0.1.5`，`versionCode` 从 `5` 递增到 `6`，支持从 `0.1.4` 保留数据覆盖升级。
+- 新增功能：增加锁屏电量与充电状态显示、最高 256 档 LED 灯珠密度、快捷文本使用频率排序及快捷文本区域手势；支持将当前频率顺序固化为手动排序。
+- 交互优化：完善便捷字幕首次使用与设置重放引导，横竖屏分别避让说明卡和按钮气泡；布局选择选中项移除额外阴影，横屏语音识别与发送气泡移动到按钮上方。
+- 稳定性修复：修复快捷文本颜色连续保存丢失、主界面与悬浮窗颜色同步延迟，以及手势容器引入的文字和颜色条裁剪；统一系统字体与第三方字体行高，并修正竖屏悬浮窗快捷文本垂直居中。
+- 文档：根目录 README 的 GitHub 发行页、版本徽章和 APK 直链统一更新到 `APP0.1.5`；应用宝、华为应用市场和训练器下载入口保持不变。
+- 自动验证：`:app:testDebugUnitTest`、`:app:assembleRelease`、`:app:lintVitalRelease` 与 `git diff --check` 通过，34 个测试套件共 123 项，0 失败、0 错误、0 跳过。
+- Release APK：`D:\KGTTS\android-app\app\build\outputs\apk\release\app-release.apk`，95871007 字节，SHA-256 `f72cdb08e65939aee6204656b45550628b4d5b35d5b334b9ef3db8e4c0d43cd5`；包元数据为 `0.1.5 (6)`，不包含 `DEBUGGABLE`，签名证书 SHA-256 为 `3193af87840d767843e42770c92823b20df10b5edf03a7d618ce9f4da0f5e197`。
+- 真机安装：Release APK 已通过 `adb install -r` 保留数据覆盖安装到小米设备 `cfc8ef16`；设备确认版本为 `0.1.5 (6)`，冷启动 `TotalTime=1087ms`，应用进程正常运行，日志无应用致命异常、`VerifyError`、`OutOfMemoryError` 或应用 ANR。
+- GitHub：发行标签使用 `APP0.1.5`，发行标题使用“APP 0.1.5 发行版”，资产文件名保持 `app-release.apk`；`github-main-clean` 同步到 `origin` 与 `kigscope`，只在 `origin` 合并并推送 `main`。
