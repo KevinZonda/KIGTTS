@@ -833,3 +833,12 @@
 - Release APK：`D:\KGTTS\android-app\app\build\outputs\apk\release\app-release.apk`，95871003 字节，SHA-256 `b6b30f6b8be240fb140916b16bd6d39942af78f47214e34030d5686f73b3a1dd`；签名证书 SHA-256 为 `3193af87840d767843e42770c92823b20df10b5edf03a7d618ce9f4da0f5e197`。
 - 真机安装：Release APK 已通过 `adb install -r` 保留数据覆盖安装到小米设备 `cfc8ef16`；设备确认版本为 `0.1.4 (5)`，冷启动 `TotalTime=808ms`，应用进程正常运行，日志无应用致命异常、`VerifyError`、`OutOfMemoryError` 或应用 ANR。
 - GitHub：本轮提交至 `github-main-clean`，随后以非快进合并同步到 `main`；仅推送 `origin`，不向 `kigscope` 远端推送。
+
+## 2026-07-27 Android 悬浮窗竖屏快捷文本垂直居中修正
+
+- 问题定位：迷你便捷字幕竖屏快捷文本虽然使用垂直居中重力，但旧实现为文字设置了顶部 `8dp`、底部 `20dp` 的非对称内边距，导致文字视觉中心相对 `88dp` 卡片中心向上偏移约 `6dp`。
+- 修正方式：创建态和绑定态统一改为上下 `8dp` 对称内边距，让系统字体与第三方字体均以卡片实际中心排布；卡片高度、三行上限、`1.15×` 行高、左右内边距和底部颜色条位置保持不变。
+- 自动验证：`:app:testDebugUnitTest`、`:app:assembleRelease`、`:app:lintVitalRelease` 与 `git diff --check` 通过，34 个测试套件共 123 项，0 失败、0 错误、0 跳过。版本保持 `0.1.4 (5)`。
+- Release APK：`D:\KGTTS\android-app\app\build\outputs\apk\release\app-release.apk`，95871003 字节，SHA-256 `236d296133d8a75ca5842a7a83981291882483217063aebf3a56d61df6a0e518`；签名证书 SHA-256 为 `3193af87840d767843e42770c92823b20df10b5edf03a7d618ce9f4da0f5e197`。
+- 真机安装：Release APK 已通过 `adb install -r` 保留数据覆盖安装到小米设备 `cfc8ef16`；设备确认版本为 `0.1.4 (5)`，冷启动 `TotalTime=426ms`，应用进程正常运行，日志无应用致命异常、`VerifyError`、`OutOfMemoryError` 或应用 ANR。
+- GitHub：本轮提交至 `github-main-clean`，随后以非快进合并同步到 `main`；仅推送 `origin`，不向 `kigscope` 远端推送。

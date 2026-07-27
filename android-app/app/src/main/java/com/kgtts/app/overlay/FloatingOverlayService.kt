@@ -849,7 +849,7 @@ open class FloatingOverlayService : Service() {
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                         foreground = selectableDrawable()
                     }
-                    textView.setPadding(dp(14), dp(8), dp(14), dp(20))
+                    textView.setPadding(dp(14), dp(8), dp(14), dp(8))
                     addView(
                         textView,
                         FrameLayout.LayoutParams(
@@ -876,7 +876,7 @@ open class FloatingOverlayService : Service() {
                 if (landscapePhone) dp(12) else dp(14),
                 if (landscapePhone) dp(10) else dp(8),
                 if (landscapePhone) dp(12) else dp(14),
-                if (landscapePhone) dp(10) else dp(20)
+                if (landscapePhone) dp(10) else dp(8)
             )
             holder.textView.maxLines = if (landscapePhone) 2 else 3
             holder.textView.text = item.text
