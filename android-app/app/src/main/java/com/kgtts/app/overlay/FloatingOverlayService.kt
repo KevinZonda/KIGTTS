@@ -3294,8 +3294,8 @@ open class FloatingOverlayService : Service() {
             layoutManager = quickItemsLayoutManager
             adapter = miniQuickItemsAdapter
             overScrollMode = View.OVER_SCROLL_NEVER
-            clipChildren = true
-            clipToPadding = true
+            clipChildren = false
+            clipToPadding = false
             setHasFixedSize(true)
             itemAnimator = null
             setPadding(dp(10), dp(8), dp(10), dp(8))
@@ -3375,8 +3375,8 @@ open class FloatingOverlayService : Service() {
             }
         }
         miniQuickItemsContainer = FrameLayout(this).apply {
-            clipChildren = true
-            clipToPadding = true
+            clipChildren = false
+            clipToPadding = false
             setPadding(0, 0, 0, 0)
             addView(
                 miniQuickItemsRecyclerView,
@@ -3422,8 +3422,8 @@ open class FloatingOverlayService : Service() {
             )
         }
         val quickItemsScroller = OverlayQuickPanelGestureFrame(this).apply {
-            clipChildren = true
-            clipToPadding = true
+            clipChildren = false
+            clipToPadding = false
             gesturesEnabled = settings.quickSubtitlePanelGesturesEnabled
             landscapeGesture = isPhoneLandscapeUi()
             reversedGesture = settings.quickSubtitlePanelGesturesReversed
