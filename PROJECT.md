@@ -793,3 +793,13 @@
 - Release APK：`D:\KGTTS\android-app\app\build\outputs\apk\release\app-release.apk`，95871003 字节，SHA-256 `c90ae3c4f954e361c56970c7cac782272dc71a5cfa7ee4119432fb90c03512c1`；APK Signature Scheme v2 验证通过，签名证书 SHA-256 为 `3193af87840d767843e42770c92823b20df10b5edf03a7d618ce9f4da0f5e197`。
 - 真机安装：Release APK 已通过 `adb install -r` 保留数据覆盖安装到小米设备 `cfc8ef16`；设备确认版本为 `0.1.4 (5)` 且不包含 `DEBUGGABLE`。冷启动 `TotalTime=533ms`，应用进程与前台 Activity 正常，日志无应用致命异常、`VerifyError`、`OutOfMemoryError` 或应用 ANR。
 - GitHub：本轮提交至 `github-main-clean`，随后以非快进合并同步到 `main`；仅推送 `origin`，不向 `kigscope` 远端推送。
+
+## 2026-07-27 Android 悬浮窗迷你快捷文本裁剪修正
+
+- 问题定位：悬浮窗迷你便捷字幕在竖屏下出现第三行文字和底部条目颜色标记同时被裁剪，确认是新增快捷文本区域手势后，手势宿主、快捷文本容器和列表形成的多层裁剪边界导致。
+- 修正方式：关闭手势宿主、快捷文本容器和 `RecyclerView` 的子项及内边距裁剪，让条目已有的文字与颜色标记可在原有绘制边界内完整显示。
+- 布局保持：未修改快捷文本字号、行距、内边距、条目高度、滚动位置或颜色条位置，避免引入新的排版和触控区域变化。
+- 自动验证：`:app:testDebugUnitTest`、`:app:assembleRelease`、`:app:lintVitalRelease` 与 `git diff --check` 通过，34 个测试套件共 121 项，0 失败、0 错误、0 跳过。版本保持 `0.1.4 (5)`。
+- Release APK：`D:\KGTTS\android-app\app\build\outputs\apk\release\app-release.apk`，95871003 字节，SHA-256 `c2f2bd6aec2c3bc3adf15e8adf3e7af5e0be37de00ceae4c6ba6b611633383a2`；签名证书 SHA-256 为 `3193af87840d767843e42770c92823b20df10b5edf03a7d618ce9f4da0f5e197`。
+- 真机安装：Release APK 已通过 `adb install -r` 保留数据覆盖安装到小米设备 `cfc8ef16`；冷启动 `TotalTime=473ms`，应用进程正常运行，日志无应用致命异常、`VerifyError`、`OutOfMemoryError` 或应用 ANR。
+- GitHub：本轮提交至 `github-main-clean`，随后以非快进合并同步到 `main`；仅推送 `origin`，不向 `kigscope` 远端推送。
