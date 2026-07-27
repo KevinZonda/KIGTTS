@@ -53,7 +53,7 @@ data class LedSubtitleSettings(
         const val DOT_SHAPE_SQUARE = 1
         const val DEFAULT_DOT_ROWS_PER_LINE = 24
         const val MIN_DOT_ROWS_PER_LINE = 8
-        const val MAX_DOT_ROWS_PER_LINE = 48
+        const val MAX_DOT_ROWS_PER_LINE = 256
         const val DEFAULT_DOT_SIZE_FRACTION = 0.58f
         const val MIN_DOT_SIZE_FRACTION = 0.1f
         const val MAX_DOT_SIZE_FRACTION = 1f

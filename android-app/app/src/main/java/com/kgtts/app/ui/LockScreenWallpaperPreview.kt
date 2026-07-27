@@ -24,6 +24,7 @@ import androidx.compose.material.Surface
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
@@ -45,9 +46,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.lhtstudio.kigtts.app.data.AppFontDefaults
 import com.lhtstudio.kigtts.app.data.AppFontRepository
+import com.lhtstudio.kigtts.app.data.LockScreenBatteryStatus
 import com.lhtstudio.kigtts.app.data.LockScreenScrimStyle
 import com.lhtstudio.kigtts.app.data.LockScreenSettings
 import com.lhtstudio.kigtts.app.data.LockScreenWallpaperStore
+import com.lhtstudio.kigtts.app.data.formatBatteryStatus
+import com.lhtstudio.kigtts.app.data.shouldShowBatteryStatus
+import com.lhtstudio.kigtts.app.overlay.LockScreenBatteryMonitor
 import com.lhtstudio.kigtts.app.overlay.LockScreenDateFormatter
 import com.lhtstudio.kigtts.app.overlay.LockScreenWallpaperAppearance
 import java.text.SimpleDateFormat
@@ -88,6 +93,27 @@ internal fun LockScreenWallpaperPreview(
     val dateLabel = remember(now, settings.showLunarDate) {
         LockScreenDateFormatter.currentLabel(context, settings.showLunarDate, now)
     }
+    var batteryStatus by remember {
+        mutableStateOf(
+            LockScreenBatteryStatus(
+                percentage = -1,
+                isCharging = false,
+                isFull = false
+            )
+        )
+    }
+    DisposableEffect(context) {
+        val monitor = LockScreenBatteryMonitor(context) { batteryStatus = it }
+        monitor.start()
+        onDispose { monitor.stop() }
+    }
+    val batteryLabel = remember(settings, batteryStatus) {
+        if (settings.shouldShowBatteryStatus(batteryStatus)) {
+            settings.formatBatteryStatus(batteryStatus)
+        } else {
+            null
+        }
+    }
     val separateClockSource = remember(settings.useSeparateClockFont, settings.clockFontId) {
         if (settings.useSeparateClockFont) {
             AppFontRepository.resolveFontFamilySource(context, settings.clockFontId)
@@ -115,6 +141,7 @@ internal fun LockScreenWallpaperPreview(
         landscape = landscape,
         timeLabel = timeLabel,
         dateLabel = dateLabel,
+        batteryLabel = batteryLabel,
         baseFontFamily = baseFontFamily,
         timeFontFamily = timeFontFamily,
         onToggleOrientation = { landscape = !landscape }
@@ -128,6 +155,7 @@ private fun LockScreenPreviewFrame(
     landscape: Boolean,
     timeLabel: String,
     dateLabel: String,
+    batteryLabel: String?,
     baseFontFamily: FontFamily?,
     timeFontFamily: FontFamily?,
     onToggleOrientation: () -> Unit
@@ -174,6 +202,7 @@ private fun LockScreenPreviewFrame(
                 landscape = landscape,
                 timeLabel = timeLabel,
                 dateLabel = dateLabel,
+                batteryLabel = batteryLabel,
                 contentColor = contentColor,
                 baseFontFamily = baseFontFamily,
                 timeFontFamily = timeFontFamily
@@ -203,6 +232,7 @@ private fun LockScreenPreviewLabels(
     landscape: Boolean,
     timeLabel: String,
     dateLabel: String,
+    batteryLabel: String?,
     contentColor: Color,
     baseFontFamily: FontFamily?,
     timeFontFamily: FontFamily?
@@ -239,6 +269,17 @@ private fun LockScreenPreviewLabels(
                 lineHeight = 13.sp,
                 textAlign = textAlign
             )
+            if (batteryLabel != null) {
+                Text(
+                    batteryLabel,
+                    modifier = Modifier.fillMaxWidth(),
+                    color = contentColor.copy(alpha = 0.68f),
+                    fontSize = 9.sp,
+                    fontFamily = baseFontFamily,
+                    lineHeight = 12.sp,
+                    textAlign = textAlign
+                )
+            }
         }
         if (landscape) Spacer(Modifier.height(16.dp))
         Text(

@@ -3829,11 +3829,16 @@ internal fun GroupIconPickerRow(
         Surface(
             modifier = Modifier.size(34.dp),
             shape = CircleShape,
-            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.16f),
+            color = Color.Transparent,
+            contentColor = MaterialTheme.colorScheme.onSurface,
             elevation = 0.dp
         ) {
             Box(contentAlignment = Alignment.Center) {
-                MsIcon(selectedIcon, contentDescription = null)
+                MsIcon(
+                    selectedIcon,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurface
+                )
             }
         }
         Text(
@@ -3883,7 +3888,11 @@ internal fun GroupIconPickerRow(
                                     },
                                 contentAlignment = Alignment.Center
                             ) {
-                                MsIcon(icon, contentDescription = null)
+                                MsIcon(
+                                    icon,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onSurface
+                                )
                             }
                         }
                     }

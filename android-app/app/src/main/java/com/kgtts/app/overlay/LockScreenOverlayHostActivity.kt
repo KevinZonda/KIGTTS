@@ -82,11 +82,13 @@ internal class LockScreenOverlayHostActivity : Activity() {
     private lateinit var root: FrameLayout
     private lateinit var timeView: TextClock
     private lateinit var dateView: TextView
+    private lateinit var batteryView: TextView
     private lateinit var wallpaperView: ImageView
     private lateinit var unlockHint: LinearLayout
     private lateinit var unlockIcon: TextView
     private lateinit var unlockText: TextView
     private lateinit var unlockController: LockScreenUnlockController
+    private lateinit var batteryController: LockScreenBatteryController
     private lateinit var layoutController: LockScreenHostLayoutController
     private lateinit var appearanceController: LockScreenHostAppearanceController
     private var lockOverlayBinder: LockScreenFloatingOverlayService.LocalBinder? = null
@@ -121,6 +123,7 @@ internal class LockScreenOverlayHostActivity : Activity() {
         super.onCreate(savedInstanceState)
         configureLockScreenWindow()
         createContent()
+        batteryController.start()
         registerCloseReceiver()
         clockHandler.post(dateRefreshTask)
         loadHostAppearance()
@@ -148,6 +151,7 @@ internal class LockScreenOverlayHostActivity : Activity() {
             lockOverlayBound = false
         }
         lockOverlayBinder = null
+        if (::batteryController.isInitialized) batteryController.stop()
         if (::appearanceController.isInitialized) appearanceController.dispose()
         if (receiverRegistered) {
             runCatching { unregisterReceiver(closeReceiver) }
@@ -230,6 +234,13 @@ internal class LockScreenOverlayHostActivity : Activity() {
             setShadowLayer(dp(2).toFloat(), 0f, dp(1).toFloat(), 0xB3000000.toInt())
             setOnClickListener { openCalendarAfterUnlock() }
         }
+        batteryView = TextView(this).apply {
+            gravity = Gravity.CENTER
+            includeFontPadding = false
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
+            setShadowLayer(dp(2).toFloat(), 0f, dp(1).toFloat(), 0xB3000000.toInt())
+            visibility = View.GONE
+        }
         unlockIcon = TextView(this).apply {
             gravity = Gravity.CENTER
             includeFontPadding = false
@@ -268,6 +279,7 @@ internal class LockScreenOverlayHostActivity : Activity() {
             dp = ::dp,
             onUnlocked = ::finishWithoutAnimation
         )
+        batteryController = LockScreenBatteryController(this, batteryView)
         root = FrameLayout(this).apply {
             setBackgroundColor(Color.TRANSPARENT)
             clipToPadding = false
@@ -286,6 +298,7 @@ internal class LockScreenOverlayHostActivity : Activity() {
             backgroundView = wallpaperView,
             timeView = timeView,
             dateView = dateView,
+            batteryView = batteryView,
             unlockHint = unlockHint,
             dp = ::dp
         )
@@ -294,6 +307,7 @@ internal class LockScreenOverlayHostActivity : Activity() {
             wallpaperView = wallpaperView,
             timeView = timeView,
             dateView = dateView,
+            batteryView = batteryView,
             unlockIcon = unlockIcon,
             unlockText = unlockText,
             layoutController = layoutController,
@@ -369,6 +383,7 @@ internal class LockScreenOverlayHostActivity : Activity() {
                     toneCorrectionEnabled = settings.themeToneCorrectionEnabled
                 )
                 val lockSettings = settings.lockScreenSettings
+                batteryController.applySettings(lockSettings)
                 val baseTypefaces = OverlayTypefaceLoader.load(
                     this@LockScreenOverlayHostActivity,
                     OverlayTypefaceRequest(

@@ -16,6 +16,7 @@ internal class LockScreenHostAppearanceController(
     private val wallpaperView: ImageView,
     private val timeView: TextClock,
     private val dateView: TextView,
+    private val batteryView: TextView,
     private val unlockIcon: TextView,
     private val unlockText: TextView,
     private val layoutController: LockScreenHostLayoutController,
@@ -46,6 +47,7 @@ internal class LockScreenHostAppearanceController(
             baseTypeface
         }
         dateView.typeface = baseTypeface
+        batteryView.typeface = baseTypeface
         unlockText.typeface = baseTypeface
         onShowLunarDateChanged(settings.showLunarDate)
         layoutController.setTimeAndDateAlignedStart(settings.timeAndDateAlignedStart)
@@ -108,6 +110,9 @@ internal class LockScreenHostAppearanceController(
         dateView.setTextColor(
             if (useDarkContent) 0xB8000000.toInt() else ColorUtils.setAlphaComponent(content, 184)
         )
+        batteryView.setTextColor(
+            if (useDarkContent) 0xA6000000.toInt() else ColorUtils.setAlphaComponent(content, 166)
+        )
         unlockIcon.setTextColor(if (useDarkContent) content else primary)
         unlockText.setTextColor(
             if (useDarkContent) 0xC9000000.toInt() else ColorUtils.setAlphaComponent(content, 210)
@@ -119,6 +124,7 @@ internal class LockScreenHostAppearanceController(
     private fun clearShadows() {
         timeView.setShadowLayer(0f, 0f, 0f, Color.TRANSPARENT)
         dateView.setShadowLayer(0f, 0f, 0f, Color.TRANSPARENT)
+        batteryView.setShadowLayer(0f, 0f, 0f, Color.TRANSPARENT)
         unlockIcon.setShadowLayer(0f, 0f, 0f, Color.TRANSPARENT)
         unlockText.setShadowLayer(0f, 0f, 0f, Color.TRANSPARENT)
     }
@@ -126,6 +132,7 @@ internal class LockScreenHostAppearanceController(
     private fun applyLightTextShadows() {
         timeView.setShadowLayer(dp(3).toFloat(), 0f, dp(1).toFloat(), 0xB3000000.toInt())
         dateView.setShadowLayer(dp(2).toFloat(), 0f, dp(1).toFloat(), 0xB3000000.toInt())
+        batteryView.setShadowLayer(dp(2).toFloat(), 0f, dp(1).toFloat(), 0xB3000000.toInt())
         unlockIcon.setShadowLayer(dp(2).toFloat(), 0f, dp(1).toFloat(), 0xB3000000.toInt())
         unlockText.setShadowLayer(dp(2).toFloat(), 0f, dp(1).toFloat(), 0xB3000000.toInt())
     }

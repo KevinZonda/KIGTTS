@@ -2,6 +2,7 @@ package com.lhtstudio.kigtts.app.overlay
 
 import android.app.Activity
 import android.app.KeyguardManager
+import android.view.HapticFeedbackConstants
 import android.view.MotionEvent
 import android.view.View
 import kotlin.math.abs
@@ -37,6 +38,7 @@ internal class LockScreenUnlockController(
                 val dx = event.rawX - gestureStartX
                 val dy = event.rawY - gestureStartY
                 if (abs(dx) >= dp(96) || dy <= -dp(96)) {
+                    view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
                     requestSystemUnlock()
                 } else {
                     resetHint()

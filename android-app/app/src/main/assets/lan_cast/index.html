@@ -78,7 +78,7 @@
         <label class="led-setting-row"><span>背景颜色</span><input id="led-background-color" class="led-color-input" type="color"></label>
         <div id="led-dot-settings">
           <div class="led-setting-block"><span>点阵形状</span><div class="led-setting-segments" data-setting="dotShape"><button data-value="0" aria-label="圆点"><span class="material-symbols">circle</span></button><button data-value="1" aria-label="方点"><span class="material-symbols">square</span></button></div></div>
-          <label class="led-slider-row"><span>每行 LED 行数 <output id="led-dot-rows-value"></output></span><input id="led-dot-rows" type="range" min="8" max="48" step="1"></label>
+          <label class="led-slider-row"><span>灯珠密度 <output id="led-dot-rows-value"></output></span><input id="led-dot-rows" type="range" min="8" max="256" step="1"></label>
           <label class="led-slider-row"><span>灯珠尺寸 <output id="led-dot-size-value"></output></span><input id="led-dot-size" type="range" min="0.1" max="1" step="0.01"></label>
           <label class="led-setting-row"><span>发光效果</span><input id="led-glow-enabled" type="checkbox" role="switch"></label>
           <label id="led-glow-strength-row" class="led-slider-row"><span>发光强度 <output id="led-glow-value"></output></span><input id="led-glow-strength" type="range" min="0" max="1" step="0.01"></label>
@@ -206,7 +206,7 @@
           <label class="setting-row"><span>背景颜色</span><input id="remote-led-background" type="color"></label>
           <div id="remote-dot-options">
             <div class="setting-block"><span>点阵形状</span><div class="segmented compact-segments" data-cast-setting="dotShape"><button class="segment" data-value="0"><span class="material-symbols">circle</span><span>圆点</span></button><button class="segment" data-value="1"><span class="material-symbols">square</span><span>方点</span></button></div></div>
-            <label class="slider-row"><span>每行 LED 行数 <output id="remote-dot-rows-value"></output></span><input id="remote-dot-rows" type="range" min="8" max="48" step="1"></label>
+            <label class="slider-row"><span>灯珠密度 <output id="remote-dot-rows-value"></output></span><input id="remote-dot-rows" type="range" min="8" max="256" step="1"></label>
             <label class="slider-row"><span>灯珠尺寸 <output id="remote-dot-size-value"></output></span><input id="remote-dot-size" type="range" min="0.1" max="1" step="0.01"></label>
             <label class="setting-row"><span>发光效果</span><input id="remote-glow-enabled" type="checkbox" role="switch"></label>
             <label id="remote-glow-row" class="slider-row"><span>发光强度 <output id="remote-glow-value"></output></span><input id="remote-glow" type="range" min="0" max="1" step="0.01"></label>
