@@ -473,6 +473,9 @@ internal fun RecognitionResourceSourceDialog(
     modelScopeUrl: String,
     huggingFaceUrl: String,
     preferredSource: Int,
+    title: String = "语音识别资源包下载源",
+    description: String =
+        "下载完成后会自动安装并清理临时文件；从本地安装时不会删除你选择的原文件。",
     onDismiss: () -> Unit,
     onConfirm: (String, String, Int) -> Unit
 ) {
@@ -488,11 +491,11 @@ internal fun RecognitionResourceSourceDialog(
     }
     Md2ScrollableDialog(
         onDismissRequest = onDismiss,
-        title = { Text("语音识别资源包下载源") },
+        title = { Text(title) },
         contentSpacing = 12.dp,
         content = {
                 Text(
-                    "下载完成后会自动安装并清理临时文件；从本地安装时不会删除你选择的原文件。",
+                    description,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -760,7 +763,7 @@ internal fun RecognitionResourceRequiredDialog(
                     text = if (installed) {
                         "资源包安装完成，可以继续开启语音识别。"
                     } else {
-                        "当前尚未安装语音识别资源包。请先下载或从本地安装，随后即可使用语音识别、智能断句和语音降噪增强。"
+                        "当前尚未安装语音识别资源包。一次安装即可获得语音识别、V6 内建标点、智能断句、语音降噪和说话人分离所需的组件。"
                     },
                     style = MaterialTheme.typography.bodyMedium
                 )

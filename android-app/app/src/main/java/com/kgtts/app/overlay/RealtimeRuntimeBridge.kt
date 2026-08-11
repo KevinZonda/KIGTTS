@@ -19,7 +19,11 @@ object RealtimeRuntimeBridge {
         val inputDeviceLabel: String = "",
         val outputDeviceLabel: String = "",
         val pushToTalkPressed: Boolean = false,
-        val pushToTalkStreamingText: String = ""
+        val pushToTalkStreamingText: String = "",
+        val listeningEnabled: Boolean = false,
+        val listeningItems: List<ListeningCaptionItem> = emptyList(),
+        val listeningStreamingText: String = "",
+        val listeningInputDeviceLabel: String = ""
     )
 
     interface AppDelegate {
@@ -76,3 +80,8 @@ object RealtimeRuntimeBridge {
         listeners.forEach { it.onAppRuntimeChanged() }
     }
 }
+
+data class ListeningCaptionItem(
+    val id: Long,
+    val text: String
+)

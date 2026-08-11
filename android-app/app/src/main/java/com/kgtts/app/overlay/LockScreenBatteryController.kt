@@ -6,6 +6,7 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.os.BatteryManager
 import android.view.View
+import android.view.ViewGroup
 import android.widget.TextView
 import androidx.core.content.ContextCompat
 import com.lhtstudio.kigtts.app.data.LockScreenBatteryStatus
@@ -17,7 +18,10 @@ import kotlin.math.roundToInt
 
 internal class LockScreenBatteryController(
     context: Context,
-    private val batteryView: TextView
+    private val batteryContainer: ViewGroup,
+    private val batteryIcon: TextView,
+    private val batteryView: TextView,
+    private val onVisibilityChanged: (Boolean) -> Unit = {}
 ) {
     private var settings = LockScreenSettings()
     private var status = LockScreenBatteryStatus(
@@ -41,12 +45,27 @@ internal class LockScreenBatteryController(
 
     private fun render() {
         batteryView.text = settings.formatBatteryStatus(status)
-        batteryView.visibility = if (settings.shouldShowBatteryStatus(status)) {
+        batteryIcon.text = lockScreenBatteryMaterialSymbol(status)
+        val visible = settings.shouldShowBatteryStatus(status)
+        batteryContainer.visibility = if (visible) {
             View.VISIBLE
         } else {
             View.GONE
         }
+        onVisibilityChanged(visible)
     }
+}
+
+internal fun lockScreenBatteryMaterialSymbol(status: LockScreenBatteryStatus): String = when {
+    status.isCharging && !status.isFull -> "battery_android_bolt"
+    status.isFull || status.percentage >= 96 -> "battery_android_full"
+    status.percentage < 0 || status.percentage <= 5 -> "battery_android_alert"
+    status.percentage <= 18 -> "battery_android_frame_1"
+    status.percentage <= 34 -> "battery_android_frame_2"
+    status.percentage <= 50 -> "battery_android_frame_3"
+    status.percentage <= 66 -> "battery_android_frame_4"
+    status.percentage <= 82 -> "battery_android_frame_5"
+    else -> "battery_android_frame_6"
 }
 
 internal class LockScreenBatteryMonitor(

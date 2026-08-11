@@ -191,6 +191,7 @@ internal fun LedSubtitleScreenContent(
     } else {
         (screenWidthDp * 0.9f).coerceAtMost(460.dp)
     }
+    val subtitleFontSizeMax = if (state.quickSubtitleAllowLargeFont) 800f else 96f
 
     Box(
         modifier = Modifier
@@ -200,6 +201,14 @@ internal fun LedSubtitleScreenContent(
         Box(
             modifier = Modifier
                 .fillMaxSize()
+                .quickSubtitlePinchZoom(
+                    enabled = !locked,
+                    fontSizeSp = viewModel.quickSubtitleFontSizeSp,
+                    minFontSizeSp = 28f,
+                    maxFontSizeSp = subtitleFontSizeMax,
+                    onFontSizeChange = viewModel::updateQuickSubtitleFontSize,
+                    onFontSizeChangeFinished = viewModel::commitQuickSubtitleFontSize
+                )
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null
@@ -269,8 +278,11 @@ internal fun LedSubtitleScreenContent(
             textAlign = if (viewModel.quickSubtitleCentered) TextAlign.Center else TextAlign.Start,
             fontWeight = if (viewModel.quickSubtitleBold) FontWeight.Bold else FontWeight.Normal,
             maxFontSizeSp = viewModel.quickSubtitleFontSizeSp,
+            maxAllowedFontSizeSp = subtitleFontSizeMax,
             autoFitEnabled = state.quickSubtitleAutoFit,
             rotated180 = viewModel.quickSubtitleRotated180,
+            onFontSizeChange = viewModel::updateQuickSubtitleFontSize,
+            onFontSizeChangeFinished = viewModel::commitQuickSubtitleFontSize,
             modifier = Modifier
                 .fillMaxSize()
                 .zIndex(2.5f)

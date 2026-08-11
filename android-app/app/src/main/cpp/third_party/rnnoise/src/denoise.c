@@ -282,11 +282,17 @@ DenoiseState *rnnoise_create(RNNModel *model) {
 }
 
 void rnnoise_destroy(DenoiseState *st) {
-  if (common.init) opus_fft_free(common.kfft, 0);
+  if (!st) return;
   free(st->rnn.vad_gru_state);
   free(st->rnn.noise_gru_state);
   free(st->rnn.denoise_gru_state);
   free(st);
+}
+
+void rnnoise_global_cleanup(void) {
+  if (common.init && common.kfft) opus_fft_free(common.kfft, 0);
+  common.kfft = NULL;
+  common.init = 0;
 }
 
 #if TRAINING

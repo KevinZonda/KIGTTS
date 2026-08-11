@@ -1,0 +1,178 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_subtitle_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/bg_widget_card"
+    android:orientation="vertical"
+    android:padding="8dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="40dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+        <ImageView
+            android:id="@+id/widget_subtitle_logo"
+            android:layout_width="88dp"
+            android:layout_height="28dp"
+            android:contentDescription="打开 KIGTTS"
+            android:scaleType="fitStart"
+            android:src="@drawable/logo_black" />
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="1dp"
+            android:layout_weight="1" />
+        <ImageView
+            android:id="@+id/widget_subtitle_open"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:contentDescription="打开便捷字幕"
+            android:padding="8dp"
+            android:src="@drawable/ic_widget_open" />
+    </LinearLayout>
+
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1">
+        <LinearLayout
+            android:id="@+id/widget_subtitle_overview_panel"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:orientation="vertical">
+            <TextView
+                android:id="@+id/widget_subtitle_text"
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1"
+                android:gravity="center"
+                android:includeFontPadding="false"
+                android:maxLines="3"
+                android:text="便捷字幕"
+                android:textColor="@color/widget_text_primary"
+                android:textSize="36sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:background="@color/widget_divider" />
+
+            <LinearLayout
+                android:id="@+id/widget_subtitle_groups_panel"
+                android:layout_width="match_parent"
+                android:layout_height="160dp"
+                android:orientation="vertical">
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="28dp"
+                    android:gravity="center_vertical"
+                    android:paddingStart="6dp"
+                    android:paddingEnd="6dp"
+                    android:text="快捷文本分组"
+                    android:textColor="@color/widget_text_secondary"
+                    android:textSize="12sp"
+                    android:textStyle="bold" />
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="0dp"
+                    android:layout_weight="1"
+                    android:gravity="center"
+                    android:orientation="horizontal">
+                    <ImageView
+                        android:id="@+id/widget_group_previous"
+                        android:layout_width="36dp"
+                        android:layout_height="match_parent"
+                        android:contentDescription="上一页分组"
+                        android:padding="8dp"
+                        android:src="@drawable/ic_widget_previous" />
+                    <LinearLayout
+                        android:id="@+id/widget_subtitle_groups"
+                        android:layout_width="0dp"
+                        android:layout_height="match_parent"
+                        android:layout_weight="1"
+                        android:background="@drawable/bg_widget_section"
+                        android:baselineAligned="false"
+                        android:orientation="horizontal" />
+                    <ImageView
+                        android:id="@+id/widget_group_next"
+                        android:layout_width="36dp"
+                        android:layout_height="match_parent"
+                        android:contentDescription="下一页分组"
+                        android:padding="8dp"
+                        android:src="@drawable/ic_widget_next" />
+                </LinearLayout>
+            </LinearLayout>
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/widget_subtitle_items_panel"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:orientation="vertical"
+            android:visibility="gone">
+            <TextView
+                android:id="@+id/widget_subtitle_group_title"
+                android:layout_width="match_parent"
+                android:layout_height="32dp"
+                android:ellipsize="end"
+                android:gravity="center_vertical"
+                android:maxLines="1"
+                android:paddingStart="6dp"
+                android:paddingEnd="6dp"
+                android:textColor="@color/widget_text_secondary"
+                android:textSize="13sp"
+                android:textStyle="bold" />
+            <LinearLayout
+                android:id="@+id/widget_subtitle_candidates"
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1"
+                android:background="@drawable/bg_widget_section"
+                android:orientation="vertical" />
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="40dp"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+                <ImageView
+                    android:id="@+id/widget_items_back"
+                    android:layout_width="44dp"
+                    android:layout_height="40dp"
+                    android:contentDescription="返回分组"
+                    android:padding="9dp"
+                    android:src="@drawable/ic_widget_previous" />
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="1dp"
+                    android:layout_weight="1" />
+                <ImageView
+                    android:id="@+id/widget_items_previous"
+                    android:layout_width="44dp"
+                    android:layout_height="40dp"
+                    android:contentDescription="上一页快捷文本"
+                    android:padding="9dp"
+                    android:src="@drawable/ic_widget_up" />
+                <ImageView
+                    android:id="@+id/widget_items_next"
+                    android:layout_width="44dp"
+                    android:layout_height="40dp"
+                    android:contentDescription="下一页快捷文本"
+                    android:padding="9dp"
+                    android:src="@drawable/ic_widget_down" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/widget_subtitle_empty"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:background="@drawable/bg_widget_section"
+            android:gravity="center"
+            android:padding="12dp"
+            android:text="打开 KIGTTS 后同步快捷文本"
+            android:textColor="@color/widget_text_secondary"
+            android:textSize="13sp" />
+    </FrameLayout>
+</LinearLayout>

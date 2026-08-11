@@ -263,11 +263,11 @@ internal fun calloutPlacement(
     QuickSubtitleGuideAnchor.SubtitleDisplay -> GuideCalloutPlacement.InsideBottom
 
     QuickSubtitleGuideAnchor.ActionBold,
-    QuickSubtitleGuideAnchor.ActionAlignment,
     QuickSubtitleGuideAnchor.ActionRotate,
     QuickSubtitleGuideAnchor.ActionLed,
     QuickSubtitleGuideAnchor.ActionClear,
     QuickSubtitleGuideAnchor.ActionHistory,
+    QuickSubtitleGuideAnchor.ActionListening,
     QuickSubtitleGuideAnchor.ActionFontSize -> {
         if (verticalActions) GuideCalloutPlacement.Left else GuideCalloutPlacement.Below
     }

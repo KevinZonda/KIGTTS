@@ -252,6 +252,7 @@ import com.lhtstudio.kigtts.app.data.KOKORO_VOICE_NAME
 import com.lhtstudio.kigtts.app.data.SYSTEM_TTS_VOICE_NAME
 import com.lhtstudio.kigtts.app.data.VoicePackInfo
 import com.lhtstudio.kigtts.app.data.UserPrefs
+import com.lhtstudio.kigtts.app.data.SpeechButtonActionMode
 import com.lhtstudio.kigtts.app.data.VoicePackMeta
 import com.lhtstudio.kigtts.app.data.defaultSoundboardGroups
 import com.lhtstudio.kigtts.app.data.isKokoroVoiceDir
@@ -1209,9 +1210,12 @@ internal fun RunningStatusTopStrip(
     viewModel: MainViewModel,
     status: String,
     recognitionResourceInstalled: Boolean,
+    speechButtonActionMode: Int,
     pushToTalkMode: Boolean,
     pushToTalkPressed: Boolean,
     ttsDisabled: Boolean,
+    listeningModeEnabled: Boolean,
+    onToggleListeningMode: () -> Unit,
     playbackGainPercent: Int,
     preferredInputType: Int,
     preferredOutputType: Int,
@@ -1227,8 +1231,10 @@ internal fun RunningStatusTopStrip(
         else -> "mic"
     }
     val audioIcon = if (ttsDisabled) "graphic_eq_off" else "graphic_eq"
+    val performDropdownHaptic = rememberKigttsKeyHaptic()
     var inputExpanded by remember { mutableStateOf(false) }
     var outputExpanded by remember { mutableStateOf(false) }
+    var speechButtonActionModeExpanded by remember { mutableStateOf(false) }
     val inputTypeOptions = remember {
         listOf(
             AudioRoutePreference.INPUT_AUTO to "自动",
@@ -1320,7 +1326,10 @@ internal fun RunningStatusTopStrip(
                                 .clickable(
                                     interactionSource = remember { MutableInteractionSource() },
                                     indication = rememberRipple(bounded = true)
-                                ) { inputExpanded = true }
+                                ) {
+                                    performDropdownHaptic()
+                                    inputExpanded = true
+                                }
                                 .padding(vertical = 2.dp),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(4.dp)
@@ -1345,6 +1354,7 @@ internal fun RunningStatusTopStrip(
                             inputTypeOptions.forEach { (value, label) ->
                                 M2DropdownMenuItem(
                                     onClick = {
+                                        performDropdownHaptic()
                                         inputExpanded = false
                                         viewModel.setPreferredInputType(value)
                                     }
@@ -1365,7 +1375,10 @@ internal fun RunningStatusTopStrip(
                             .clickable(
                                 interactionSource = remember { MutableInteractionSource() },
                                 indication = rememberRipple(bounded = true)
-                            ) { outputExpanded = true }
+                            ) {
+                                performDropdownHaptic()
+                                outputExpanded = true
+                            }
                             .padding(vertical = 2.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(4.dp)
@@ -1390,6 +1403,7 @@ internal fun RunningStatusTopStrip(
                         outputTypeOptions.forEach { (value, label) ->
                             M2DropdownMenuItem(
                                 onClick = {
+                                    performDropdownHaptic()
                                     outputExpanded = false
                                     viewModel.setPreferredOutputType(value)
                                 }
@@ -1404,40 +1418,96 @@ internal fun RunningStatusTopStrip(
                 }
             }
             if (recognitionResourceInstalled) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
+                Box(modifier = Modifier.fillMaxWidth()) {
                     Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = rememberRipple(bounded = true)
+                            ) {
+                                performDropdownHaptic()
+                                speechButtonActionModeExpanded = true
+                            }
+                            .padding(vertical = 2.dp),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
-                        MsIcon("mic", contentDescription = "按住说话")
-                        Text("按住说话", style = MaterialTheme.typography.bodySmall)
+                        MsIcon("mic", contentDescription = "语音识别按钮操作模式")
+                        Text(
+                            text = SpeechButtonActionMode.label(speechButtonActionMode),
+                            modifier = Modifier.weight(1f),
+                            style = MaterialTheme.typography.bodySmall,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        MsIcon(
+                            name = if (speechButtonActionModeExpanded) "expand_less" else "expand_more",
+                            contentDescription = "选择语音识别按钮操作模式"
+                        )
                     }
-                    Md2Switch(
-                        checked = pushToTalkMode,
-                        onCheckedChange = { viewModel.setPushToTalkMode(it) }
-                    )
+                    Md2AnimatedOptionMenu(
+                        expanded = speechButtonActionModeExpanded,
+                        onDismissRequest = { speechButtonActionModeExpanded = false }
+                    ) {
+                        SpeechButtonActionMode.entries.forEach { mode ->
+                            M2DropdownMenuItem(
+                                onClick = {
+                                    performDropdownHaptic()
+                                    speechButtonActionModeExpanded = false
+                                    viewModel.setSpeechButtonActionMode(mode)
+                                }
+                            ) {
+                                Text(
+                                    text = SpeechButtonActionMode.label(mode),
+                                    fontWeight = if (mode == speechButtonActionMode) {
+                                        FontWeight.SemiBold
+                                    } else {
+                                        null
+                                    }
+                                )
+                            }
+                        }
+                    }
                 }
             }
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 Row(
+                    modifier = Modifier.weight(1f),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     MsIcon("graphic_eq_off", contentDescription = "关闭语音朗读")
-                    Text("关闭语音朗读", style = MaterialTheme.typography.bodySmall)
+                    Text(
+                        "关闭语音朗读",
+                        modifier = Modifier.weight(1f),
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    Md2Switch(
+                        checked = ttsDisabled,
+                        onCheckedChange = { viewModel.setTtsDisabled(it) }
+                    )
                 }
-                Md2Switch(
-                    checked = ttsDisabled,
-                    onCheckedChange = { viewModel.setTtsDisabled(it) }
-                )
+                Row(
+                    modifier = Modifier.weight(1f),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    MsIcon("hearing", contentDescription = "聆听模式")
+                    Text(
+                        "聆听模式",
+                        modifier = Modifier.weight(1f),
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    Md2Switch(
+                        checked = listeningModeEnabled,
+                        onCheckedChange = { onToggleListeningMode() }
+                    )
+                }
             }
             Column(
                 modifier = Modifier.fillMaxWidth(),

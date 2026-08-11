@@ -17,12 +17,14 @@ object OverlayBridge {
     const val EXTRA_NAVIGATE_TO_PAGE = "overlay_navigate_to_page"
     const val EXTRA_START_REALTIME_ON_GRANT = "overlay_start_realtime_on_grant"
     const val EXTRA_SOUNDBOARD_GROUP_ID = "overlay_soundboard_group_id"
+    const val EXTRA_QUICK_CARD_ID = "overlay_quick_card_id"
 
     const val TARGET_OPEN = "open"
     const val TARGET_SUBTITLE = "subtitle"
     const val TARGET_INPUT = "input"
     const val TARGET_OPEN_OVERLAY = "open_overlay"
     const val TARGET_OPEN_QUICK_CARD = "open_quick_card"
+    const val TARGET_CREATE_QUICK_CARD = "create_quick_card"
     const val TARGET_OPEN_DRAWING = "open_drawing"
     const val TARGET_OPEN_SOUNDBOARD = "open_soundboard"
     const val TARGET_OPEN_VOICE_PACK = "open_voice_pack"
@@ -59,6 +61,12 @@ object OverlayBridge {
             if (groupId != null) {
                 putExtra(EXTRA_SOUNDBOARD_GROUP_ID, groupId)
             }
+        }
+    }
+
+    fun buildOpenQuickCardIntent(context: Context, cardId: Long): Intent {
+        return buildOpenPageIntent(context, TARGET_OPEN_QUICK_CARD).apply {
+            putExtra(EXTRA_QUICK_CARD_ID, cardId)
         }
     }
 

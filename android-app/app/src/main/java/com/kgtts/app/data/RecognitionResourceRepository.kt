@@ -15,6 +15,7 @@ import java.io.FileOutputStream
 import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
+import java.security.MessageDigest
 import java.util.Locale
 import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
@@ -31,6 +32,12 @@ data class RecognitionResourceStatus(
     val installedAtMs: Long = 0L,
     val rootDir: File? = null,
     val asrDir: File? = null
+)
+
+data class RecognitionNeuralSpeakerFilterResources(
+    val tseModel: File,
+    val tseData: File,
+    val ecapaModel: File
 )
 
 class RecognitionResourceRepository(private val context: Context) {
@@ -359,10 +366,55 @@ class RecognitionResourceRepository(private val context: Context) {
         if (type.isNotBlank() && type != "kigtts-recognition-resources") {
             throw IOException("无效语音识别资源包：type=$type")
         }
-        val hasAnyOnnx = baseDir.walkTopDown().any { it.isFile && it.extension.equals("onnx", ignoreCase = true) }
-        if (!hasAnyOnnx) {
-            throw IOException("无效语音识别资源包：未找到 ONNX 模型文件")
+        val asrDir = resolveAsrDir(baseDir, manifest)
+            ?: throw IOException("无效语音识别资源包：缺少 SenseVoice 识别模型")
+        val hasTokens = asrDir.walkTopDown().any {
+            it.isFile && it.name.equals("tokens.txt", ignoreCase = true) && it.length() > 0L
         }
+        if (!hasTokens) {
+            throw IOException("无效语音识别资源包：缺少 SenseVoice tokens.txt")
+        }
+        validateRequiredFiles(baseDir, manifest)
+    }
+
+    private fun validateRequiredFiles(baseDir: File, manifest: JSONObject) {
+        val bundleProfile = manifest.optString("bundleProfile").trim()
+        val required = manifest.optJSONArray("requiredFiles")
+        if (isCompleteBundleProfile(bundleProfile) &&
+            (required == null || required.length() == 0)
+        ) {
+            throw IOException("无效语音识别资源包：完整资源缺少文件校验清单")
+        }
+        required ?: return
+        for (index in 0 until required.length()) {
+            val spec = required.optJSONObject(index)
+                ?: throw IOException("无效语音识别资源包：requiredFiles[$index] 格式错误")
+            val relativePath = spec.optString("path").trim()
+            val file = resolveRelativeFile(baseDir, relativePath)
+                ?.takeIf { it.isFile }
+                ?: throw IOException("语音识别资源包不完整：缺少 $relativePath")
+            val expectedSize = spec.optLong("size", -1L)
+            if (expectedSize >= 0L && file.length() != expectedSize) {
+                throw IOException("语音识别资源包校验失败：$relativePath 文件大小不符")
+            }
+            val expectedSha256 = spec.optString("sha256").trim().lowercase(Locale.US)
+            if (expectedSha256.isNotBlank() && sha256(file) != expectedSha256) {
+                throw IOException("语音识别资源包校验失败：$relativePath 哈希不符")
+            }
+        }
+    }
+
+    private fun sha256(file: File): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        FileInputStream(file).use { input ->
+            val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+            while (true) {
+                val read = input.read(buffer)
+                if (read <= 0) break
+                digest.update(buffer, 0, read)
+            }
+        }
+        return digest.digest().joinToString("") { byte -> "%02x".format(byte.toInt() and 0xff) }
     }
 
     private fun resolveAsrDir(baseDir: File, manifest: JSONObject?): File? {
@@ -380,27 +432,23 @@ class RecognitionResourceRepository(private val context: Context) {
     private fun findAsrDirByContent(rootDir: File): File? {
         val model = rootDir.walkTopDown()
             .filter { it.isFile && it.extension.equals("onnx", ignoreCase = true) }
-            .firstOrNull { file ->
-                val name = file.name.lowercase(Locale.US)
-                !name.contains("silero") &&
-                        !name.contains("vad") &&
-                        !name.contains("punct") &&
-                        !name.contains("gtcrn") &&
-                        !name.contains("dpdfnet")
-            }
+            .firstOrNull(::isSenseVoiceModel)
         return model?.parentFile ?: rootDir.takeIf { hasAsrModel(it) }
     }
 
     private fun hasAsrModel(dir: File): Boolean {
         if (!dir.exists()) return false
-        return dir.walkTopDown().any { file ->
-            file.isFile &&
-                    file.extension.equals("onnx", ignoreCase = true) &&
-                    !file.name.contains("silero", ignoreCase = true) &&
-                    !file.name.contains("vad", ignoreCase = true) &&
-                    !file.name.contains("gtcrn", ignoreCase = true) &&
-                    !file.name.contains("dpdfnet", ignoreCase = true)
-        }
+        return dir.walkTopDown().any(::isSenseVoiceModel)
+    }
+
+    private fun isSenseVoiceModel(file: File): Boolean {
+        if (!file.isFile || !file.extension.equals("onnx", ignoreCase = true)) return false
+        val name = file.name.lowercase(Locale.US)
+        val parent = file.parentFile?.name?.lowercase(Locale.US).orEmpty()
+        val grandParent = file.parentFile?.parentFile?.name?.lowercase(Locale.US).orEmpty()
+        return name.contains("sensevoice") ||
+            parent.contains("sensevoice") ||
+            grandParent.contains("sensevoice")
     }
 
     private fun resolveSpeechEnhancementModel(fileName: String): File? {
@@ -428,6 +476,61 @@ class RecognitionResourceRepository(private val context: Context) {
         if (explicit != null) return explicit
         return activeDir.walkTopDown()
             .firstOrNull { it.isFile && it.name.equals("silero_vad.onnx", ignoreCase = true) && it.length() > 0L }
+    }
+
+    private fun resolveNeuralSpeakerFilterResources(): RecognitionNeuralSpeakerFilterResources? {
+        val activeDir = activeResourceDir() ?: return null
+        val manifest = readManifestJson(activeDir)
+        val files = manifest?.optJSONObject("files")
+        val neural = files?.optJSONObject("neuralSpeakerFilter")
+            ?: files?.optJSONObject("neural_speaker_filter")
+        val tseModel = resolveOptionalResource(
+            activeDir,
+            neural?.optString("tseModel"),
+            neural?.optString("tse_model"),
+            fileName = "tse_prod_48k.onnx"
+        ) ?: return null
+        val tseData = resolveOptionalResource(
+            activeDir,
+            neural?.optString("tseData"),
+            neural?.optString("tse_data"),
+            fileName = "tse_prod_48k.onnx.data"
+        ) ?: return null
+        val ecapaModel = resolveOptionalResource(
+            activeDir,
+            neural?.optString("ecapaModel"),
+            neural?.optString("ecapa_model"),
+            fileName = "ecapa_tdnn.onnx"
+        ) ?: return null
+        return RecognitionNeuralSpeakerFilterResources(tseModel, tseData, ecapaModel)
+    }
+
+    private fun resolveSpeakerConfirmationModel(): File? {
+        val activeDir = activeResourceDir() ?: return null
+        val manifest = readManifestJson(activeDir)
+        val files = manifest?.optJSONObject("files")
+        val speaker = files?.optJSONObject("speakerVerification")
+            ?: files?.optJSONObject("speaker_verification")
+        return resolveOptionalResource(
+            activeDir,
+            speaker?.optString("confirmationModel"),
+            speaker?.optString("confirmation_model"),
+            fileName = SPEAKER_CONFIRMATION_MODEL_NAME
+        )
+    }
+
+    private fun resolveOptionalResource(
+        activeDir: File,
+        vararg relativePaths: String?,
+        fileName: String
+    ): File? {
+        relativePaths.firstOrNull { !it.isNullOrBlank() }
+            ?.let { resolveRelativeFile(activeDir, it) }
+            ?.takeIf { it.isFile && it.length() > 0L }
+            ?.let { return it }
+        return activeDir.walkTopDown().firstOrNull { file ->
+            file.isFile && file.name.equals(fileName, ignoreCase = true) && file.length() > 0L
+        }
     }
 
     private fun speechEnhancementRelPath(manifest: JSONObject?, fileName: String): String? {
@@ -587,6 +690,8 @@ class RecognitionResourceRepository(private val context: Context) {
     )
 
     companion object {
+        private const val COMPLETE_BUNDLE_PROFILE_PREFIX = "full-v"
+        private const val COMPLETE_EXPERIMENTAL_BUNDLE_PROFILE_PREFIX = "experimental-full-v"
         private const val ACTIVE_FILE_NAME = "active.json"
         private const val SEVEN_Z_MAX_MEMORY_KB = 96 * 1024
         private const val ANDROID_SAFE_7Z_ERROR =
@@ -597,6 +702,10 @@ class RecognitionResourceRepository(private val context: Context) {
             "manifest.json"
         )
 
+        private fun isCompleteBundleProfile(profile: String): Boolean =
+            profile.startsWith(COMPLETE_BUNDLE_PROFILE_PREFIX) ||
+                profile.startsWith(COMPLETE_EXPERIMENTAL_BUNDLE_PROFILE_PREFIX)
+
         fun resolveSpeechEnhancementModel(context: Context, fileName: String): File? {
             return RecognitionResourceRepository(context).resolveSpeechEnhancementModel(fileName)
         }
@@ -604,5 +713,18 @@ class RecognitionResourceRepository(private val context: Context) {
         fun resolveSileroVadModel(context: Context): File? {
             return RecognitionResourceRepository(context).resolveSileroVadModel()
         }
+
+        fun resolveNeuralSpeakerFilterResources(
+            context: Context
+        ): RecognitionNeuralSpeakerFilterResources? {
+            return RecognitionResourceRepository(context).resolveNeuralSpeakerFilterResources()
+        }
+
+        fun resolveSpeakerConfirmationModel(context: Context): File? {
+            return RecognitionResourceRepository(context).resolveSpeakerConfirmationModel()
+        }
+
+        private const val SPEAKER_CONFIRMATION_MODEL_NAME =
+            "3dspeaker_speech_eres2netv2_sv_zh-cn_16k-common.onnx"
     }
 }

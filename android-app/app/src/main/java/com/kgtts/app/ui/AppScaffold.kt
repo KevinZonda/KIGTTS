@@ -105,6 +105,7 @@ import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.ClickableText
 import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.verticalScroll
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.Camera
@@ -175,6 +176,7 @@ import androidx.compose.ui.platform.TextToolbarStatus
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
@@ -255,6 +257,7 @@ import com.lhtstudio.kigtts.app.data.KOKORO_VOICE_NAME
 import com.lhtstudio.kigtts.app.data.SYSTEM_TTS_VOICE_NAME
 import com.lhtstudio.kigtts.app.data.VoicePackInfo
 import com.lhtstudio.kigtts.app.data.UserPrefs
+import com.lhtstudio.kigtts.app.data.SpeechButtonActionMode
 import com.lhtstudio.kigtts.app.data.VoicePackMeta
 import com.lhtstudio.kigtts.app.data.defaultSoundboardGroups
 import com.lhtstudio.kigtts.app.data.isKokoroVoiceDir
@@ -394,6 +397,7 @@ fun AppScaffold(viewModel: MainViewModel) {
         mutableStateOf<QuickSubtitleFloatingInputPreviewState?>(null)
     }
     var pendingQuickCardOverlayTarget by rememberSaveable { mutableStateOf<String?>(null) }
+    var pendingQuickCardOverlayCardId by rememberSaveable { mutableStateOf<Long?>(null) }
     val quickSubtitleNavController = rememberNavController()
     val soundboardNavController = rememberNavController()
     val quickCardNavController = rememberNavController()
@@ -681,6 +685,8 @@ fun AppScaffold(viewModel: MainViewModel) {
         basePage == pageSettings && settingsRoute == SettingsRoutes.Log
     val settingsFontsOpen =
         basePage == pageSettings && settingsRoute == SettingsRoutes.Fonts
+    val settingsListeningOpen =
+        basePage == pageSettings && settingsRoute == SettingsRoutes.Listening
     val settingsLicensesOpen =
         basePage == pageSettings && settingsRoute == SettingsRoutes.Licenses
     val settingsPrivacyOpen =
@@ -748,14 +754,35 @@ fun AppScaffold(viewModel: MainViewModel) {
             page = pageOverlay
         }
     }
-    LaunchedEffect(basePage, quickCardNavReady, pendingQuickCardOverlayTarget, quickCardRoute) {
+    LaunchedEffect(
+        basePage,
+        quickCardNavReady,
+        pendingQuickCardOverlayTarget,
+        pendingQuickCardOverlayCardId,
+        quickCardRoute
+    ) {
         if (basePage != pageQuickCard || !quickCardNavReady) return@LaunchedEffect
         when (pendingQuickCardOverlayTarget) {
             OverlayBridge.TARGET_OPEN_QUICK_CARD -> {
                 if (quickCardRoute != QuickCardRoutes.Main) {
                     quickCardNavController.popBackStack(QuickCardRoutes.Main, inclusive = false)
+                    return@LaunchedEffect
+                }
+                pendingQuickCardOverlayCardId?.let(viewModel::openQuickCardPreview)
+                pendingQuickCardOverlayTarget = null
+                pendingQuickCardOverlayCardId = null
+            }
+            OverlayBridge.TARGET_CREATE_QUICK_CARD -> {
+                if (quickCardRoute != QuickCardRoutes.Main) {
+                    quickCardNavController.popBackStack(QuickCardRoutes.Main, inclusive = false)
+                    return@LaunchedEffect
+                }
+                viewModel.beginCreateQuickCard(QuickCardType.Text)
+                quickCardNavController.navigate(QuickCardRoutes.Editor) {
+                    launchSingleTop = true
                 }
                 pendingQuickCardOverlayTarget = null
+                pendingQuickCardOverlayCardId = null
             }
             OverlayBridge.TARGET_OPEN_QR_SCANNER -> {
                 if (quickCardRoute != QuickCardRoutes.Main &&
@@ -784,6 +811,12 @@ fun AppScaffold(viewModel: MainViewModel) {
             OverlayBridge.TARGET_OPEN_QUICK_CARD -> {
                 page = pageQuickCard
                 pendingQuickCardOverlayTarget = request.target
+                pendingQuickCardOverlayCardId = request.quickCardId
+            }
+            OverlayBridge.TARGET_CREATE_QUICK_CARD -> {
+                page = pageQuickCard
+                pendingQuickCardOverlayTarget = request.target
+                pendingQuickCardOverlayCardId = null
             }
             OverlayBridge.TARGET_OPEN_QR_SCANNER -> {
                 page = pageQuickCard
@@ -970,7 +1003,7 @@ fun AppScaffold(viewModel: MainViewModel) {
             soundboardSubPageOpen -> {
                 soundboardNavController.popBackStack(SoundboardRoutes.Main, inclusive = false)
             }
-            settingsFontsOpen || settingsLogOpen || settingsLicensesOpen || settingsPrivacyOpen || settingsAgreementOpen -> {
+            settingsFontsOpen || settingsListeningOpen || settingsLogOpen || settingsLicensesOpen || settingsPrivacyOpen || settingsAgreementOpen -> {
                 settingsNavController.popBackStack(SettingsRoutes.Main, inclusive = false)
             }
             quickCardEditorOpen -> {
@@ -1143,6 +1176,93 @@ fun AppScaffold(viewModel: MainViewModel) {
             return
         }
         requestRecordAudioPermissionAndStart()
+    }
+    var showListeningModeChoice by remember { mutableStateOf(false) }
+    var dismissListeningModeChoice by remember { mutableStateOf(false) }
+    fun enableListeningModeWithSpeechMode(mode: Int) {
+        viewModel.setSpeechButtonActionMode(mode)
+        viewModel.updateListeningModeSettings {
+            it.copy(
+                preferredSpeechButtonMode = mode,
+                modePromptDismissed = dismissListeningModeChoice
+            )
+        }
+        viewModel.setListeningModeEnabled(true)
+        requestRealtimeStartWithResourceCheck(autoStartAfterInstall = true)
+    }
+    fun toggleListeningMode() {
+        if (viewModel.isListeningModeEnabled()) {
+            viewModel.setListeningModeEnabled(false)
+            return
+        }
+        if (state.speechButtonActionMode != SpeechButtonActionMode.TOGGLE) {
+            viewModel.setListeningModeEnabled(true)
+            requestRealtimeStartWithResourceCheck(autoStartAfterInstall = true)
+            return
+        }
+        if (state.listeningModeSettings.modePromptDismissed) {
+            dismissListeningModeChoice = true
+            enableListeningModeWithSpeechMode(
+                state.listeningModeSettings.preferredSpeechButtonMode
+            )
+        } else {
+            dismissListeningModeChoice = false
+            showListeningModeChoice = true
+        }
+    }
+    if (showListeningModeChoice) {
+        KigttsAlertDialog(
+            onDismissRequest = { showListeningModeChoice = false },
+            title = { Text("选择语音按钮模式") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("聆听模式会持续接收环境语音。语音按钮需要改为按住使用，避免与聆听字幕互相干扰。")
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .toggleable(
+                                value = dismissListeningModeChoice,
+                                role = Role.Checkbox,
+                                onValueChange = { dismissListeningModeChoice = it }
+                            ),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Checkbox(
+                            checked = dismissListeningModeChoice,
+                            onCheckedChange = null
+                        )
+                        Column {
+                            Text("下次不再提示", style = MaterialTheme.typography.body2)
+                            Text(
+                                "下次将直接使用本次选择。",
+                                style = MaterialTheme.typography.caption,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Md2TextButton(
+                    onClick = {
+                        showListeningModeChoice = false
+                        enableListeningModeWithSpeechMode(SpeechButtonActionMode.HOLD_CONFIRM)
+                    }
+                ) {
+                    Text("按住并确认")
+                }
+            },
+            dismissButton = {
+                Md2TextButton(
+                    onClick = {
+                        showListeningModeChoice = false
+                        enableListeningModeWithSpeechMode(SpeechButtonActionMode.HOLD)
+                    }
+                ) {
+                    Text("按住说话")
+                }
+            }
+        )
     }
 
     LaunchedEffect(
@@ -1511,6 +1631,8 @@ fun AppScaffold(viewModel: MainViewModel) {
             "二维码网页"
         } else if (settingsFontsOpen) {
             "字体"
+        } else if (settingsListeningOpen) {
+            "聆听模式"
         } else if (settingsLogOpen) {
             "日志"
         } else if (settingsLicensesOpen) {
@@ -1602,7 +1724,7 @@ fun AppScaffold(viewModel: MainViewModel) {
                             overlaySubPageOpen -> 5
                             quickSubtitleSubPageOpen -> 1
                             soundboardSubPageOpen -> 2
-                            settingsFontsOpen || settingsLogOpen || settingsLicensesOpen || settingsPrivacyOpen || settingsAgreementOpen -> 3
+                            settingsFontsOpen || settingsListeningOpen || settingsLogOpen || settingsLicensesOpen || settingsPrivacyOpen || settingsAgreementOpen -> 3
                             quickCardSubPageOpen -> 4
                             else -> 0
                         },
@@ -1770,8 +1892,8 @@ fun AppScaffold(viewModel: MainViewModel) {
                         showQuickCardWebActions -> 48.dp
                         showDrawingActions -> 144.dp
                         showDrawingPaletteActions -> 96.dp
-                        showQuickSubtitleActions ||
-                            showSoundboardActions ||
+                        showQuickSubtitleActions -> 48.dp
+                        showSoundboardActions ||
                             showVoicePackActions ||
                             showSettingsEntryActions -> 48.dp
                         else -> 0.dp
@@ -2427,6 +2549,7 @@ fun AppScaffold(viewModel: MainViewModel) {
                                     launchSingleTop = true
                                 }
                             },
+                            onToggleListeningMode = ::toggleListeningMode,
                             onEditorBatchTopBarActionsChange = {
                                 quickSubtitleEditorBatchTopBarActions = it
                             },
@@ -2572,9 +2695,12 @@ fun AppScaffold(viewModel: MainViewModel) {
                     viewModel = viewModel,
                     status = state.status,
                     recognitionResourceInstalled = state.recognitionResourceInstalled,
+                    speechButtonActionMode = state.speechButtonActionMode,
                     pushToTalkMode = state.pushToTalkMode,
                     pushToTalkPressed = state.pushToTalkPressed,
                     ttsDisabled = state.ttsDisabled,
+                    listeningModeEnabled = state.listeningModeSettings.enabled,
+                    onToggleListeningMode = ::toggleListeningMode,
                     playbackGainPercent = state.playbackGainPercent,
                     preferredInputType = state.preferredInputType,
                     preferredOutputType = state.preferredOutputType,
@@ -2997,6 +3123,20 @@ internal fun QuickSubtitleFloatingInputPreviewOverlay(
             Card(
                 modifier = Modifier
                     .fillMaxSize()
+                    .quickSubtitlePinchZoom(
+                        enabled = true,
+                        fontSizeSp = activePreview.fontSizeSp,
+                        minFontSizeSp = activePreview.minFontSizeSp,
+                        maxFontSizeSp = activePreview.maxFontSizeSp,
+                        onFontSizeChange = activePreview.onFontSizeChange,
+                        onFontSizeChangeFinished = activePreview.onFontSizeChangeFinished
+                    )
+                    .quickSubtitleCursorSwipe(
+                        enabled = activePreview.cursorSwipeEnabled,
+                        onClick = activePreview.onClick,
+                        onLongClick = activePreview.onLongClick,
+                        onCursorDelta = activePreview.onCursorDelta
+                    )
                     .mdCenteredShadow(
                         shape = RoundedCornerShape(UiTokens.Radius),
                         shadowStyle = MdCardShadowStyle

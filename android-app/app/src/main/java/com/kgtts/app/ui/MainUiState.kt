@@ -47,6 +47,8 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.NumberPicker
 import android.widget.Toast
+import com.lhtstudio.kigtts.app.data.ListeningModeSettings
+import com.lhtstudio.kigtts.app.overlay.ListeningCaptionItem
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.BackHandler
@@ -241,8 +243,10 @@ import com.lhtstudio.kigtts.app.audio.SoundboardManager
 import com.lhtstudio.kigtts.app.audio.SoundboardPlaybackState
 import com.lhtstudio.kigtts.app.audio.SpeechEnhancementMode
 import com.lhtstudio.kigtts.app.audio.SpeakerEnrollResult
+import com.lhtstudio.kigtts.app.audio.SpeakerVerificationTolerance
 import com.lhtstudio.kigtts.app.audio.VadMode
 import com.lhtstudio.kigtts.app.data.ModelRepository
+import com.lhtstudio.kigtts.app.data.AsrRecognitionLanguage
 import com.lhtstudio.kigtts.app.data.AppFontFamilySource
 import com.lhtstudio.kigtts.app.data.LockScreenSettings
 import com.lhtstudio.kigtts.app.data.RecognitionResourceProgress
@@ -261,6 +265,7 @@ import com.lhtstudio.kigtts.app.data.QuickSubtitleUsageStats
 import com.lhtstudio.kigtts.app.data.SYSTEM_TTS_VOICE_NAME
 import com.lhtstudio.kigtts.app.data.VoicePackInfo
 import com.lhtstudio.kigtts.app.data.UserPrefs
+import com.lhtstudio.kigtts.app.data.SpeechButtonActionMode
 import com.lhtstudio.kigtts.app.data.VoicePackMeta
 import com.lhtstudio.kigtts.app.data.defaultSoundboardGroups
 import com.lhtstudio.kigtts.app.data.defaultLanCastDisplaySettings
@@ -402,7 +407,7 @@ data class UiState(
     val piperNoiseW: Float = 0.8f,
     val piperSentenceSilence: Float = 0.2f,
     val keepAlive: Boolean = true,
-    val numberReplaceMode: Int = 0,
+    val asrRecognitionLanguage: String = AsrRecognitionLanguage.DEFAULT,
     val landscapeDrawerMode: Int = UserPrefs.DRAWER_MODE_PERMANENT,
     val solidTopBar: Boolean = false,
     val themeMode: Int = UserPrefs.THEME_MODE_FOLLOW_SYSTEM,
@@ -425,6 +430,7 @@ data class UiState(
     val useBuiltinFileManager: Boolean = false,
     val useBuiltinGallery: Boolean = false,
     val asrSendToQuickSubtitle: Boolean = true,
+    val speechButtonActionMode: Int = SpeechButtonActionMode.TOGGLE,
     val pushToTalkMode: Boolean = false,
     val pushToTalkConfirmInputMode: Boolean = false,
     val floatingOverlayEnabled: Boolean = false,
@@ -459,6 +465,13 @@ data class UiState(
     val quickSubtitleFirstRunGuideCompleted: Boolean = false,
     val quickSubtitleGuideReplayRequestId: Int = 0,
     val quickSubtitleKeepInputPreview: Boolean = true,
+    val quickSubtitleClearedPlaceholderText: String =
+        UserPrefs.DEFAULT_QUICK_SUBTITLE_CLEARED_PLACEHOLDER,
+    val quickSubtitleRestoreLastTextOnLaunch: Boolean = false,
+    val listeningModeSettings: ListeningModeSettings = ListeningModeSettings(),
+    val listeningItems: List<ListeningCaptionItem> = emptyList(),
+    val listeningStreamingText: String = "",
+    val listeningInputDeviceLabel: String = "",
     val ledSubtitleSettings: LedSubtitleSettings = LedSubtitleSettings(),
     val lanCastDisplaySettings: LedSubtitleSettings = defaultLanCastDisplaySettings(),
     val bluetoothMediaTitleSubtitle: Boolean = false,
@@ -470,8 +483,18 @@ data class UiState(
     val pushToTalkPressed: Boolean = false,
     val pushToTalkStreamingText: String = "",
     val speakerVerifyEnabled: Boolean = false,
-    val speakerVerifyThreshold: Float = 0.5f,
+    val speakerVerifyThreshold: Float = SpeakerVerificationTolerance.SMART.primaryThreshold,
+    val speakerVerifyToleranceLevel: Int = SpeakerVerificationTolerance.SMART.index,
+    val experimentalRecognitionSensitivity: Int = 50,
+    val experimentalTargetSpeakerBackend: Int =
+        UserPrefs.EXPERIMENTAL_TARGET_SPEAKER_BACKEND_AUTO,
+    val neuralSpeakerFilterInstalled: Boolean = false,
+    val neuralSpeakerFilterBundled: Boolean = false,
+    val neuralSpeakerFilterDownloading: Boolean = false,
+    val neuralSpeakerFilterProgressStage: String = "",
+    val neuralSpeakerFilterProgress: Float = -1f,
     val speakerProfileReady: Boolean = false,
+    val speakerNeuralProfileReady: Boolean = false,
     val speakerProfiles: List<SpeakerProfileUiItem> = emptyList(),
     val speakerLastSimilarity: Float = -1f,
     val inputLevel: Float = 0f,
@@ -486,7 +509,9 @@ data class UiState(
 
 data class SpeakerProfileUiItem(
     val id: String,
-    val name: String
+    val name: String,
+    val confirmationReady: Boolean = false,
+    val neuralReady: Boolean = false
 )
 
 data class RecognizedItem(
@@ -500,7 +525,8 @@ data class ExternalQuickSubtitleRequest(
     val target: String,
     val text: String,
     val navigateToPage: Boolean = true,
-    val soundboardGroupId: Long? = null
+    val soundboardGroupId: Long? = null,
+    val quickCardId: Long? = null
 )
 
 data class ExternalRecordAudioPermissionRequest(
@@ -532,6 +558,7 @@ internal fun isOverlayOpenTarget(target: String): Boolean {
     return target == OverlayBridge.TARGET_OPEN ||
             target == OverlayBridge.TARGET_OPEN_OVERLAY ||
             target == OverlayBridge.TARGET_OPEN_QUICK_CARD ||
+            target == OverlayBridge.TARGET_CREATE_QUICK_CARD ||
             target == OverlayBridge.TARGET_OPEN_DRAWING ||
             target == OverlayBridge.TARGET_OPEN_SOUNDBOARD ||
             target == OverlayBridge.TARGET_OPEN_VOICE_PACK ||
@@ -640,14 +667,14 @@ internal fun defaultQuickSubtitlePresetGroups(): List<QuickSubtitleGroup> = list
         icon = "person_add",
         items = listOf(
             "扩列吗？加个联系方式~",
-            "你出的是XX吗？好还原！太好看了！",
-            "刚刚是你出的XX吗？太好看了！",
+            "你出的是 X X 吗？好还原！太好看了！",
+            "刚刚是你出的 X X 吗？太好看了！",
             "求个关注，这是我的账号",
             "可以集个邮吗？",
             "这个送你~小小心意",
             "交换一下无料吗？",
             "加个好友吧，我拉你进同好群",
-            "你有出过XX吗？我超喜欢那个角色",
+            "你有出过 X X 吗？我超喜欢那个角色",
             "你这个道具做得好精致啊！",
             "我们之前是不是在哪个展子见过？"
         )
@@ -717,12 +744,12 @@ internal fun defaultQuickSubtitlePresetGroups(): List<QuickSubtitleGroup> = list
         items = listOf(
             "请问卫生间在哪？",
             "请问摄影区在哪边？",
-            "XX的摊位怎么走啊？",
+            "X X 的摊位怎么走啊？",
             "请问休息区/医务室在哪？",
-            "XX集合点在哪儿？",
+            "X X 集合点在哪儿？",
             "请问这里能出去吗？",
             "出口在哪边？",
-            "你有没有看到一个出XX的人？穿XX颜色衣服的",
+            "你有没有看到一个出 X X 的人？穿 X X 颜色衣服的",
             "请问签售区怎么走？",
             "请问存包处在哪？"
         )

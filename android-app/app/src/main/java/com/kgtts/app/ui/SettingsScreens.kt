@@ -241,8 +241,10 @@ import com.lhtstudio.kigtts.app.audio.SoundboardManager
 import com.lhtstudio.kigtts.app.audio.SoundboardPlaybackState
 import com.lhtstudio.kigtts.app.audio.SpeechEnhancementMode
 import com.lhtstudio.kigtts.app.audio.SpeakerEnrollResult
+import com.lhtstudio.kigtts.app.audio.SpeakerVerificationTolerance
 import com.lhtstudio.kigtts.app.audio.VadMode
 import com.lhtstudio.kigtts.app.data.ModelRepository
+import com.lhtstudio.kigtts.app.data.AsrRecognitionLanguage
 import com.lhtstudio.kigtts.app.data.RecognitionResourceProgress
 import com.lhtstudio.kigtts.app.data.RecognitionResourceStatus
 import com.lhtstudio.kigtts.app.data.KokoroVoiceStatus
@@ -255,6 +257,7 @@ import com.lhtstudio.kigtts.app.data.KOKORO_VOICE_NAME
 import com.lhtstudio.kigtts.app.data.SYSTEM_TTS_VOICE_NAME
 import com.lhtstudio.kigtts.app.data.VoicePackInfo
 import com.lhtstudio.kigtts.app.data.UserPrefs
+import com.lhtstudio.kigtts.app.data.SpeechButtonActionMode
 import com.lhtstudio.kigtts.app.theme.ThemeColorResolver
 import com.lhtstudio.kigtts.app.data.VoicePackMeta
 import com.lhtstudio.kigtts.app.data.defaultSoundboardGroups
@@ -428,6 +431,9 @@ internal fun SettingsNavHost(
                 onOpenFonts = {
                     navController.navigate(SettingsRoutes.Fonts) { launchSingleTop = true }
                 },
+                onOpenListeningSettings = {
+                    navController.navigate(SettingsRoutes.Listening) { launchSingleTop = true }
+                },
                 onOpenLicenses = {
                     navController.navigate(SettingsRoutes.Licenses) { launchSingleTop = true }
                 },
@@ -456,6 +462,9 @@ internal fun SettingsNavHost(
                 useBuiltinFileManager = state.useBuiltinFileManager
             )
         }
+        composable(SettingsRoutes.Listening) {
+            ListeningAudioSettingsScreen(viewModel = viewModel, state = state)
+        }
         composable(SettingsRoutes.Licenses) {
             LegalDocumentScreen(
                 assetPath = "legal/open_source_licenses.md"
@@ -480,6 +489,7 @@ fun SettingsScreen(
     viewModel: MainViewModel,
     state: UiState,
     onOpenFonts: () -> Unit,
+    onOpenListeningSettings: () -> Unit,
     onOpenLicenses: () -> Unit,
     onOpenPrivacy: () -> Unit,
     onOpenAgreement: () -> Unit,
@@ -537,6 +547,9 @@ fun SettingsScreen(
         UserPrefs.AUDIO_FOCUS_AVOID_PAUSE to "暂停播放",
         UserPrefs.AUDIO_FOCUS_AVOID_NONE to "无"
     )
+    val speechButtonActionModeOptions = SpeechButtonActionMode.entries.map { mode ->
+        mode to SpeechButtonActionMode.label(mode)
+    }
     var drawerModeExpanded by remember { mutableStateOf(false) }
     var themeModeExpanded by remember { mutableStateOf(false) }
     var overlayThemeModeExpanded by remember { mutableStateOf(false) }
@@ -544,6 +557,8 @@ fun SettingsScreen(
     var themeColorPickerVisible by remember { mutableStateOf(false) }
     var themeToneCorrectionSuggestionVisible by remember { mutableStateOf(false) }
     var restoreQuickTextPresetDialogVisible by remember { mutableStateOf(false) }
+    var clearedPlaceholderDialogVisible by remember { mutableStateOf(false) }
+    var clearedPlaceholderDraft by rememberSaveable { mutableStateOf("") }
     var restoreQuickTextSelectedGroupIds by rememberSaveable {
         mutableStateOf(defaultSelectedQuickSubtitlePresetGroupIds())
     }
@@ -553,6 +568,10 @@ fun SettingsScreen(
     var denoiserModeExpanded by remember { mutableStateOf(false) }
     var audioFocusAvoidanceExpanded by remember { mutableStateOf(false) }
     var speechEnhancementExpanded by remember { mutableStateOf(false) }
+    var speechButtonActionModeExpanded by remember { mutableStateOf(false) }
+    val performSpeechButtonModeHaptic = rememberKigttsKeyHaptic()
+    var recognitionLanguageExpanded by remember { mutableStateOf(false) }
+    val performRecognitionLanguageHaptic = rememberKigttsKeyHaptic()
     var vadModeExpanded by remember { mutableStateOf(false) }
     var showSpeakerEnrollDialog by remember { mutableStateOf(false) }
     var speakerEnrollStep by remember { mutableIntStateOf(0) } // 0准备 1句1 2句2 3句3 4结果
@@ -573,7 +592,7 @@ fun SettingsScreen(
             "水面浮着天光，闭上眼，听见自己的呼吸。"
         )
     }
-    val speakerEnrollSamples = remember { mutableStateListOf<FloatArray?>() }
+    val speakerEnrollSamples = remember { mutableStateListOf<SpeakerEnrollResult?>() }
     val drawingDirPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
         if (uri != null) {
             viewModel.setDrawingSavePathFromTreeUri(uri)
@@ -638,7 +657,7 @@ fun SettingsScreen(
                 while (speakerEnrollSamples.size <= index) {
                     speakerEnrollSamples.add(null)
                 }
-                speakerEnrollSamples[index] = result.profile
+                speakerEnrollSamples[index] = result
                 if (step < 3) {
                     speakerEnrollStep = step + 1
                     speakerEnrollProgress = 0f
@@ -646,14 +665,14 @@ fun SettingsScreen(
                     speakerEnrollMessage = "第 $step 句录制成功"
                 } else {
                     val collectedSamples = speakerEnrollSamples.filterNotNull()
-                    if (viewModel.applySpeakerProfiles(collectedSamples)) {
+                    if (viewModel.applySpeakerEnrollResults(collectedSamples)) {
                         if (speakerEnrollOpenedByToggle) {
                             viewModel.setSpeakerVerifyEnabled(true)
                         }
                         speakerEnrollSuccess = true
                         speakerEnrollStep = 4
                         speakerEnrollProgress = 1f
-                        speakerEnrollMessage = "本人语音样本采集完成"
+                        speakerEnrollMessage = "声纹录制完成"
                     } else {
                         speakerEnrollSuccess = false
                         speakerEnrollStep = 4
@@ -690,8 +709,6 @@ fun SettingsScreen(
     }
     val selectedCategoryName = viewModel.settingsSelectedCategoryName
     val selectedCategory = remember(selectedCategoryName) { SettingsCategory.valueOf(selectedCategoryName) }
-    val numberReplaceOptions = remember { listOf("不替换", "数字替换为中文字符", "数字替换为中文表达") }
-    var numberReplaceExpanded by remember { mutableStateOf(false) }
     val isSystemTtsSelected = isSystemTtsVoiceDir(state.voiceDir)
     val isKokoroTtsSelected = isKokoroVoiceDir(state.voiceDir)
 
@@ -742,6 +759,53 @@ fun SettingsScreen(
                     contentColor = dialogActionColor
                 ) {
                     Text("保持原色")
+                }
+            }
+        )
+    }
+
+    if (clearedPlaceholderDialogVisible) {
+        val normalizedDraft = UserPrefs.normalizeQuickSubtitleClearedPlaceholder(
+            clearedPlaceholderDraft
+        )
+        KigttsAlertDialog(
+            onDismissRequest = { clearedPlaceholderDialogVisible = false },
+            title = { Text("清空状态占位文本") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = clearedPlaceholderDraft,
+                        onValueChange = { value ->
+                            clearedPlaceholderDraft = value.take(
+                                UserPrefs.QUICK_SUBTITLE_CLEARED_PLACEHOLDER_MAX_LENGTH
+                            )
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("占位文本") },
+                        minLines = 2,
+                        maxLines = 4
+                    )
+                    Text(
+                        text = "清空字幕以及未恢复上次内容的启动状态会显示这段文字。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            },
+            confirmButton = {
+                Md2TextButton(
+                    onClick = {
+                        viewModel.setQuickSubtitleClearedPlaceholderText(normalizedDraft)
+                        clearedPlaceholderDialogVisible = false
+                    },
+                    enabled = clearedPlaceholderDraft.isNotBlank()
+                ) {
+                    Text("保存")
+                }
+            },
+            dismissButton = {
+                Md2TextButton(onClick = { clearedPlaceholderDialogVisible = false }) {
+                    Text("取消")
                 }
             }
         )
@@ -1086,7 +1150,7 @@ fun SettingsScreen(
                         )
                     } else {
                         Text(
-                            text = "安装后可使用语音识别、智能断句和语音降噪增强。",
+                            text = "一个资源包包含语音识别、V6 内建标点、智能断句、语音降噪和说话人分离所需的组件。",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -1137,18 +1201,94 @@ fun SettingsScreen(
 
             Md2StaggeredFloatIn(index = 1) {
                 Md2SettingsCard(title = "识别行为") {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(4.dp))
+                            .clickable(onClick = rememberKigttsHapticClick(onOpenListeningSettings))
+                            .padding(horizontal = 2.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        MsIcon(
+                            name = "hearing",
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.accentText
+                        )
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("聆听模式")
+                            Text(
+                                text = "设置环境字幕的语言、收音设备和音频处理。",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        MsIcon(
+                            name = "chevron_right",
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                     Md2SettingSwitchRow(
                         title = "自动显示识别结果",
                         checked = state.asrSendToQuickSubtitle,
                         onCheckedChange = { viewModel.setAsrSendToQuickSubtitle(it) },
                         supportingText = "识别完成后，自动更新便捷字幕的大字幕内容。"
                     )
-                    Md2SettingSwitchRow(
-                        title = "按住说话",
-                        checked = state.pushToTalkMode,
-                        onCheckedChange = { viewModel.setPushToTalkMode(it) },
-                        supportingText = "按住麦克风按钮开始收音，松开后完成识别。"
-                    )
+                    Md2SettingDropdownRow(
+                        title = "语音识别按钮操作模式",
+                        value = SpeechButtonActionMode.label(state.speechButtonActionMode),
+                        expanded = speechButtonActionModeExpanded,
+                        onExpandedChange = { speechButtonActionModeExpanded = it },
+                        supportingText = SpeechButtonActionMode.description(state.speechButtonActionMode)
+                    ) {
+                        speechButtonActionModeOptions.forEach { (mode, label) ->
+                            M2DropdownMenuItem(
+                                onClick = {
+                                    performSpeechButtonModeHaptic()
+                                    speechButtonActionModeExpanded = false
+                                    viewModel.setSpeechButtonActionMode(mode)
+                                }
+                            ) {
+                                Text(
+                                    text = label,
+                                    fontWeight = if (mode == state.speechButtonActionMode) {
+                                        FontWeight.SemiBold
+                                    } else {
+                                        null
+                                    }
+                                )
+                            }
+                        }
+                    }
+                    Md2SettingDropdownRow(
+                        title = "识别语言",
+                        value = AsrRecognitionLanguage.label(state.asrRecognitionLanguage),
+                        expanded = recognitionLanguageExpanded,
+                        onExpandedChange = { recognitionLanguageExpanded = it },
+                        supportingText = AsrRecognitionLanguage.description(
+                            state.asrRecognitionLanguage
+                        )
+                    ) {
+                        AsrRecognitionLanguage.entries.forEach { language ->
+                            M2DropdownMenuItem(
+                                onClick = {
+                                    performRecognitionLanguageHaptic()
+                                    recognitionLanguageExpanded = false
+                                    viewModel.setAsrRecognitionLanguage(language)
+                                }
+                            ) {
+                                Text(
+                                    text = AsrRecognitionLanguage.label(language),
+                                    fontWeight = if (language == state.asrRecognitionLanguage) {
+                                        FontWeight.SemiBold
+                                    } else {
+                                        null
+                                    }
+                                )
+                            }
+                        }
+                    }
                     Md2SettingSwitchRow(
                         title = "快捷文本联动音效板",
                         checked = state.allowQuickTextTriggerSoundboard,
@@ -1160,13 +1300,6 @@ fun SettingsScreen(
                         checked = state.quickSubtitleInterruptQueue,
                         onCheckedChange = { viewModel.setQuickSubtitleInterruptQueue(it) },
                         supportingText = "点击新条目时停止当前朗读并立即播放。"
-                    )
-                    Md2SettingSwitchRow(
-                        title = "按住说话确认模式",
-                        checked = state.pushToTalkConfirmInputMode,
-                        enabled = state.pushToTalkMode,
-                        onCheckedChange = { viewModel.setPushToTalkConfirmInputMode(it) },
-                        supportingText = "松手前预览识别文字，也可转入输入框或取消。"
                     )
                     Md2SettingSwitchRow(
                         title = "播放时暂停识别",
@@ -1287,29 +1420,23 @@ fun SettingsScreen(
                             alpha = if (sileroVadControlsEnabled) 0.74f else 0.38f
                         )
                     )
-                    Md2SettingDropdownRow(
-                        title = "数字读法",
-                        value = numberReplaceOptions.getOrElse(state.numberReplaceMode) { numberReplaceOptions[0] },
-                        expanded = numberReplaceExpanded,
-                        onExpandedChange = { numberReplaceExpanded = it },
-                        supportingText = "选择数字的朗读方式，例如“二零零零”或“两千”。"
-                    ) {
-                        numberReplaceOptions.forEachIndexed { idx, label ->
-                            M2DropdownMenuItem(
-                                onClick = {
-                                    numberReplaceExpanded = false
-                                    viewModel.setNumberReplaceMode(idx)
-                                }
-                            ) { Text(label) }
-                        }
-                    }
                 }
             }
 
             Md2StaggeredFloatIn(index = 2) {
-                Md2SettingsCard(title = "指定说话人") {
+                Md2SettingsCard(title = "本人声纹") {
+                    val savedTolerance = SpeakerVerificationTolerance.fromIndex(
+                        state.speakerVerifyToleranceLevel
+                    )
+                    var toleranceSliderIndex by remember(savedTolerance.index) {
+                        mutableIntStateOf(savedTolerance.index)
+                    }
+                    val selectedTolerance = SpeakerVerificationTolerance.fromIndex(
+                        toleranceSliderIndex
+                    )
+                    val performToleranceHaptic = rememberKigttsKeyHaptic()
                     Md2SettingSwitchRow(
-                        title = "仅响应指定说话人",
+                        title = "仅响应我的声音",
                         checked = state.speakerVerifyEnabled,
                         onCheckedChange = { enabled ->
                             if (!enabled) {
@@ -1326,55 +1453,74 @@ fun SettingsScreen(
                                 speakerEnrollLevel = 0f
                                 speakerEnrollRemainingSec = 4f
                                 speakerEnrollSuccess = false
-                                speakerEnrollMessage = "请按页面引导完成本人样本采集。"
+                                speakerEnrollMessage = "请按页面引导录制自己的声纹。"
                                 speakerEnrollRetryDialog = false
                                 speakerEnrollOpenedByToggle = true
                                 showSpeakerEnrollDialog = true
                             }
                         },
-                        supportingText = "已采集样本：${state.speakerProfiles.size}/3"
+                        supportingText = when {
+                            state.speakerVerifyEnabled ->
+                                "已开启。系统会自动过滤现场中的其他说话人。"
+                            state.speakerProfileReady ->
+                                "已录制声纹。关闭时会识别周围所有人的声音。"
+                            else ->
+                                "录制声纹后，可以过滤现场中的其他说话人。"
+                        }
                     )
-                    state.speakerProfiles.forEachIndexed { idx, profile ->
-                        Card(
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(4.dp),
-                            backgroundColor = md2CardContainerColor(),
-                            elevation = 0.dp
-                        ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 10.dp, vertical = 8.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = profile.name,
-                                    modifier = Modifier.weight(1f),
-                                    style = MaterialTheme.typography.bodySmall
-                                )
-                                Md2IconButton(
-                                    icon = "delete",
-                                    contentDescription = "删除样本",
-                                    onClick = { viewModel.removeSpeakerProfileAt(idx) }
-                                )
+                    Text(
+                        "声音容错度：${selectedTolerance.label}",
+                        style = MaterialTheme.typography.bodySmall,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Slider(
+                        value = toleranceSliderIndex.toFloat(),
+                        onValueChange = { value ->
+                            val nextIndex = value.roundToInt().coerceIn(
+                                0,
+                                SpeakerVerificationTolerance.entries.lastIndex
+                            )
+                            if (nextIndex != toleranceSliderIndex) {
+                                toleranceSliderIndex = nextIndex
+                                performToleranceHaptic()
                             }
+                        },
+                        onValueChangeFinished = {
+                            viewModel.setSpeakerVerifyTolerance(toleranceSliderIndex)
+                        },
+                        valueRange = 0f..SpeakerVerificationTolerance.entries.lastIndex.toFloat(),
+                        steps = SpeakerVerificationTolerance.entries.size - 2,
+                        colors = SliderDefaults.colors(
+                            activeTickColor = Color.Transparent,
+                            inactiveTickColor = Color.Transparent
+                        )
+                    )
+                    Row(modifier = Modifier.fillMaxWidth()) {
+                        SpeakerVerificationTolerance.entries.forEach { tolerance ->
+                            Text(
+                                text = tolerance.label,
+                                modifier = Modifier.weight(1f),
+                                style = MaterialTheme.typography.caption,
+                                color = if (tolerance == selectedTolerance) {
+                                    MaterialTheme.colors.primary
+                                } else {
+                                    LocalContentColor.current.copy(alpha = 0.62f)
+                                },
+                                fontWeight = if (tolerance == selectedTolerance) {
+                                    FontWeight.Bold
+                                } else {
+                                    FontWeight.Normal
+                                },
+                                textAlign = TextAlign.Center,
+                                maxLines = 1
+                            )
                         }
                     }
                     Text(
-                        "识别严格程度：${String.format("%.2f", state.speakerVerifyThreshold)}",
-                        style = MaterialTheme.typography.bodySmall
+                        selectedTolerance.description,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = LocalContentColor.current.copy(alpha = 0.74f)
                     )
-                    Slider(
-                        value = state.speakerVerifyThreshold,
-                        onValueChange = { viewModel.setSpeakerVerifyThreshold(it) },
-                        valueRange = 0.05f..0.95f
-                    )
-                    if (state.speakerLastSimilarity >= 0f) {
-                        Text(
-                            "最近一次匹配程度：${String.format("%.2f", state.speakerLastSimilarity)}",
-                            style = MaterialTheme.typography.bodySmall
-                        )
-                    }
                     Row(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalAlignment = Alignment.CenterVertically
@@ -1389,15 +1535,15 @@ fun SettingsScreen(
                             speakerEnrollLevel = 0f
                             speakerEnrollRemainingSec = 4f
                             speakerEnrollSuccess = false
-                            speakerEnrollMessage = "请按页面引导完成本人样本采集。"
+                            speakerEnrollMessage = "请按页面引导录制自己的声纹。"
                             speakerEnrollRetryDialog = false
                             speakerEnrollOpenedByToggle = false
                             showSpeakerEnrollDialog = true
                         }) {
-                            Text(if (state.speakerProfiles.isEmpty()) "采集本人样本" else "重新采集样本")
+                            Text(if (state.speakerProfiles.isEmpty()) "录制声纹" else "重新录制")
                         }
                         Md2TextButton(onClick = { viewModel.clearSpeakerProfile() }) {
-                            Text("清空样本")
+                            Text("删除声纹")
                         }
                     }
                 }
@@ -1974,6 +2120,51 @@ fun SettingsScreen(
             Md2StaggeredFloatIn(index = 3) {
                 Md2SettingsCard(title = "便捷字幕显示") {
                     QuickSubtitleGuideSettingsEntry(onClick = onOpenQuickSubtitleGuide)
+                    val openClearedPlaceholderEditor = rememberKigttsHapticClick {
+                        clearedPlaceholderDraft = state.quickSubtitleClearedPlaceholderText
+                        clearedPlaceholderDialogVisible = true
+                    }
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(4.dp))
+                            .clickable(onClick = openClearedPlaceholderEditor)
+                            .padding(horizontal = 2.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        MsIcon(
+                            name = "edit_note",
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.accentText
+                        )
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "清空状态占位文本",
+                                style = MaterialTheme.typography.bodyLarge
+                            )
+                            Text(
+                                text = state.quickSubtitleClearedPlaceholderText,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                        MsIcon(
+                            name = "chevron_right",
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Md2SettingSwitchRow(
+                        title = "启动时保持上次触发的文本",
+                        checked = state.quickSubtitleRestoreLastTextOnLaunch,
+                        onCheckedChange = {
+                            viewModel.setQuickSubtitleRestoreLastTextOnLaunch(it)
+                        },
+                        supportingText = "开启后恢复上次显示的字幕；关闭后显示清空状态占位文本。"
+                    )
                     val openRestorePresets = rememberKigttsHapticClick {
                         restoreQuickTextSelectedGroupIds = defaultSelectedQuickSubtitlePresetGroupIds()
                         restoreQuickTextExpandedGroupIds = emptyList()
@@ -2254,9 +2445,9 @@ fun SettingsScreen(
             },
             title = {
                 val title = when (speakerEnrollStep) {
-                    0 -> "说话人注册（准备）"
-                    1, 2, 3 -> "说话人注册（第 ${speakerEnrollStep} 句）"
-                    else -> "说话人注册（结果）"
+                    0 -> "录制声纹"
+                    1, 2, 3 -> "录制声纹（第 ${speakerEnrollStep} 句）"
+                    else -> "录制声纹"
                 }
                 Text(title)
             },
@@ -2264,8 +2455,12 @@ fun SettingsScreen(
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     when (speakerEnrollStep) {
                         0 -> {
-                            Text("请按顺序朗读三句，每句约 4 秒。")
-                            Text("环境尽量安静，手机靠近说话人。", style = MaterialTheme.typography.bodySmall)
+                            Text("请按顺序自然朗读三句话，每句约 4 秒。")
+                            Text("请按平时使用时的音量说话。", style = MaterialTheme.typography.bodySmall)
+                            Text(
+                                "如果经常戴头壳使用，建议其中一句在头壳内以实际音量朗读。",
+                                style = MaterialTheme.typography.bodySmall
+                            )
                             Text("第一页仅说明，点击“下一步”开始。", style = MaterialTheme.typography.bodySmall)
                         }
                         1, 2, 3 -> {
@@ -2294,7 +2489,11 @@ fun SettingsScreen(
                                 )
                             } else if (speakerEnrollReading) {
                                 Text(
-                                    "录制中，剩余 ${String.format(Locale.US, "%.1f", speakerEnrollRemainingSec)}s",
+                                    if (speakerEnrollProgress >= 0.999f) {
+                                        "正在处理声纹…"
+                                    } else {
+                                        "录制中，剩余 ${String.format(Locale.US, "%.1f", speakerEnrollRemainingSec)}s"
+                                    },
                                     style = MaterialTheme.typography.bodySmall
                                 )
                                 LinearProgressIndicator(
@@ -2314,10 +2513,10 @@ fun SettingsScreen(
                             }
                         }
                         else -> {
-                            Text(if (speakerEnrollSuccess) "注册完成" else "注册失败")
+                            Text(if (speakerEnrollSuccess) "声纹录制完成" else "声纹录制失败")
                             Text(speakerEnrollMessage, style = MaterialTheme.typography.bodySmall)
                             Text(
-                                "你可以直接完成，或重新打开注册流程重录。",
+                                "录制完成后即可开启“仅响应我的声音”。",
                                 style = MaterialTheme.typography.bodySmall
                             )
                         }
@@ -2373,10 +2572,10 @@ fun SettingsScreen(
                             speakerEnrollLevel = 0f
                             speakerEnrollRemainingSec = 4f
                             speakerEnrollSuccess = false
-                            speakerEnrollMessage = "请按页面引导完成本人样本采集。"
+                            speakerEnrollMessage = "请按页面引导录制自己的声纹。"
                             speakerEnrollRetryDialog = false
                         }) {
-                            Text("重新采集")
+                            Text("重新录制")
                         }
                     }
                 }
@@ -2400,8 +2599,8 @@ fun SettingsScreen(
     if (speakerEnrollPermissionPurposeOpen) {
         PermissionPurposeDialog(
             info = recordAudioPermissionPurpose(
-                serviceFeature = "说话人验证样本采集",
-                purpose = "采集你按页面提示主动朗读的三段语音，用于在本机生成说话人验证样本。"
+                serviceFeature = "录制本人声纹",
+                purpose = "采集你按页面提示主动朗读的三段语音，用于在本机识别你的声音。"
             ),
             onConfirm = {
                 speakerEnrollPermissionPurposeOpen = false

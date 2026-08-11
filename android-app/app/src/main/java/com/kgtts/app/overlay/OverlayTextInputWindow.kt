@@ -1,5 +1,7 @@
 package com.lhtstudio.kigtts.app.overlay
 
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
 import android.graphics.Color
 import android.graphics.PixelFormat
@@ -10,7 +12,11 @@ import android.text.Editable
 import android.text.InputType
 import android.text.TextWatcher
 import android.view.Gravity
+import android.view.GestureDetector
+import android.view.MotionEvent
+import android.view.ScaleGestureDetector
 import android.view.View
+import android.view.ViewConfiguration
 import android.view.ViewTreeObserver
 import android.view.WindowManager
 import android.view.inputmethod.EditorInfo
@@ -18,9 +24,12 @@ import android.view.inputmethod.InputMethodManager
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
+import android.widget.Toast
 import androidx.core.graphics.ColorUtils
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
+import kotlin.math.abs
+import kotlin.math.roundToInt
 
 internal class OverlayTextInputWindow(
     private val context: Context,
@@ -31,8 +40,11 @@ internal class OverlayTextInputWindow(
     private val windowTokenProvider: () -> IBinder? = { null },
     private val createPreviewCard: () -> OverlaySubtitlePreviewCard,
     private val updatePreviewCard: (OverlaySubtitlePreviewCard, String) -> Unit,
+    private val onPreviewFontScale: (Float) -> Unit,
+    private val onPreviewFontScaleFinished: () -> Unit,
     private val onDraftChanged: (String) -> Unit,
     private val onPlayOnSendChanged: (Boolean) -> Unit,
+    private val onVisibilityChanged: (Boolean) -> Unit = {},
     private val onSend: (String) -> Unit
 ) {
     private var root: FrameLayout? = null
@@ -58,6 +70,7 @@ internal class OverlayTextInputWindow(
         val nextRoot = buildRoot(style)
         root = nextRoot
         windowManager.addView(nextRoot, createLayoutParams())
+        onVisibilityChanged(true)
         playEnterAnimation()
         suppressTextCallback = true
         input?.setText(initialText)
@@ -136,6 +149,7 @@ internal class OverlayTextInputWindow(
         dismissing = false
         lastPreviewText = ""
         lastPreviewCursorIndex = 0
+        onVisibilityChanged(false)
     }
 
     fun updateDraft(text: String) {
@@ -173,6 +187,7 @@ internal class OverlayTextInputWindow(
         }
         val nextPreviewCard = createPreviewCard()
         previewCard = nextPreviewCard
+        installPreviewCardInteractions(nextPreviewCard, style)
         previewRegion.addView(
             nextPreviewCard.root,
             FrameLayout.LayoutParams(
@@ -416,6 +431,202 @@ internal class OverlayTextInputWindow(
         field.setSelection((current + delta).coerceIn(0, field.text.length))
     }
 
+    private fun installPreviewCardInteractions(
+        card: OverlaySubtitlePreviewCard,
+        style: OverlayInteractionStyle
+    ) {
+        val cardContainer = card.cardView as? FrameLayout ?: return
+        card.viewportView.setPadding(
+            card.viewportView.paddingLeft,
+            card.viewportView.paddingTop,
+            card.viewportView.paddingRight,
+            card.viewportView.paddingBottom + dp(52)
+        )
+
+        var dragAxis = 0
+        var horizontalAccumulator = 0f
+        var pinchActive = false
+        val touchSlop = ViewConfiguration.get(context).scaledTouchSlop.toFloat()
+        val cursorStepPx = dp(18).toFloat()
+        lateinit var interactionLayer: View
+        val gestureDetector = GestureDetector(
+            context,
+            object : GestureDetector.SimpleOnGestureListener() {
+                override fun onDown(event: MotionEvent): Boolean {
+                    dragAxis = 0
+                    horizontalAccumulator = 0f
+                    return true
+                }
+
+                override fun onSingleTapConfirmed(event: MotionEvent): Boolean {
+                    interactionLayer.performClick()
+                    return true
+                }
+
+                override fun onLongPress(event: MotionEvent) {
+                    interactionLayer.performLongClick()
+                }
+
+                override fun onScroll(
+                    first: MotionEvent?,
+                    current: MotionEvent,
+                    distanceX: Float,
+                    distanceY: Float
+                ): Boolean {
+                    if (dragAxis == 0 && first != null) {
+                        val totalX = current.x - first.x
+                        val totalY = current.y - first.y
+                        if (kotlin.math.hypot(totalX.toDouble(), totalY.toDouble()) < touchSlop) {
+                            return true
+                        }
+                        dragAxis = if (abs(totalX) >= abs(totalY)) 1 else 2
+                    }
+                    if (dragAxis == 1) {
+                        horizontalAccumulator -= distanceX
+                        val delta = (horizontalAccumulator / cursorStepPx).toInt()
+                        if (delta != 0) {
+                            moveCursor(delta)
+                            horizontalAccumulator -= delta * cursorStepPx
+                        }
+                    } else if (dragAxis == 2) {
+                        card.viewportView.scrollBy(0, distanceY.roundToInt())
+                    }
+                    return true
+                }
+            }
+        )
+        val scaleDetector =
+            ScaleGestureDetector(
+                context,
+                object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
+                    override fun onScale(detector: ScaleGestureDetector): Boolean {
+                        onPreviewFontScale(detector.scaleFactor)
+                        updatePreview(lastPreviewText, lastPreviewCursorIndex)
+                        return true
+                    }
+
+                    override fun onScaleEnd(detector: ScaleGestureDetector) {
+                        onPreviewFontScaleFinished()
+                    }
+                }
+            )
+        interactionLayer = View(context).apply {
+            isClickable = true
+            isLongClickable = true
+            isFocusable = true
+            contentDescription = "输入文本预览"
+            setOnClickListener { dismiss() }
+            setOnLongClickListener {
+                copyCurrentText()
+                true
+            }
+            setOnTouchListener { _, event ->
+                if (!pinchActive && event.pointerCount >= 2) {
+                    pinchActive = true
+                    val cancelEvent = MotionEvent.obtain(event).apply {
+                        action = MotionEvent.ACTION_CANCEL
+                    }
+                    gestureDetector.onTouchEvent(cancelEvent)
+                    cancelEvent.recycle()
+                }
+                scaleDetector.onTouchEvent(event)
+                if (!pinchActive) {
+                    gestureDetector.onTouchEvent(event)
+                }
+                if (event.actionMasked == MotionEvent.ACTION_UP ||
+                    event.actionMasked == MotionEvent.ACTION_CANCEL
+                ) {
+                    pinchActive = false
+                }
+                true
+            }
+        }
+        cardContainer.addView(
+            interactionLayer,
+            FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT
+            )
+        )
+
+        val leftActions = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            addView(previewActionButton("content_copy", "复制输入文本", style) {
+                copyCurrentText()
+            })
+            addView(previewActionButton("content_paste", "粘贴", style) {
+                pasteClipboardText()
+            })
+            addView(previewActionButton("delete_sweep", "清空输入", style) {
+                input?.setText("")
+            })
+        }
+        cardContainer.addView(
+            leftActions,
+            FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                dp(44),
+                Gravity.START or Gravity.BOTTOM
+            ).apply {
+                leftMargin = dp(8)
+                bottomMargin = dp(6)
+            }
+        )
+        val closeButton = previewActionButton("close", "关闭输入面板", style) { dismiss() }
+        cardContainer.addView(
+            closeButton,
+            FrameLayout.LayoutParams(dp(44), dp(44), Gravity.END or Gravity.BOTTOM).apply {
+                rightMargin = dp(8)
+                bottomMargin = dp(6)
+            }
+        )
+    }
+
+    private fun copyCurrentText() {
+        val value = input?.text?.toString().orEmpty()
+        if (value.isEmpty()) {
+            Toast.makeText(context, "当前没有可复制的文本", Toast.LENGTH_SHORT).show()
+            return
+        }
+        runCatching {
+            context.getSystemService(ClipboardManager::class.java)
+                ?.setPrimaryClip(ClipData.newPlainText("KIGTTS 输入文本", value))
+                ?: error("Clipboard service unavailable")
+        }.onSuccess {
+            Toast.makeText(context, "已复制", Toast.LENGTH_SHORT).show()
+        }.onFailure {
+            Toast.makeText(context, "复制失败，请稍后重试", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun pasteClipboardText() {
+        val field = input ?: return
+        val pastedText = runCatching {
+            val clipboard = context.getSystemService(ClipboardManager::class.java)
+                ?: error("Clipboard service unavailable")
+            val clip = clipboard.primaryClip ?: return@runCatching ""
+            if (clip.itemCount <= 0) return@runCatching ""
+            clip.getItemAt(0).coerceToText(context)?.toString().orEmpty()
+        }.getOrElse {
+            Toast.makeText(
+                context,
+                "系统暂未允许读取剪贴板，请在输入框中长按粘贴",
+                Toast.LENGTH_LONG
+            ).show()
+            return
+        }
+        if (pastedText.isEmpty()) {
+            Toast.makeText(context, "剪贴板中没有文本", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val editable = field.text ?: return
+        val start = minOf(field.selectionStart, field.selectionEnd).coerceAtLeast(0)
+        val end = maxOf(field.selectionStart, field.selectionEnd).coerceAtLeast(start)
+        editable.replace(start, end, pastedText)
+        field.setSelection((start + pastedText.length).coerceAtMost(editable.length))
+    }
+
     private fun updatePreview(text: String, cursorIndex: Int) {
         val card = previewCard ?: return
         val resolvedCursorIndex = cursorIndex.coerceIn(0, text.length)
@@ -458,6 +669,22 @@ internal class OverlayTextInputWindow(
         typeface = style.iconTypeface
         setTextColor(if (accent) style.onAccentColor else Color.WHITE)
         background = if (accent) roundedDrawable(style.accentColor, 24f) else null
+        setOnClickListener { onClick() }
+        layoutParams = LinearLayout.LayoutParams(dp(44), dp(44))
+    }
+
+    private fun previewActionButton(
+        icon: String,
+        description: String,
+        style: OverlayInteractionStyle,
+        onClick: () -> Unit
+    ): TextView = TextView(context).apply {
+        text = icon
+        contentDescription = description
+        gravity = Gravity.CENTER
+        textSize = 22f
+        typeface = style.iconTypeface
+        setTextColor(style.onSurfaceVariantColor)
         setOnClickListener { onClick() }
         layoutParams = LinearLayout.LayoutParams(dp(44), dp(44))
     }
