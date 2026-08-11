@@ -21,13 +21,13 @@ class QuickSubtitleFirstRunGuideTest {
         assertTrue(steps.last().messages.any { "可以从设置中再次进入使用引导" in it })
         assertTrue(QuickSubtitleGuideAnchor.TopBarMenu in steps[1].anchors)
         assertTrue(QuickSubtitleGuideAnchor.TopBarFullscreen in steps[1].anchors)
+        assertTrue(QuickSubtitleGuideAnchor.ActionListening in steps[1].anchors)
         assertTrue(QuickSubtitleGuideAnchor.SubtitleDisplay in steps[1].anchors)
         assertTrue(steps[1].messages.any { "长按大字幕" in it })
         assertEquals(
             setOf(
                 "大字幕（点按进入预览，长按复制文本）",
-                "粗体",
-                "对齐",
+                "文本样式",
                 "倒置",
                 "LED",
                 "清屏",
@@ -36,7 +36,8 @@ class QuickSubtitleFirstRunGuideTest {
                 "菜单",
                 "音频设置菜单",
                 "编辑",
-                "全屏"
+                "全屏",
+                "聆听模式"
             ),
             steps[1].callouts.map { it.label }.toSet()
         )

@@ -1202,6 +1202,7 @@ internal fun Md2VerticalSlider(
     value: Float,
     onValueChange: (Float) -> Unit,
     valueRange: ClosedFloatingPointRange<Float>,
+    onValueChangeFinished: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val min = valueRange.start
@@ -1227,7 +1228,9 @@ internal fun Md2VerticalSlider(
                     onDrag = { change, _ ->
                         onValueChange(yToValue(change.position.y))
                         change.consume()
-                    }
+                    },
+                    onDragEnd = onValueChangeFinished,
+                    onDragCancel = onValueChangeFinished
                 )
             }
     ) {

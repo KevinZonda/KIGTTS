@@ -2,6 +2,7 @@ package com.lhtstudio.kigtts.app.audio
 
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ApplicationInfo
 import android.media.*
 import android.media.audiofx.AcousticEchoCanceler
 import android.net.Uri
@@ -35,25 +36,30 @@ import com.k2fsa.sherpa.onnx.OfflineSenseVoiceModelConfig
 import com.k2fsa.sherpa.onnx.OnlineSpeechDenoiser
 import com.k2fsa.sherpa.onnx.OnlineSpeechDenoiserConfig
 import com.k2fsa.sherpa.onnx.SileroVadModelConfig
-import com.k2fsa.sherpa.onnx.SpeakerEmbeddingExtractor
-import com.k2fsa.sherpa.onnx.SpeakerEmbeddingExtractorConfig
 import com.k2fsa.sherpa.onnx.SpeakerEmbeddingManager
 import com.k2fsa.sherpa.onnx.Vad
 import com.k2fsa.sherpa.onnx.VadModelConfig
 import com.lhtstudio.kigtts.app.data.EspeakData
 import com.lhtstudio.kigtts.app.lan.LanCastAudioBridge
+import com.lhtstudio.kigtts.app.data.NeuralSpeakerFilterResourceRepository
 import com.lhtstudio.kigtts.app.data.RecognitionResourceRepository
 import com.lhtstudio.kigtts.app.data.UserPrefs
+import com.lhtstudio.kigtts.app.data.AsrRecognitionLanguage
 import com.lhtstudio.kigtts.app.data.isKokoroVoiceDir
 import com.lhtstudio.kigtts.app.data.isSystemTtsVoiceDir
 import com.lhtstudio.kigtts.app.util.AppLogger
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONObject
 import java.io.BufferedReader
 import java.io.File
@@ -67,6 +73,7 @@ import kotlin.math.sqrt
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.atomic.AtomicReference
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
@@ -90,6 +97,7 @@ object AudioRoutePreference {
 interface AsrModule {
     val sampleRate: Int
     fun transcribe(samples: FloatArray, sr: Int): String
+    fun close() {}
 }
 
 interface TtsModule {
@@ -106,13 +114,32 @@ interface TtsModule {
     ) {}
 }
 
+internal data class SimulatedAudioRunResult(
+    val inputSamples: Int,
+    val processedSamples: Int,
+    val chunkCount: Int,
+    val elapsedMs: Long
+)
+
 interface SpeechModuleFactory {
-    fun createAsr(context: Context, modelDir: File): AsrModule
+    fun createAsr(
+        context: Context,
+        modelDir: File,
+        recognitionLanguage: String
+    ): AsrModule
     fun createTts(context: Context, packDir: File): TtsModule
 }
 
 object DefaultSpeechModuleFactory : SpeechModuleFactory {
-    override fun createAsr(context: Context, modelDir: File): AsrModule = AsrEngine(context, modelDir)
+    override fun createAsr(
+        context: Context,
+        modelDir: File,
+        recognitionLanguage: String
+    ): AsrModule = AsrEngine(
+        context,
+        modelDir,
+        recognitionLanguage
+    )
     override fun createTts(context: Context, packDir: File): TtsModule {
         return when {
             isSystemTtsVoiceDir(packDir) -> SystemTtsEngine(context)
@@ -122,7 +149,11 @@ object DefaultSpeechModuleFactory : SpeechModuleFactory {
     }
 }
 
-class AsrEngine(private val context: Context, private val modelDir: File) : AsrModule {
+class AsrEngine(
+    private val context: Context,
+    private val modelDir: File,
+    recognitionLanguage: String
+) : AsrModule {
     private val recognizer: OfflineRecognizer
     override val sampleRate: Int = 16000
 
@@ -132,9 +163,8 @@ class AsrEngine(private val context: Context, private val modelDir: File) : AsrM
             .toList()
         val modelPath = chooseSenseVoiceModel(onnxFiles)
             ?: throw IllegalArgumentException("未在 ${modelDir.absolutePath} 找到 sensevoice onnx 模型")
-        val lang = listOf("language.txt", "lang.txt").map { File(modelDir, it) }.firstOrNull { it.exists() }
-            ?.readText()?.trim().orEmpty().ifEmpty { "zh" }
-        AppLogger.i("ASR init model=$modelPath lang=$lang")
+        val lang = AsrRecognitionLanguage.normalize(recognitionLanguage)
+        AppLogger.i("ASR init model=$modelPath lang=$lang builtInPunctuation=true")
 
         val feat = FeatureConfig().apply {
             sampleRate = this@AsrEngine.sampleRate
@@ -187,12 +217,17 @@ class AsrEngine(private val context: Context, private val modelDir: File) : AsrM
 
     override fun transcribe(samples: FloatArray, sr: Int): String {
         val stream = recognizer.createStream()
-        stream.acceptWaveform(samples, sr)
-        recognizer.decode(stream)
-        val result = recognizer.getResult(stream)
-        val text = result.text
-        stream.release()
-        return text
+        return try {
+            stream.acceptWaveform(samples, sr)
+            recognizer.decode(stream)
+            recognizer.getResult(stream).text
+        } finally {
+            runCatching { stream.release() }
+        }
+    }
+
+    override fun close() {
+        recognizer.release()
     }
 }
 
@@ -377,11 +412,19 @@ class PiperPhonemizer(
 }
 
 class EspeakPhonemizer(
+    context: Context,
     private val dataDir: File,
     private val voice: String,
     private val idMap: Map<String, List<Int>>,
     private val phoneMap: Map<String, List<String>>
 ) {
+    private val japaneseReadingDictionary by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
+        JapaneseReadingDictionary(context)
+    }
+    private val chinesePinyinDictionary by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
+        ChinesePinyinDictionary(context)
+    }
+
     init {
         if (!EspeakNative.ensureInit(dataDir.absolutePath)) {
             throw IllegalStateException("espeak-ng 初始化失败")
@@ -402,16 +445,93 @@ class EspeakPhonemizer(
         return out
     }
 
-    fun toIds(text: String): IntArray {
+    private fun legacyToIds(text: String): IntArray {
         val phonemes = EspeakNative.phonemize(text, voice)
         if (phonemes.isBlank()) return IntArray(0)
-        val phones = mutableListOf<String>()
-        val cps = phonemes.codePoints().toArray()
-        for (cp in cps) {
-            phones.add(String(Character.toChars(cp)))
+        val phones = phonemes.codePoints().toArray().map { codePoint ->
+            String(Character.toChars(codePoint))
         }
-        val mappedPhones = applyPhoneMap(phones)
-        return buildIds(mappedPhones, idMap)
+        return buildIds(applyPhoneMap(phones), idMap)
+    }
+
+    fun toIds(text: String): IntArray {
+        if (!PiperMultilingualCompat.supports(voice)) {
+            return legacyToIds(text)
+        }
+        val requiresForeignRouting = PiperMultilingualCompat.requiresRouting(text)
+        val containsChinese = PiperMultilingualCompat.containsHan(text)
+        if (!requiresForeignRouting && !containsChinese) return legacyToIds(text)
+
+        val phones = mutableListOf<String>()
+        val segments = if (requiresForeignRouting) {
+            PiperMultilingualCompat.segment(text)
+        } else {
+            listOf(PiperTextSegment(PiperTextLanguage.BASE, text))
+        }
+        for (segment in segments) {
+            val chinesePinyin = if (
+                segment.language == PiperTextLanguage.BASE &&
+                PiperMultilingualCompat.containsHan(segment.text)
+            ) {
+                chinesePinyinDictionary.toPinyin(segment.text)
+            } else {
+                null
+            }
+            val directText = PiperMultilingualCompat.prepareText(segment) {
+                japaneseReadingDictionary.toKana(it)
+            }
+            val directVoice = segment.language.espeakVoice ?: voice
+            val foreignPinyin = when (segment.language) {
+                PiperTextLanguage.ENGLISH -> {
+                    val ipa = EspeakNative.phonemize(directText, directVoice)
+                    ForeignChineseApproximation.englishIpaToPinyin(ipa).ifBlank { null }
+                }
+                PiperTextLanguage.JAPANESE -> {
+                    ForeignChineseApproximation.japaneseKanaToPinyin(directText).ifBlank { null }
+                }
+                PiperTextLanguage.KOREAN -> {
+                    ForeignChineseApproximation.koreanHangulToPinyin(directText).ifBlank { null }
+                }
+                else -> null
+            }
+            val approximatePinyin = chinesePinyin ?: foreignPinyin
+            var adaptationLanguage = if (approximatePinyin != null) {
+                PiperTextLanguage.BASE
+            } else {
+                segment.language
+            }
+            var phonemes = EspeakNative.phonemize(
+                approximatePinyin ?: directText,
+                if (approximatePinyin != null) CHINESE_PINYIN_VOICE else directVoice
+            )
+            if (phonemes.isBlank() && approximatePinyin != null) {
+                adaptationLanguage = segment.language
+                phonemes = EspeakNative.phonemize(directText, directVoice)
+            }
+            if (phonemes.isBlank() && segment.language != PiperTextLanguage.BASE) {
+                adaptationLanguage = segment.language
+                phonemes = EspeakNative.phonemize(directText, voice)
+            }
+            if (phonemes.isBlank()) continue
+            val rawPhones = phonemes.codePoints().toArray().map { cp ->
+                String(Character.toChars(cp))
+            }
+            val modelMappedPhones = applyPhoneMap(rawPhones)
+            val adaptedPhones = PiperMultilingualCompat.adaptPhones(
+                modelMappedPhones,
+                adaptationLanguage,
+                idMap
+            )
+            if (phones.isNotEmpty() && adaptedPhones.isNotEmpty() && phones.last() != " ") {
+                phones.add(" ")
+            }
+            phones.addAll(adaptedPhones)
+        }
+        return buildIds(phones, idMap)
+    }
+
+    private companion object {
+        const val CHINESE_PINYIN_VOICE = "cmn-Latn-pinyin"
     }
 }
 
@@ -426,6 +546,7 @@ class PiperTtsEngine(context: Context, packDir: File) : TtsModule {
                 .ifBlank { voicePack.languageCode }
                 .ifBlank { "en-us" }
             val phonemizer = EspeakPhonemizer(
+                context,
                 dataDir,
                 voiceName,
                 voicePack.phonemeIdMap,
@@ -499,9 +620,13 @@ class PiperTtsEngine(context: Context, packDir: File) : TtsModule {
             inputs[sidName] = OnnxTensor.createTensor(env, LongBuffer.wrap(longArrayOf(0)), longArrayOf(1))
         }
 
-        session.run(inputs).use { results ->
-            val raw = unwrapAudio(results[0].value)
-            return appendSentenceSilence(raw, currentSentenceSilenceSec)
+        try {
+            session.run(inputs).use { results ->
+                val raw = unwrapAudio(results[0].value)
+                return appendSentenceSilence(raw, currentSentenceSilenceSec)
+            }
+        } finally {
+            inputs.values.forEach { tensor -> runCatching { tensor.close() } }
         }
     }
 
@@ -1400,154 +1525,10 @@ class Aec3Processor(private val captureSampleRate: Int) {
 data class SpeakerEnrollResult(
     val success: Boolean,
     val message: String,
-    val profile: FloatArray? = null
+    val profile: FloatArray? = null,
+    val confirmationProfile: FloatArray? = null,
+    val neuralProfile: FloatArray? = null
 )
-
-private object SpeakerVerifier {
-    private const val MODEL_ASSET_PATH = "speaker_verify/3dspeaker_speech_campplus_sv_zh-cn_16k-common.onnx"
-    private const val MODEL_FILE_NAME = "3dspeaker_speech_campplus_sv_zh-cn_16k-common.onnx"
-    private const val MAX_ANALYZE_SAMPLES = 16000 * 8
-    private const val REGISTERED_SPEAKER_NAME = "__self__"
-
-    private val lock = Any()
-    private var extractor: SpeakerEmbeddingExtractor? = null
-    private var cachedModelFile: File? = null
-
-    fun computeEmbedding(context: Context, samples: FloatArray, sampleRate: Int): FloatArray? {
-        if (sampleRate <= 0 || samples.isEmpty()) return null
-        val usable = min(samples.size, MAX_ANALYZE_SAMPLES)
-        val clipped = if (usable == samples.size) samples else samples.copyOfRange(0, usable)
-        return synchronized(lock) {
-            val activeExtractor = ensureExtractor(context) ?: return@synchronized null
-            val stream = activeExtractor.createStream()
-            try {
-                stream.acceptWaveform(clipped, sampleRate)
-                stream.inputFinished()
-                if (!activeExtractor.isReady(stream)) {
-                    AppLogger.i("Speaker embedding stream not ready samples=${clipped.size} sr=$sampleRate")
-                    return@synchronized null
-                }
-                activeExtractor.compute(stream)
-            } catch (t: Throwable) {
-                AppLogger.e("Speaker embedding compute failed", t)
-                null
-            } finally {
-                runCatching { stream.release() }
-            }
-        }
-    }
-
-    fun cosineSimilarity(a: FloatArray, b: FloatArray): Float {
-        if (a.isEmpty() || b.isEmpty()) return 0f
-        val n = min(a.size, b.size)
-        var dot = 0.0
-        var na = 0.0
-        var nb = 0.0
-        for (i in 0 until n) {
-            val av = a[i].toDouble()
-            val bv = b[i].toDouble()
-            dot += av * bv
-            na += av * av
-            nb += bv * bv
-        }
-        if (na <= 1e-12 || nb <= 1e-12) return 0f
-        return (dot / (sqrt(na) * sqrt(nb))).toFloat().coerceIn(-1f, 1f)
-    }
-
-    fun registeredSpeakerName(): String = REGISTERED_SPEAKER_NAME
-
-    fun combineProfilesOfficialStyle(profiles: List<FloatArray>): FloatArray? {
-        if (profiles.isEmpty()) return null
-        val dim = profiles.minOfOrNull { it.size } ?: return null
-        if (dim <= 0) return null
-        val out = FloatArray(dim)
-        profiles.forEach { profile ->
-            for (i in 0 until dim) {
-                out[i] += profile[i]
-            }
-        }
-        var sumSq = 0.0
-        for (v in out) {
-            sumSq += v * v
-        }
-        val norm = sqrt(sumSq)
-        if (norm <= 1e-8) return null
-        for (i in out.indices) {
-            out[i] = (out[i] / norm).toFloat()
-        }
-        return out
-    }
-
-    fun createManager(context: Context, profiles: List<FloatArray>): SpeakerEmbeddingManager? {
-        val normalizedProfiles = profiles.mapNotNull { profile ->
-            if (profile.isEmpty()) null else profile.copyOf()
-        }
-        if (normalizedProfiles.isEmpty()) return null
-        return synchronized(lock) {
-            val activeExtractor = ensureExtractor(context) ?: return@synchronized null
-            val manager = SpeakerEmbeddingManager(activeExtractor.dim())
-            val added = runCatching {
-                manager.add(REGISTERED_SPEAKER_NAME, normalizedProfiles.toTypedArray())
-            }.onFailure {
-                AppLogger.e("Speaker manager add failed", it)
-            }.getOrDefault(false)
-            if (!added) {
-                runCatching { manager.release() }
-                return@synchronized null
-            }
-            manager
-        }
-    }
-
-    fun release() {
-        synchronized(lock) {
-            extractor?.release()
-            extractor = null
-        }
-    }
-
-    private fun ensureExtractor(context: Context): SpeakerEmbeddingExtractor? {
-        extractor?.let { return it }
-        val modelFile = ensureModelFile(context) ?: return null
-        return runCatching {
-            SpeakerEmbeddingExtractor(
-                null,
-                SpeakerEmbeddingExtractorConfig(
-                    modelFile.absolutePath,
-                    2,
-                    false,
-                    "cpu"
-                )
-            )
-        }.onFailure {
-            AppLogger.e("Speaker extractor init failed", it)
-        }.getOrNull()?.also {
-            extractor = it
-            AppLogger.i("Speaker extractor loaded model=${modelFile.absolutePath} dim=${it.dim()}")
-        }
-    }
-
-    private fun ensureModelFile(context: Context): File? {
-        cachedModelFile?.let { existing ->
-            if (existing.exists() && existing.length() > 0L) return existing
-        }
-        return runCatching {
-            val outDir = File(context.filesDir, "models/speaker_verify").apply { mkdirs() }
-            val outFile = File(outDir, MODEL_FILE_NAME)
-            if (!outFile.exists() || outFile.length() <= 0L) {
-                context.assets.open(MODEL_ASSET_PATH).use { input ->
-                    outFile.outputStream().use { output ->
-                        input.copyTo(output)
-                    }
-                }
-            }
-            cachedModelFile = outFile
-            outFile
-        }.onFailure {
-            AppLogger.e("Speaker model prepare failed", it)
-        }.getOrNull()
-    }
-}
 
 internal object SherpaSpeechEnhancer {
     private const val GTCRN_FILE_NAME = "gtcrn_simple.onnx"
@@ -1805,6 +1786,8 @@ class RealtimeController(
     private val scope: CoroutineScope,
     private val onResult: (Long, String) -> Unit,
     private val onStreamingResult: (String) -> Unit,
+    private val onListeningResult: (Long, String) -> Unit,
+    private val onListeningStreamingResult: (String) -> Unit,
     private val onProgress: (Long, Float) -> Unit,
     private val onLevel: (Float) -> Unit,
     private val onInputDevice: (String) -> Unit,
@@ -1831,7 +1814,7 @@ class RealtimeController(
     initialPreferredInputType: Int,
     initialPreferredOutputType: Int,
     initialUseAec3: Boolean,
-    initialNumberReplaceMode: Int,
+    initialAsrRecognitionLanguage: String,
     initialClassicVadEnabled: Boolean,
     initialSileroVadEnabled: Boolean,
     initialSileroVadThreshold: Float,
@@ -1839,13 +1822,19 @@ class RealtimeController(
     initialAllowSystemAecWithAec3: Boolean,
     initialSpeakerVerifyEnabled: Boolean,
     initialSpeakerVerifyThreshold: Float,
+    initialSpeakerVerifyToleranceLevel: Int,
+    initialExperimentalRecognitionSensitivity: Int,
+    initialExperimentalTargetSpeakerBackend: Int,
     initialSpeakerProfiles: List<FloatArray>,
+    initialNeuralSpeakerProfiles: List<FloatArray?>,
+    initialConfirmationSpeakerProfiles: List<FloatArray?>,
     private val shouldSuppressAutoSpeakForText: suspend (String) -> Boolean = { false },
     private val moduleFactory: SpeechModuleFactory = DefaultSpeechModuleFactory
 ) {
     private var recorder: AudioRecord? = null
     private var loopJob: Job? = null
     private var asr: AsrModule? = null
+    private var listeningAsr: AsrModule? = null
     @Volatile private var tts: TtsModule? = null
     private val player = AudioPlayer(context)
     private val sampleRate = 16000
@@ -1873,7 +1862,12 @@ class RealtimeController(
     @Volatile private var preferredInputType = initialPreferredInputType
     @Volatile private var preferredOutputType = initialPreferredOutputType
     @Volatile private var useAec3 = initialUseAec3
-    @Volatile private var numberReplaceMode = initialNumberReplaceMode.coerceIn(0, 2)
+    @Volatile private var asrRecognitionLanguage =
+        AsrRecognitionLanguage.normalize(initialAsrRecognitionLanguage)
+    @Volatile private var listeningRecognitionLanguage = AsrRecognitionLanguage.DEFAULT
+    @Volatile private var listeningRecognitionEnabled = false
+    @Volatile private var listeningCapturePaused = false
+    @Volatile private var mainRecognitionEnabled = true
     @Volatile private var classicVadEnabled = initialClassicVadEnabled
     @Volatile private var sileroVadEnabled = initialSileroVadEnabled
     @Volatile private var sileroVadThreshold = initialSileroVadThreshold.coerceIn(
@@ -1886,12 +1880,25 @@ class RealtimeController(
     )
     @Volatile private var allowSystemAecWithAec3 = initialAllowSystemAecWithAec3
     @Volatile private var speakerVerifyEnabled = initialSpeakerVerifyEnabled
-    @Volatile private var speakerVerifyThreshold = initialSpeakerVerifyThreshold.coerceIn(0.05f, 0.95f)
+    @Volatile private var speakerVerifyTolerance = if (
+        initialSpeakerVerifyToleranceLevel in SpeakerVerificationTolerance.entries.indices
+    ) {
+        SpeakerVerificationTolerance.fromIndex(initialSpeakerVerifyToleranceLevel)
+    } else {
+        SpeakerVerificationTolerance.fromThreshold(initialSpeakerVerifyThreshold)
+    }
+    @Volatile private var experimentalRecognitionSensitivity =
+        initialExperimentalRecognitionSensitivity.coerceIn(0, 100)
+    @Volatile private var experimentalTargetSpeakerBackend =
+        ExperimentalTargetSpeakerBackend.normalize(initialExperimentalTargetSpeakerBackend)
     @Volatile private var speakerProfiles: List<FloatArray> = emptyList()
+    @Volatile private var speakerConfirmationProfiles: List<FloatArray?> = emptyList()
+    @Volatile private var neuralSpeakerProfiles: List<FloatArray?> = emptyList()
     @Volatile private var speakerVerifyReferenceProfile: FloatArray? = null
+    @Volatile private var adaptivePrimarySpeakerThreshold = speakerVerifyTolerance.primaryThreshold
+    @Volatile private var adaptiveConfirmationSpeakerThreshold = speakerVerifyTolerance.confirmationThreshold
     @Volatile private var speakerLastSimilarity: Float = -1f
     private val speakerVerifyLock = Any()
-    private var speakerVerifyManager: SpeakerEmbeddingManager? = null
     private val lastRenderMs = AtomicLong(0L)
     private val lastCaptureMs = AtomicLong(0L)
     private val renderFrames = AtomicLong(0L)
@@ -1923,6 +1930,16 @@ class RealtimeController(
     @Volatile private var suppressAsrAutoSpeak: Boolean = false
     @Volatile private var lastStreamingDecodeAtMs: Long = 0L
     private val streamingDecodeBusy = AtomicBoolean(false)
+    private val streamingDecodeGeneration = AtomicLong(0L)
+    private val recognitionInputEpoch = AtomicLong(0L)
+    private val activeAsrJobsLock = Any()
+    private val activeAsrJobs = mutableSetOf<Job>()
+    private val resultCallbackJobs = CallbackJobTracker(scope)
+    private val simulatedAudioCallbacksSynchronous = AtomicBoolean(false)
+    private val asrDecodeMutex = Mutex()
+    private val listeningAsrDecodeMutex = Mutex()
+    private val pendingRecognitionFlush = AtomicReference<CompletableDeferred<Unit>?>(null)
+    private var recorderFlushOnStop: AtomicBoolean? = null
     private val segmentProcessMutex = Mutex()
     private val speakerVerifySessionLock = Any()
     private val speakerVerifyPendingSegments = mutableListOf<RecognitionSegment>()
@@ -1930,7 +1947,14 @@ class RealtimeController(
     private var speakerVerifyPendingSampleRate = sampleRate
     private var speakerVerifyLastSegmentAtMs = 0L
     private var speakerVerifySessionPassed = false
-    private var speakerVerifyLastAttemptSamples = 0
+    private val experimentalTargetSpeakerFrontend: TargetSpeakerFrontend =
+        VoiceFilterInspiredTargetSpeakerFrontend()
+    private val neuralSpeakerFilterResources = NeuralSpeakerFilterResourceRepository(context)
+    private val neuralSeparatorLock = Any()
+    private var neuralSeparator: NeuralTargetSpeakerSeparator? = null
+    private var neuralSeparatorModelPath: String? = null
+    @Volatile private var neuralSeparatorPerformanceChecked = false
+    @Volatile private var neuralSeparatorTooSlowForAuto = false
 
     private data class RecognitionSegment(
         val audio: FloatArray,
@@ -1940,8 +1964,12 @@ class RealtimeController(
 
     private data class SpeakerVerifyAttempt(
         val segment: RecognitionSegment,
-        val samples: Int,
-        val finalDecision: Boolean
+        val samples: Int
+    )
+
+    private data class GuardedSpeakerAudio(
+        val audio: FloatArray,
+        val similarity: Float
     )
 
     private sealed class SpeakerGateResult {
@@ -1950,10 +1978,19 @@ class RealtimeController(
     }
 
     private companion object {
-        private const val SPEAKER_VERIFY_MIN_WINDOW_MS = 1200
-        private const val SPEAKER_VERIFY_FINAL_WINDOW_MS = 2600
         private const val SPEAKER_VERIFY_MAX_PENDING_MS = 5000
-        private const val SPEAKER_VERIFY_SESSION_RESET_MS = 1600L
+        private const val SPEAKER_VERIFY_SESSION_RESET_MS = 3000L
+        private const val NEURAL_SPEAKER_EMBEDDING_DIM = 192
+        private const val NEURAL_PERFORMANCE_PROBE_SAMPLES = 480 * 4
+        private const val RECOGNITION_FLUSH_TIMEOUT_MS = 1500L
+        private const val SIMULATED_AUDIO_END_OF_STREAM = -1
+        private const val DEFAULT_MAX_SPEECH_DURATION_SEC = 12f
+        private const val LISTENING_MIN_SILENCE_DURATION_SEC = 0.3f
+        private const val LISTENING_MIN_SPEECH_DURATION_SEC = 0.25f
+        private const val LISTENING_MAX_SPEECH_DURATION_SEC = 5f
+        private const val LISTENING_ENDPOINT_FALLBACK_SILENCE_MS = 450
+        private const val SILERO_WINDOW_SIZE_SAMPLES = 512
+        private const val LISTENING_PREVIEW_PREROLL_WINDOWS = 10
     }
 
     private data class QueuedTts(
@@ -1970,6 +2007,9 @@ class RealtimeController(
         modelFile: File,
         sampleRate: Int,
         threshold: Float,
+        minSilenceDurationSec: Float,
+        minSpeechDurationSec: Float,
+        maxSpeechDurationSec: Float,
         numThreads: Int = 2
     ) {
         private val lock = Any()
@@ -1983,10 +2023,10 @@ class RealtimeController(
                 sileroVadModelConfig = SileroVadModelConfig().apply {
                     model = modelFile.absolutePath
                     this.threshold = threshold
-                    minSilenceDuration = 0.4f
-                    minSpeechDuration = 0.2f
-                    windowSize = 512
-                    maxSpeechDuration = 12.0f
+                    minSilenceDuration = minSilenceDurationSec
+                    minSpeechDuration = minSpeechDurationSec
+                    windowSize = SILERO_WINDOW_SIZE_SAMPLES
+                    maxSpeechDuration = maxSpeechDurationSec
                 }
             }
         )
@@ -2112,6 +2152,22 @@ class RealtimeController(
         }
     }
 
+    private suspend fun <T> withAndroidThreadPrioritySuspending(
+        priority: Int,
+        block: suspend () -> T
+    ): T {
+        val tid = android.os.Process.myTid()
+        val previous = runCatching { android.os.Process.getThreadPriority(tid) }.getOrNull()
+        runCatching { android.os.Process.setThreadPriority(tid, priority) }
+        return try {
+            block()
+        } finally {
+            if (previous != null) {
+                runCatching { android.os.Process.setThreadPriority(tid, previous) }
+            }
+        }
+    }
+
     private fun synthesizeByPunctuation(ttsEngine: TtsModule, text: String): FloatArray {
         val chunks = splitForPunctuationSynthesis(text)
         if (chunks.isEmpty()) return FloatArray(0)
@@ -2149,11 +2205,23 @@ class RealtimeController(
     }
 
     private fun notifyResult(id: Long, text: String) {
-        scope.launch { onResult(id, text) }
+        if (simulatedAudioCallbacksSynchronous.get()) {
+            onResult(id, text)
+        } else {
+            resultCallbackJobs.launch { onResult(id, text) }
+        }
     }
 
     private fun notifyStreamingResult(text: String) {
         scope.launch { onStreamingResult(text) }
+    }
+
+    private fun notifyListeningResult(id: Long, text: String) {
+        onListeningResult(id, text)
+    }
+
+    private fun notifyListeningStreamingResult(text: String) {
+        onListeningStreamingResult(text)
     }
 
     private fun notifyProgress(id: Long, progress: Float) {
@@ -2181,7 +2249,11 @@ class RealtimeController(
     }
 
     private fun notifySpeakerVerify(similarity: Float, passed: Boolean) {
-        scope.launch { onSpeakerVerify(similarity, passed) }
+        if (simulatedAudioCallbacksSynchronous.get()) {
+            onSpeakerVerify(similarity, passed)
+        } else {
+            scope.launch { onSpeakerVerify(similarity, passed) }
+        }
     }
 
     private fun notifyStatus(msg: String) {
@@ -2193,7 +2265,11 @@ class RealtimeController(
     }
 
     init {
-        rebuildSpeakerVerifyState(initialSpeakerProfiles)
+        rebuildSpeakerVerifyState(
+            initialSpeakerProfiles,
+            initialNeuralSpeakerProfiles,
+            initialConfirmationSpeakerProfiles
+        )
         player.setUseCommunicationAttributes(useCommunicationMode)
         player.setPreferredOutputType(preferredOutputType)
         player.setPlaybackGainPercent(initialPlaybackGainPercent)
@@ -2234,6 +2310,10 @@ class RealtimeController(
 
     fun setDenoiserMode(mode: Int) {
         val normalized = mode.coerceIn(AudioDenoiserMode.OFF, AudioDenoiserMode.SPEEX)
+        if (normalized != AudioDenoiserMode.OFF && SpeechEnhancementMode.isEnabled(speechEnhancementMode)) {
+            speechEnhancementMode = SpeechEnhancementMode.OFF
+            SherpaSpeechEnhancer.release()
+        }
         synchronized(denoiserLock) {
             if (denoiserMode == normalized) return
             denoiserMode = normalized
@@ -2256,6 +2336,9 @@ class RealtimeController(
 
     fun setSpeechEnhancementMode(mode: Int) {
         val normalized = SpeechEnhancementMode.clamp(mode)
+        if (SpeechEnhancementMode.isEnabled(normalized)) {
+            setDenoiserMode(AudioDenoiserMode.OFF)
+        }
         if (speechEnhancementMode == normalized) return
         speechEnhancementMode = normalized
         SherpaSpeechEnhancer.release()
@@ -2340,8 +2423,112 @@ class RealtimeController(
         }
     }
 
-    fun setNumberReplaceMode(mode: Int) {
-        numberReplaceMode = mode.coerceIn(0, 2)
+    suspend fun setAsrRecognitionLanguage(language: String) {
+        recorderMutex.withLock {
+            val normalized = AsrRecognitionLanguage.normalize(language)
+            if (asrRecognitionLanguage == normalized) return@withLock
+            asrRecognitionLanguage = normalized
+            reloadAsrLocked("recognitionLanguage=$normalized")
+        }
+    }
+
+    suspend fun setListeningRecognitionEnabled(enabled: Boolean, language: String) {
+        recorderMutex.withLock recorderLock@ {
+            val normalizedLanguage = AsrRecognitionLanguage.normalize(language)
+            val sharesMainRecognizer = normalizedLanguage == asrRecognitionLanguage
+            if (
+                listeningRecognitionEnabled == enabled &&
+                listeningRecognitionLanguage == normalizedLanguage &&
+                (
+                    !enabled ||
+                        (sharesMainRecognizer && asr != null && listeningAsr == null) ||
+                        (!sharesMainRecognizer && listeningAsr != null)
+                    )
+            ) {
+                return@recorderLock
+            }
+            val recognitionModeChanged = listeningRecognitionEnabled != enabled
+            listeningRecognitionEnabled = enabled
+            if (!enabled) listeningCapturePaused = false
+            listeningRecognitionLanguage = normalizedLanguage
+            recognitionInputEpoch.incrementAndGet()
+            lastStreamingDecodeAtMs = 0L
+            streamingDecodeGeneration.incrementAndGet()
+            streamingDecodeBusy.set(false)
+            if (recognitionModeChanged) {
+                releaseSileroVadProcessor()
+            }
+            listeningAsrDecodeMutex.withLock listenerLock@ {
+                if (!enabled || sharesMainRecognizer) {
+                    runCatching { listeningAsr?.close() }
+                    listeningAsr = null
+                    return@listenerLock
+                }
+                val asrDir = currentAsrDir ?: return@listenerLock
+                runCatching { listeningAsr?.close() }
+                listeningAsr = try {
+                    moduleFactory.createAsr(context, asrDir, listeningRecognitionLanguage)
+                } catch (error: Throwable) {
+                    listeningRecognitionEnabled = false
+                    AppLogger.e("Listening ASR load failed", error)
+                    notifyError("聆听模式识别资源加载失败")
+                    null
+                }
+            }
+        }
+    }
+
+    fun setMainRecognitionEnabled(enabled: Boolean) {
+        mainRecognitionEnabled = enabled
+    }
+
+    fun setListeningCapturePaused(paused: Boolean) {
+        if (listeningCapturePaused == paused) return
+        listeningCapturePaused = paused
+        recognitionInputEpoch.incrementAndGet()
+        lastStreamingDecodeAtMs = 0L
+        streamingDecodeGeneration.incrementAndGet()
+        AppLogger.i("Listening capture ${if (paused) "paused for FAB" else "resumed"}")
+    }
+
+    private suspend fun reloadAsrLocked(reason: String) {
+        val asrDir = currentAsrDir
+        val shouldResume = recorder != null
+        if (shouldResume) {
+            stopRecorderOnlyLocked(
+                flushPendingAudio = false,
+                cancelPendingRecognition = true
+            )
+        }
+        runCatching { asr?.close() }
+        asr = null
+        runCatching { listeningAsr?.close() }
+        listeningAsr = null
+        if (asrDir != null) {
+            try {
+                asr = moduleFactory.createAsr(
+                    context,
+                    asrDir,
+                    asrRecognitionLanguage
+                )
+                if (listeningRecognitionEnabled && !listeningUsesMainRecognizer()) {
+                    listeningAsr = moduleFactory.createAsr(
+                        context,
+                        asrDir,
+                        listeningRecognitionLanguage
+                    )
+                }
+                AppLogger.i("ASR reloaded $reason")
+            } catch (t: Throwable) {
+                AppLogger.e("ASR configuration reload failed: $reason", t)
+                notifyError("语音识别资源重新加载失败，请稍后重试")
+            }
+        }
+        if (shouldResume && asr != null) {
+            SherpaSpeechEnhancer.resetStreaming()
+            ensureAec3()
+            startRecorderLoop()
+        }
     }
 
     private fun normalizeVadFlags(
@@ -2393,6 +2580,7 @@ class RealtimeController(
         pttStreamingEnabled = enabled
         if (!enabled) {
             lastStreamingDecodeAtMs = 0L
+            streamingDecodeGeneration.incrementAndGet()
             streamingDecodeBusy.set(false)
             if (wasEnabled && sileroVadEnabled) {
                 drainSileroVadSegments(flush = true).forEach { segment ->
@@ -2427,18 +2615,45 @@ class RealtimeController(
         resetSpeakerVerifyGateState()
     }
 
-    fun setSpeakerVerifyThreshold(threshold: Float) {
-        speakerVerifyThreshold = threshold.coerceIn(0.05f, 0.95f)
+    fun resetSpeakerVerificationSession() {
         resetSpeakerVerifyGateState()
     }
 
-    fun setSpeakerProfiles(profiles: List<FloatArray>) {
-        rebuildSpeakerVerifyState(profiles)
+    fun setSpeakerVerifyThreshold(threshold: Float) {
+        setSpeakerVerifyTolerance(SpeakerVerificationTolerance.fromThreshold(threshold).index)
+    }
+
+    fun setSpeakerVerifyTolerance(level: Int) {
+        speakerVerifyTolerance = SpeakerVerificationTolerance.fromIndex(level)
+        synchronized(speakerVerifyLock) {
+            updateAdaptiveSpeakerThresholdsLocked()
+        }
+        resetSpeakerVerifyGateState()
+    }
+
+    fun setExperimentalRecognitionSensitivity(sensitivity: Int) {
+        experimentalRecognitionSensitivity = sensitivity.coerceIn(0, 100)
+        resetSpeakerVerifyGateState()
+    }
+
+    fun setExperimentalTargetSpeakerBackend(backend: Int) {
+        experimentalTargetSpeakerBackend = ExperimentalTargetSpeakerBackend.normalize(backend)
+        neuralSeparatorPerformanceChecked = false
+        neuralSeparatorTooSlowForAuto = false
+        resetSpeakerVerifyGateState()
+    }
+
+    fun setSpeakerProfiles(
+        profiles: List<FloatArray>,
+        neuralProfiles: List<FloatArray?> = emptyList(),
+        confirmationProfiles: List<FloatArray?> = emptyList()
+    ) {
+        rebuildSpeakerVerifyState(profiles, neuralProfiles, confirmationProfiles)
         resetSpeakerVerifyGateState()
     }
 
     fun clearSpeakerProfiles() {
-        rebuildSpeakerVerifyState(emptyList())
+        rebuildSpeakerVerifyState(emptyList(), emptyList())
     }
 
     fun hasSpeakerProfiles(): Boolean {
@@ -2461,41 +2676,76 @@ class RealtimeController(
         return speakerLastSimilarity
     }
 
-    private fun rebuildSpeakerVerifyState(profiles: List<FloatArray>) {
-        val normalizedProfiles = profiles.mapNotNull { profile ->
-            if (profile.isEmpty()) null else profile.copyOf()
+    fun releaseNeuralSpeakerFilterResources() {
+        synchronized(neuralSeparatorLock) {
+            runCatching { neuralSeparator?.close() }
+            neuralSeparator = null
+            neuralSeparatorModelPath = null
         }
+        SpeechBrainEcapaEmbedder.releaseModel()
+        neuralSeparatorPerformanceChecked = false
+        neuralSeparatorTooSlowForAuto = false
+    }
+
+    private fun rebuildSpeakerVerifyState(
+        profiles: List<FloatArray>,
+        neuralProfiles: List<FloatArray?>,
+        confirmationProfiles: List<FloatArray?> = emptyList()
+    ) {
+        val normalizedPairs = profiles.mapIndexedNotNull { index, profile ->
+            if (profile.isEmpty()) {
+                null
+            } else {
+                Triple(
+                    profile.copyOf(),
+                    neuralProfiles.getOrNull(index)
+                        ?.takeIf { it.size == NEURAL_SPEAKER_EMBEDDING_DIM }
+                        ?.copyOf(),
+                    confirmationProfiles.getOrNull(index)
+                        ?.takeIf { it.isNotEmpty() }
+                        ?.copyOf()
+                )
+            }
+        }
+        val normalizedProfiles = normalizedPairs.map { it.first }
+        val normalizedNeuralProfiles = normalizedPairs.map { it.second }
+        val normalizedConfirmationProfiles = normalizedPairs.map { it.third }
         synchronized(speakerVerifyLock) {
             releaseSpeakerVerifyStateLocked()
             speakerProfiles = normalizedProfiles
+            neuralSpeakerProfiles = normalizedNeuralProfiles
+            speakerConfirmationProfiles = normalizedConfirmationProfiles
             speakerVerifyReferenceProfile = SpeakerVerifier.combineProfilesOfficialStyle(normalizedProfiles)
-            speakerVerifyManager = SpeakerVerifier.createManager(context, normalizedProfiles)
+            updateAdaptiveSpeakerThresholdsLocked()
         }
+        AppLogger.i(
+            "Speaker thresholds primary=$adaptivePrimarySpeakerThreshold " +
+                "confirmation=$adaptiveConfirmationSpeakerThreshold " +
+                "confirmationProfiles=${normalizedConfirmationProfiles.count { it != null }}"
+        )
         speakerLastSimilarity = -1f
     }
 
-    private fun releaseSpeakerVerifyStateLocked() {
-        speakerVerifyManager?.release()
-        speakerVerifyManager = null
-        speakerVerifyReferenceProfile = null
+    private fun updateAdaptiveSpeakerThresholdsLocked() {
+        val tolerance = speakerVerifyTolerance
+        adaptivePrimarySpeakerThreshold = AdaptiveSpeakerVerificationPolicy.calibratedThreshold(
+            profiles = speakerProfiles,
+            defaultThreshold = tolerance.primaryThreshold,
+            minimum = 0.38f,
+            maximum = 0.68f,
+            maxRelaxation = tolerance.adaptiveRelaxation
+        )
+        adaptiveConfirmationSpeakerThreshold = AdaptiveSpeakerVerificationPolicy.calibratedThreshold(
+            profiles = speakerConfirmationProfiles.mapNotNull { it },
+            defaultThreshold = tolerance.confirmationThreshold,
+            minimum = 0.46f,
+            maximum = 0.74f,
+            maxRelaxation = tolerance.adaptiveRelaxation
+        )
     }
 
-    private fun verifySpeakerEmbedding(embedding: FloatArray): Pair<Float, Boolean>? {
-        return synchronized(speakerVerifyLock) {
-            val manager = speakerVerifyManager ?: return@synchronized null
-            val reference = speakerVerifyReferenceProfile ?: return@synchronized null
-            val similarity = SpeakerVerifier.cosineSimilarity(reference, embedding)
-            val passed = runCatching {
-                manager.verify(
-                    SpeakerVerifier.registeredSpeakerName(),
-                    embedding,
-                    speakerVerifyThreshold
-                )
-            }.onFailure {
-                AppLogger.e("Speaker verification failed", it)
-            }.getOrDefault(false)
-            similarity to passed
-        }
+    private fun releaseSpeakerVerifyStateLocked() {
+        speakerVerifyReferenceProfile = null
     }
 
     private fun resetSpeakerVerifyGateState() {
@@ -2505,15 +2755,14 @@ class RealtimeController(
             speakerVerifyPendingSampleRate = sampleRate
             speakerVerifyLastSegmentAtMs = 0L
             speakerVerifySessionPassed = false
-            speakerVerifyLastAttemptSamples = 0
         }
+        experimentalTargetSpeakerFrontend.reset()
     }
 
     private fun clearSpeakerVerifyPendingLocked() {
         speakerVerifyPendingSegments.clear()
         speakerVerifyPendingSamples = 0
         speakerVerifyPendingSampleRate = sampleRate
-        speakerVerifyLastAttemptSamples = 0
     }
 
     private fun appendSpeakerVerifyPendingLocked(segment: RecognitionSegment) {
@@ -2545,102 +2794,322 @@ class RealtimeController(
         return RecognitionSegment(out, sampleRate, rms)
     }
 
-    private fun prepareSpeakerVerifyAttempt(segment: RecognitionSegment, nowMs: Long): SpeakerVerifyAttempt? {
-        return synchronized(speakerVerifySessionLock) {
-            if (speakerVerifySessionPassed && nowMs - speakerVerifyLastSegmentAtMs <= SPEAKER_VERIFY_SESSION_RESET_MS) {
-                speakerVerifyLastSegmentAtMs = nowMs
-                return@synchronized null
-            }
+    private fun prepareExperimentalTargetAttempt(
+        segment: RecognitionSegment,
+        nowMs: Long
+    ): SpeakerVerifyAttempt? {
+        var resetFrontend = false
+        val attempt = synchronized(speakerVerifySessionLock) {
             if (nowMs - speakerVerifyLastSegmentAtMs > SPEAKER_VERIFY_SESSION_RESET_MS) {
-                speakerVerifySessionPassed = false
                 clearSpeakerVerifyPendingLocked()
+                resetFrontend = true
             }
             speakerVerifyLastSegmentAtMs = nowMs
             appendSpeakerVerifyPendingLocked(segment)
-            val minSamples = segment.sampleRate * SPEAKER_VERIFY_MIN_WINDOW_MS / 1000
-            val finalSamples = segment.sampleRate * SPEAKER_VERIFY_FINAL_WINDOW_MS / 1000
-            if (speakerVerifyPendingSamples < minSamples) {
-                // The speaker embedding model is unreliable on very short clips; fail open to avoid swallowing short words.
-                AppLogger.i("Skip speaker verify for short segment samples=${speakerVerifyPendingSamples} sr=${segment.sampleRate}")
-                clearSpeakerVerifyPendingLocked()
+            val minimumSamples = experimentalTargetSpeakerFrontend.minimumSamples(segment.sampleRate)
+            if (speakerVerifyPendingSamples < minimumSamples) {
                 return@synchronized null
             }
-            if (speakerVerifyPendingSamples <= speakerVerifyLastAttemptSamples) {
-                return@synchronized SpeakerVerifyAttempt(
-                    segment = combineRecognitionSegments(speakerVerifyPendingSegments),
-                    samples = speakerVerifyPendingSamples,
-                    finalDecision = speakerVerifyPendingSamples >= finalSamples
-                )
-            }
-            speakerVerifyLastAttemptSamples = speakerVerifyPendingSamples
             SpeakerVerifyAttempt(
                 segment = combineRecognitionSegments(speakerVerifyPendingSegments),
-                samples = speakerVerifyPendingSamples,
-                finalDecision = speakerVerifyPendingSamples >= finalSamples
+                samples = speakerVerifyPendingSamples
             )
         }
+        if (resetFrontend) experimentalTargetSpeakerFrontend.reset()
+        return attempt
     }
 
-    private fun markSpeakerVerifyPassed(): List<RecognitionSegment> {
-        return synchronized(speakerVerifySessionLock) {
-            val released = combineRecognitionSegments(speakerVerifyPendingSegments)
+    private fun markSpeakerVerifySessionPassed(nowMs: Long) {
+        synchronized(speakerVerifySessionLock) {
             clearSpeakerVerifyPendingLocked()
             speakerVerifySessionPassed = true
-            listOf(released)
+            speakerVerifyLastSegmentAtMs = nowMs
         }
     }
 
-    private fun markSpeakerVerifyFailed() {
-        synchronized(speakerVerifySessionLock) {
-            clearSpeakerVerifyPendingLocked()
-            speakerVerifySessionPassed = false
+    private fun canReuseSpeakerVerifySession(segment: RecognitionSegment, nowMs: Long): Boolean {
+        return synchronized(speakerVerifySessionLock) {
+            val durationMs = segment.audio.size * 1000 / segment.sampleRate.coerceAtLeast(1)
+            val reusable = AdaptiveSpeakerVerificationPolicy.canReuseVerifiedSession(
+                sessionPassed = speakerVerifySessionPassed,
+                lastVerifiedAtMs = speakerVerifyLastSegmentAtMs,
+                nowMs = nowMs,
+                utteranceDurationMs = durationMs
+            )
+            reusable
         }
     }
 
     private fun isSpeakerVerifySessionReadyForPreview(): Boolean {
         if (!speakerVerifyEnabled || speakerProfiles.isEmpty()) return true
-        return synchronized(speakerVerifySessionLock) {
-            speakerVerifySessionPassed
+        val sessionReady = synchronized(speakerVerifySessionLock) {
+            speakerVerifySessionPassed &&
+                SystemClock.uptimeMillis() - speakerVerifyLastSegmentAtMs <= SPEAKER_VERIFY_SESSION_RESET_MS
         }
+        if (sessionReady) return true
+        return experimentalTargetSpeakerFrontend.isTargetActive()
     }
 
     private fun resolveSpeakerGate(segment: RecognitionSegment): SpeakerGateResult {
+        if (!speakerVerifyEnabled || speakerProfiles.isEmpty()) {
+            resetSpeakerVerifyGateState()
+            return SpeakerGateResult.Ready(listOf(segment))
+        }
+        val nowMs = SystemClock.uptimeMillis()
+        if (canReuseSpeakerVerifySession(segment, nowMs)) {
+            AppLogger.i("Speaker verification reused recent owner session")
+            return SpeakerGateResult.Ready(listOf(segment))
+        }
+        return resolveExperimentalTargetSpeakerGate(segment, nowMs)
+    }
+
+    private fun resolveExperimentalTargetSpeakerGate(
+        segment: RecognitionSegment,
+        nowMs: Long
+    ): SpeakerGateResult {
         val profileSnapshot = speakerProfiles
         if (!speakerVerifyEnabled || profileSnapshot.isEmpty()) {
             resetSpeakerVerifyGateState()
             return SpeakerGateResult.Ready(listOf(segment))
         }
-        val now = SystemClock.uptimeMillis()
-        val attempt = prepareSpeakerVerifyAttempt(segment, now)
-            ?: return SpeakerGateResult.Ready(listOf(segment))
-        val segEmbedding = SpeakerVerifier.computeEmbedding(context, attempt.segment.audio, attempt.segment.sampleRate)
-        if (segEmbedding == null) {
-            if (!attempt.finalDecision) return SpeakerGateResult.Pending
-            AppLogger.i("Speaker verify dropped pending audio: embedding not ready samples=${attempt.samples}")
-            markSpeakerVerifyFailed()
-            return SpeakerGateResult.Pending
+        val attempt = prepareExperimentalTargetAttempt(segment, nowMs)
+            ?: return SpeakerGateResult.Pending
+        val confirmationAvailable = speakerConfirmationProfiles.any { it?.isNotEmpty() == true } &&
+            SpeakerVerifier.confirmationModelAvailable(context)
+        val primaryThreshold = adaptivePrimarySpeakerThreshold
+        val selection = experimentalTargetSpeakerFrontend.process(
+            audio = attempt.segment.audio,
+            sampleRate = attempt.segment.sampleRate,
+            threshold = AdaptiveSpeakerVerificationPolicy.candidateThreshold(primaryThreshold)
+        ) { window ->
+            val embedding = SpeakerVerifier.computeEmbedding(
+                context,
+                window,
+                attempt.segment.sampleRate
+            )
+                ?: return@process null
+            synchronized(speakerVerifyLock) {
+                val references = buildList {
+                    speakerVerifyReferenceProfile?.let(::add)
+                    addAll(speakerProfiles)
+                }
+                references.maxOfOrNull { reference ->
+                    SpeakerVerifier.cosineSimilarity(reference, embedding)
+                }
+            }
         }
-        val verification = verifySpeakerEmbedding(segEmbedding)
-        if (verification == null) {
-            AppLogger.i("Speaker verify unavailable, drop pending audio")
-            markSpeakerVerifyFailed()
-            return SpeakerGateResult.Pending
+        val primaryDecision = AdaptiveSpeakerVerificationPolicy.primaryDecision(
+            similarity = selection.bestSimilarity,
+            threshold = primaryThreshold,
+            confirmationAvailable = confirmationAvailable
+        )
+        val confirmationSimilarity = if (
+            selection.targetDetected && primaryDecision == PrimarySpeakerDecision.CONFIRM
+        ) {
+            SpeakerVerifier.computeConfirmationEmbedding(
+                context,
+                selection.audio ?: attempt.segment.audio,
+                attempt.segment.sampleRate
+            )?.let(::bestConfirmationSpeakerSimilarity)
+        } else {
+            null
         }
-        val similarity = verification.first
-        val passed = verification.second
-        if (passed) {
+        val identityAccepted = when (primaryDecision) {
+            PrimarySpeakerDecision.ACCEPT -> selection.targetDetected
+            PrimarySpeakerDecision.REJECT -> false
+            PrimarySpeakerDecision.CONFIRM -> selection.targetDetected &&
+                confirmationSimilarity != null &&
+                AdaptiveSpeakerVerificationPolicy.confirmationAccepted(
+                    primarySimilarity = selection.bestSimilarity,
+                    primaryThreshold = primaryThreshold,
+                    confirmationSimilarity = confirmationSimilarity,
+                    confirmationThreshold = adaptiveConfirmationSpeakerThreshold
+                )
+        }
+        if (selection.bestSimilarity >= 0f) {
+            speakerLastSimilarity = selection.bestSimilarity
+            notifySpeakerVerify(selection.bestSimilarity, identityAccepted)
+        }
+        AppLogger.i(
+            "Adaptive speaker decision=$primaryDecision primary=${selection.bestSimilarity} " +
+                "primaryThreshold=$primaryThreshold confirmation=$confirmationSimilarity " +
+                "confirmationThreshold=$adaptiveConfirmationSpeakerThreshold accepted=$identityAccepted"
+        )
+        val guardedSelection = selection.audio
+            ?.takeIf { identityAccepted && it.isNotEmpty() }
+            ?.let { lightweightAudio ->
+            applyNeuralTargetSpeakerSeparation(
+                originalAudio = attempt.segment.audio,
+                sampleRate = attempt.segment.sampleRate,
+                lightweightAudio = lightweightAudio,
+                baselineSimilarity = selection.bestSimilarity
+            )
+        }
+        val filteredAudio = guardedSelection?.audio
+        guardedSelection?.similarity?.takeIf { it >= 0f }?.let { similarity ->
             speakerLastSimilarity = similarity
             notifySpeakerVerify(similarity, true)
-            return SpeakerGateResult.Ready(markSpeakerVerifyPassed())
         }
-        if (!attempt.finalDecision) {
-            AppLogger.i("Speaker verify waiting for more audio similarity=$similarity samples=${attempt.samples}")
-            return SpeakerGateResult.Pending
+        if (filteredAudio != null && filteredAudio.isNotEmpty()) {
+            markSpeakerVerifySessionPassed(nowMs)
+            AppLogger.i(
+                "Experimental target speaker accepted similarity=${selection.bestSimilarity} " +
+                    "windows=${selection.evaluatedWindows}"
+            )
+            return SpeakerGateResult.Ready(
+                listOf(
+                    RecognitionSegment(
+                        audio = filteredAudio,
+                        sampleRate = attempt.segment.sampleRate,
+                        rms = rmsEnergy(filteredAudio)
+                    )
+                )
+            )
         }
-        speakerLastSimilarity = similarity
-        notifySpeakerVerify(similarity, false)
-        markSpeakerVerifyFailed()
+        // RecognitionSegment is emitted after VAD/endpointing has completed the
+        // utterance. A failed decision must not wait for an unrelated sentence.
+        synchronized(speakerVerifySessionLock) {
+            clearSpeakerVerifyPendingLocked()
+        }
+        experimentalTargetSpeakerFrontend.reset()
+        AppLogger.i(
+            "Experimental target speaker dropped audio similarity=${selection.bestSimilarity} " +
+                "windows=${selection.evaluatedWindows}"
+        )
         return SpeakerGateResult.Pending
+    }
+
+    private fun applyNeuralTargetSpeakerSeparation(
+        originalAudio: FloatArray,
+        sampleRate: Int,
+        lightweightAudio: FloatArray,
+        baselineSimilarity: Float
+    ): GuardedSpeakerAudio {
+        val backend = experimentalTargetSpeakerBackend
+        if (backend == ExperimentalTargetSpeakerBackend.LIGHTWEIGHT) {
+            return GuardedSpeakerAudio(lightweightAudio, baselineSimilarity)
+        }
+        if (backend == ExperimentalTargetSpeakerBackend.AUTO && neuralSeparatorTooSlowForAuto) {
+            return GuardedSpeakerAudio(lightweightAudio, baselineSimilarity)
+        }
+        if (!NeuralSeparationActivationPolicy.shouldRun(
+                mode = backend,
+                baselineSimilarity = baselineSimilarity,
+                verificationThreshold = adaptivePrimarySpeakerThreshold
+            )
+        ) {
+            return GuardedSpeakerAudio(lightweightAudio, baselineSimilarity)
+        }
+        val condition = combinedNeuralSpeakerProfile()
+            ?: return GuardedSpeakerAudio(lightweightAudio, baselineSimilarity)
+        val resources = neuralSpeakerFilterResources.status()
+        if (!ExperimentalTargetSpeakerBackend.shouldUseNeural(backend, resources.installed, true)) {
+            return GuardedSpeakerAudio(lightweightAudio, baselineSimilarity)
+        }
+        val modelFile = resources.tseModel
+            ?: return GuardedSpeakerAudio(lightweightAudio, baselineSimilarity)
+        val separator = ensureNeuralSeparator(modelFile)
+            ?: return GuardedSpeakerAudio(lightweightAudio, baselineSimilarity)
+        if (backend == ExperimentalTargetSpeakerBackend.AUTO && !neuralSeparatorPerformanceChecked) {
+            val probe = separator.separate(
+                FloatArray(NEURAL_PERFORMANCE_PROBE_SAMPLES),
+                NeuralTargetSpeakerSeparator.MODEL_SAMPLE_RATE,
+                condition
+            )
+            neuralSeparatorPerformanceChecked = true
+            val probeRtf = probe?.realtimeFactor ?: Float.POSITIVE_INFINITY
+            if (NeuralSeparationPerformancePolicy.shouldDisableAuto(probeRtf)) {
+                neuralSeparatorTooSlowForAuto = true
+                AppLogger.i(
+                    "Neural target speaker separator skipped for auto mode after probe: rtf=$probeRtf"
+                )
+                return GuardedSpeakerAudio(lightweightAudio, baselineSimilarity)
+            }
+        }
+        val result = separator.separate(originalAudio, sampleRate, condition)
+            ?: return GuardedSpeakerAudio(lightweightAudio, baselineSimilarity)
+        if (backend == ExperimentalTargetSpeakerBackend.AUTO &&
+            NeuralSeparationPerformancePolicy.shouldDisableAuto(result.realtimeFactor)
+        ) {
+            neuralSeparatorTooSlowForAuto = true
+            AppLogger.i(
+                "Neural target speaker separator disabled for auto mode: rtf=${result.realtimeFactor}"
+            )
+        }
+        val candidate = result.audio
+        val candidateEmbedding = SpeakerVerifier.computeEmbedding(context, candidate, sampleRate)
+            ?: return GuardedSpeakerAudio(lightweightAudio, baselineSimilarity)
+        val candidateSimilarity = bestSpeakerSimilarity(candidateEmbedding)
+        val originalRms = rmsEnergy(originalAudio).coerceAtLeast(1e-7)
+        val candidateRms = rmsEnergy(candidate)
+        val energyRatio = candidateRms / originalRms
+        val accepted = NeuralSeparationQualityPolicy.accepts(
+            candidateSimilarity = candidateSimilarity,
+            baselineSimilarity = baselineSimilarity,
+            verificationThreshold = adaptivePrimarySpeakerThreshold,
+            energyRatio = energyRatio
+        )
+        AppLogger.i(
+            "Neural target speaker result accepted=$accepted similarity=$candidateSimilarity " +
+                "baseline=$baselineSimilarity energyRatio=$energyRatio rtf=${result.realtimeFactor}"
+        )
+        return if (accepted) {
+            GuardedSpeakerAudio(candidate, candidateSimilarity)
+        } else {
+            GuardedSpeakerAudio(lightweightAudio, baselineSimilarity)
+        }
+    }
+
+    private fun combinedNeuralSpeakerProfile(): FloatArray? {
+        val profiles = neuralSpeakerProfiles.mapNotNull { profile ->
+            profile?.takeIf { it.size == NEURAL_SPEAKER_EMBEDDING_DIM }
+        }
+        if (profiles.isEmpty()) return null
+        val combined = FloatArray(NEURAL_SPEAKER_EMBEDDING_DIM)
+        profiles.forEach { profile ->
+            for (index in combined.indices) combined[index] += profile[index]
+        }
+        val scale = 1f / profiles.size
+        for (index in combined.indices) combined[index] *= scale
+        return combined
+    }
+
+    private fun bestSpeakerSimilarity(embedding: FloatArray): Float {
+        return synchronized(speakerVerifyLock) {
+            buildList {
+                speakerVerifyReferenceProfile?.let(::add)
+                addAll(speakerProfiles)
+            }.maxOfOrNull { reference ->
+                SpeakerVerifier.cosineSimilarity(reference, embedding)
+            } ?: -1f
+        }
+    }
+
+    private fun bestConfirmationSpeakerSimilarity(embedding: FloatArray): Float {
+        return synchronized(speakerVerifyLock) {
+            speakerConfirmationProfiles.mapNotNull { it }.maxOfOrNull { reference ->
+                SpeakerVerifier.cosineSimilarity(reference, embedding)
+            } ?: -1f
+        }
+    }
+
+    private fun ensureNeuralSeparator(modelFile: File): NeuralTargetSpeakerSeparator? {
+        return synchronized(neuralSeparatorLock) {
+            val path = modelFile.absolutePath
+            neuralSeparator?.takeIf { neuralSeparatorModelPath == path }?.let { return@synchronized it }
+            runCatching { neuralSeparator?.close() }
+            neuralSeparator = null
+            neuralSeparatorModelPath = null
+            neuralSeparatorPerformanceChecked = false
+            neuralSeparatorTooSlowForAuto = false
+            runCatching { NeuralTargetSpeakerSeparator(modelFile) }
+                .onFailure { AppLogger.e("Neural target speaker separator load failed", it) }
+                .getOrNull()
+                ?.also {
+                    neuralSeparator = it
+                    neuralSeparatorModelPath = path
+                }
+        }
     }
 
     private fun enqueueTts(text: String): Long {
@@ -2763,19 +3232,60 @@ class RealtimeController(
 
     suspend fun loadAsr(asrDir: File): Boolean {
         return recorderMutex.withLock {
+            if (asr != null && currentAsrDir?.absolutePath == asrDir.absolutePath) {
+                return@withLock true
+            }
+
+            val shouldResume = recorder != null
+            if (shouldResume) {
+                stopRecorderOnlyLocked(
+                    flushPendingAudio = false,
+                    cancelPendingRecognition = true
+                )
+            }
+            var nextAsr: AsrModule? = null
+            var nextListeningAsr: AsrModule? = null
             try {
-                if (asr == null || currentAsrDir?.absolutePath != asrDir.absolutePath) {
-                    releaseSileroVadProcessor()
-                    currentSileroVadModelFile = resolveSileroVadModel(asrDir)
-                        ?: RecognitionResourceRepository.resolveSileroVadModel(context)
-                    asr = moduleFactory.createAsr(context, asrDir)
-                    currentAsrDir = asrDir
-                    AppLogger.i("ASR loaded dir=${asrDir.absolutePath}")
+                nextAsr = moduleFactory.createAsr(
+                    context,
+                    asrDir,
+                    asrRecognitionLanguage
+                )
+                if (listeningRecognitionEnabled && !listeningUsesMainRecognizer()) {
+                    nextListeningAsr = moduleFactory.createAsr(
+                        context,
+                        asrDir,
+                        listeningRecognitionLanguage
+                    )
                 }
             } catch (e: Throwable) {
+                runCatching { nextAsr?.close() }
+                runCatching { nextListeningAsr?.close() }
+                if (shouldResume && asr != null) {
+                    SherpaSpeechEnhancer.resetStreaming()
+                    ensureAec3()
+                    startRecorderLoop()
+                }
                 AppLogger.e("ASR load failed", e)
                 notifyError("语音识别资源加载失败，请检查资源包")
                 return@withLock false
+            }
+
+            val previousAsr = asr
+            val previousListeningAsr = listeningAsr
+            asr = nextAsr
+            listeningAsr = nextListeningAsr
+            currentAsrDir = asrDir
+            releaseSileroVadProcessor()
+            currentSileroVadModelFile = resolveSileroVadModel(asrDir)
+                ?: RecognitionResourceRepository.resolveSileroVadModel(context)
+            runCatching { previousAsr?.close() }
+            runCatching { previousListeningAsr?.close() }
+            AppLogger.i("ASR loaded dir=${asrDir.absolutePath}")
+            if (shouldResume) {
+                SherpaSpeechEnhancer.resetStreaming()
+                ensureAec3()
+                startRecorderLoop()
             }
             true
         }
@@ -2837,26 +3347,15 @@ class RealtimeController(
                 AudioFormat.CHANNEL_IN_MONO,
                 AudioFormat.ENCODING_PCM_16BIT
             )
-            val source = if (useVoiceCommunication) {
-                MediaRecorder.AudioSource.VOICE_COMMUNICATION
-            } else {
-                MediaRecorder.AudioSource.MIC
-            }
-            val rec = AudioRecord(
-                source,
-                sampleRate,
-                AudioFormat.CHANNEL_IN_MONO,
-                AudioFormat.ENCODING_PCM_16BIT,
-                max(minBuf, 4096)
-            )
-            if (rec.state != AudioRecord.STATE_INITIALIZED) {
-                rec.release()
+            val rec = createSpeechAudioRecord(max(minBuf, 4096))
+            if (rec == null) {
                 return@withLock SpeakerEnrollResult(
                     success = false,
-                    message = "说话人注册失败：录音初始化失败"
+                    message = "声纹录制失败：录音初始化失败"
                 )
             }
             applyInputRoutePreference(rec)
+            applyPreferredMicrophoneDirection(rec)
             val temp = ShortArray(1024)
             val captured = FloatArray(sampleCount)
             var offset = 0
@@ -2883,7 +3382,7 @@ class RealtimeController(
                 AppLogger.e("Speaker enroll read failed", e)
                 return@withLock SpeakerEnrollResult(
                     success = false,
-                    message = "说话人注册失败，请检查麦克风后重试"
+                    message = "声纹录制失败，请检查麦克风后重试"
                 )
             } finally {
                 try {
@@ -2898,37 +3397,60 @@ class RealtimeController(
             if (offset < sampleRate / 2) {
                 return@withLock SpeakerEnrollResult(
                     success = false,
-                    message = "说话人注册失败：录音时长不足"
+                    message = "声纹录制失败：录音时长不足"
                 )
             }
             onCapture?.invoke(1f, 0f)
             val audio = if (offset == captured.size) captured else captured.copyOf(offset)
-            val rms = rmsEnergy(audio)
-            AppLogger.i("Speaker enroll captured samples=${audio.size} rms=$rms")
-            if (rms < 0.008) {
+            val assessment = SpeakerEnrollmentQualityPolicy.assess(audio, sampleRate)
+            AppLogger.i(
+                "Speaker enroll captured samples=${audio.size} activeRatio=${assessment.activeRatio} " +
+                    "snrDb=${assessment.estimatedSnrDb} clipping=${assessment.clippingRatio}"
+            )
+            val enrollmentAudio = assessment.audio
+            if (!assessment.accepted || enrollmentAudio == null) {
                 return@withLock SpeakerEnrollResult(
                     success = false,
-                    message = "说话人注册失败：音量过低，请靠近麦克风"
+                    message = "声纹录制失败：${assessment.message ?: "有效语音不足"}"
                 )
             }
-            val embedding = SpeakerVerifier.computeEmbedding(context, audio, sampleRate)
+            val embedding = SpeakerVerifier.computeEmbedding(context, enrollmentAudio, sampleRate)
                 ?: return@withLock SpeakerEnrollResult(
                     success = false,
-                    message = "说话人注册失败：有效语音不足"
+                    message = "声纹录制失败：有效语音不足"
                 )
             AppLogger.i("Speaker enroll embedding dim=${embedding.size}")
+            val confirmationEmbedding = SpeakerVerifier.computeConfirmationEmbedding(
+                context,
+                enrollmentAudio,
+                sampleRate
+            )
+            val neuralResources = neuralSpeakerFilterResources.status()
+            val neuralEmbedding = neuralResources.ecapaModel?.let { modelFile ->
+                try {
+                    SpeechBrainEcapaEmbedder.compute(context, modelFile, enrollmentAudio, sampleRate)
+                } finally {
+                    SpeechBrainEcapaEmbedder.releaseModel()
+                }
+            }
             SpeakerEnrollResult(
                 success = true,
-                message = "说话人注册成功",
-                profile = embedding
+                message = "声纹录制成功",
+                profile = embedding,
+                confirmationProfile = confirmationEmbedding,
+                neuralProfile = neuralEmbedding
             )
         }
     }
 
     suspend fun startMic(): Boolean {
         return recorderMutex.withLock {
-            if (asr == null || tts == null) {
-                notifyError("语音资源未就绪，请先安装语音识别资源并选择语音包")
+            if (asr == null) {
+                notifyError("语音识别资源未就绪，请先安装语音识别资源")
+                return@withLock false
+            }
+            if (tts == null && !listeningRecognitionEnabled) {
+                notifyError("语音合成未就绪，请先选择语音包")
                 return@withLock false
             }
             synchronized(queueLock) {
@@ -2936,9 +3458,13 @@ class RealtimeController(
                 lastAcceptedTtsAtMs = 0L
             }
             lastStreamingDecodeAtMs = 0L
+            streamingDecodeGeneration.incrementAndGet()
             streamingDecodeBusy.set(false)
             resetSpeakerVerifyGateState()
-            stopRecorderOnlyLocked()
+            stopRecorderOnlyLocked(
+                flushPendingAudio = false,
+                cancelPendingRecognition = true
+            )
             SherpaSpeechEnhancer.resetStreaming()
             ensureAec3()
             startRecorderLoop()
@@ -2948,7 +3474,34 @@ class RealtimeController(
 
     suspend fun stopMic() {
         recorderMutex.withLock {
-            stopRecorderOnlyLocked()
+            stopRecorderOnlyLocked(
+                flushPendingAudio = true,
+                cancelPendingRecognition = false
+            )
+        }
+    }
+
+    suspend fun flushPendingRecognition() {
+        val activeLoop = loopJob
+        if (recorder == null || activeLoop == null || !activeLoop.isActive) {
+            awaitActiveAsrJobs()
+            withTimeoutOrNull(RECOGNITION_FLUSH_TIMEOUT_MS) {
+                resultCallbackJobs.awaitIdle()
+            }
+            return
+        }
+        val request = CompletableDeferred<Unit>()
+        val pending = if (pendingRecognitionFlush.compareAndSet(null, request)) {
+            request
+        } else {
+            pendingRecognitionFlush.get()
+        }
+        if (pending != null) {
+            withTimeoutOrNull(RECOGNITION_FLUSH_TIMEOUT_MS) { pending.await() }
+        }
+        awaitActiveAsrJobs()
+        withTimeoutOrNull(RECOGNITION_FLUSH_TIMEOUT_MS) {
+            resultCallbackJobs.awaitIdle()
         }
     }
 
@@ -2981,7 +3534,10 @@ class RealtimeController(
         recorderMutex.withLock {
             if (asr == null) return
             if (recorder == null) return
-            stopRecorderOnlyLocked()
+            stopRecorderOnlyLocked(
+                flushPendingAudio = true,
+                cancelPendingRecognition = false
+            )
             SherpaSpeechEnhancer.resetStreaming()
             ensureAec3()
             startRecorderLoop()
@@ -2990,7 +3546,10 @@ class RealtimeController(
 
     suspend fun stop() {
         recorderMutex.withLock {
-            stopRecorderOnlyLocked()
+            stopRecorderOnlyLocked(
+                flushPendingAudio = false,
+                cancelPendingRecognition = true
+            )
             stopTtsPlaybackLocked(clearQueue = true)
             releaseNoiseProcessors()
             releaseSileroVadProcessor()
@@ -2999,6 +3558,7 @@ class RealtimeController(
                 releaseSpeakerVerifyStateLocked()
             }
             SpeakerVerifier.release()
+            releaseNeuralSpeakerFilterResources()
             aec3?.release()
             aec3 = null
             notifyAec3Status(if (useAec3) "待启动" else "未启用")
@@ -3006,7 +3566,25 @@ class RealtimeController(
         }
     }
 
-    private suspend fun stopRecorderOnlyLocked() {
+    internal suspend fun releaseAfterSimulatedAudio() {
+        stop()
+        recorderMutex.withLock {
+            runCatching { asr?.close() }
+            asr = null
+            runCatching { listeningAsr?.close() }
+            listeningAsr = null
+            currentAsrDir = null
+            runCatching { tts?.close() }
+            tts = null
+            currentVoiceDir = null
+            player.stop()
+        }
+    }
+
+    private suspend fun stopRecorderOnlyLocked(
+        flushPendingAudio: Boolean,
+        cancelPendingRecognition: Boolean
+    ) {
         try {
             aec?.release()
         } catch (_: Exception) {
@@ -3014,6 +3592,7 @@ class RealtimeController(
         aec = null
         val rec = recorder
         recorder = null
+        recorderFlushOnStop?.set(flushPendingAudio)
         try {
             rec?.stop()
         } catch (_: Exception) {
@@ -3027,8 +3606,15 @@ class RealtimeController(
             } catch (_: Exception) {
             }
         }
+        recorderFlushOnStop = null
+        if (cancelPendingRecognition) {
+            cancelAndJoinActiveAsrJobs()
+        } else {
+            awaitActiveAsrJobs()
+        }
         streamingDecodeBusy.set(false)
         lastStreamingDecodeAtMs = 0L
+        streamingDecodeGeneration.incrementAndGet()
         resetSpeakerVerifyGateState()
         try {
             rec?.release()
@@ -3149,7 +3735,22 @@ class RealtimeController(
             SileroVadProcessor(
                 modelFile = modelFile,
                 sampleRate = sampleRate,
-                threshold = sileroVadThreshold
+                threshold = sileroVadThreshold,
+                minSilenceDurationSec = if (listeningRecognitionEnabled) {
+                    LISTENING_MIN_SILENCE_DURATION_SEC
+                } else {
+                    0.4f
+                },
+                minSpeechDurationSec = if (listeningRecognitionEnabled) {
+                    LISTENING_MIN_SPEECH_DURATION_SEC
+                } else {
+                    0.2f
+                },
+                maxSpeechDurationSec = if (listeningRecognitionEnabled) {
+                    LISTENING_MAX_SPEECH_DURATION_SEC
+                } else {
+                    DEFAULT_MAX_SPEECH_DURATION_SEC
+                }
             )
         }.onFailure {
             AppLogger.e("Silero VAD init failed", it)
@@ -3236,10 +3837,7 @@ class RealtimeController(
             prefix
         }
         if (effectivePrefix.isEmpty()) return segment
-        val out = FloatArray(effectivePrefix.size + segment.size)
-        System.arraycopy(effectivePrefix, 0, out, 0, effectivePrefix.size)
-        System.arraycopy(segment, 0, out, effectivePrefix.size, segment.size)
-        return out
+        return RecognitionAudioBoundary.prependWithoutDuplicate(effectivePrefix, segment)
     }
 
     private fun appendSileroPreRollSamplesLocked(samples: FloatArray) {
@@ -3410,9 +4008,9 @@ class RealtimeController(
         if (!classicVadEnabled) return true
         val minVoicedMs = 200
         val minVoicedRatio = 0.2
-        val speechThreshold = 0.03
+        val speechThreshold = experimentalClassicVadThreshold(0.03)
         val minSpeechMs = 600
-        val maxSpeechMs = 12000
+        val maxSpeechMs = activeMaxSpeechDurationMs() + sileroVadPreRollMs
         val durationMs = audio.size * 1000 / sampleRate
         if (durationMs !in minSpeechMs..maxSpeechMs) return false
         val frameSize = 160
@@ -3435,15 +4033,54 @@ class RealtimeController(
         return voicedMs >= minVoicedMs && voicedRatio >= minVoicedRatio
     }
 
-    private suspend fun processAsrReadySegment(segment: RecognitionSegment) {
+    private fun listeningCaptureActive(): Boolean =
+        listeningRecognitionEnabled && !listeningCapturePaused
+
+    private fun activeMaxSpeechDurationMs(): Int = if (listeningCaptureActive()) {
+        (LISTENING_MAX_SPEECH_DURATION_SEC * 1000).toInt()
+    } else {
+        (DEFAULT_MAX_SPEECH_DURATION_SEC * 1000).toInt()
+    }
+
+    private suspend fun decodeMainSegment(segment: RecognitionSegment): String {
         val rawText = try {
-            asr?.transcribe(segment.audio, segment.sampleRate) ?: ""
+            asrDecodeMutex.withLock {
+                asr?.transcribe(segment.audio, segment.sampleRate) ?: ""
+            }
         } catch (e: Exception) {
             AppLogger.e("ASR failed", e)
             notifyError("语音识别失败，请检查识别资源")
             ""
         }
-        val text = filterAsrText(rawText, segment.rms)
+        return filterAsrText(rawText, segment.rms)
+    }
+
+    private fun listeningUsesMainRecognizer(): Boolean =
+        listeningRecognitionLanguage == asrRecognitionLanguage
+
+    private fun listeningRecognizerReady(): Boolean =
+        if (listeningUsesMainRecognizer()) asr != null else listeningAsr != null
+
+    private suspend fun decodeListeningSegment(segment: RecognitionSegment): String {
+        val rawText = try {
+            if (listeningUsesMainRecognizer()) {
+                asrDecodeMutex.withLock {
+                    asr?.transcribe(segment.audio, segment.sampleRate) ?: ""
+                }
+            } else {
+                listeningAsrDecodeMutex.withLock {
+                    listeningAsr?.transcribe(segment.audio, segment.sampleRate) ?: ""
+                }
+            }
+        } catch (e: Exception) {
+            AppLogger.e("Listening ASR failed", e)
+            notifyError("聆听字幕识别失败，请稍后重试")
+            ""
+        }
+        return filterAsrText(rawText, segment.rms)
+    }
+
+    private suspend fun processMainRecognizedText(text: String) {
         if (text.isNotBlank()) {
             val suppressForSoundboard = runCatching {
                 shouldSuppressAutoSpeakForText(text)
@@ -3466,43 +4103,99 @@ class RealtimeController(
         }
     }
 
-    private fun processRecognizedSegment(audio: FloatArray) {
+    private suspend fun processAsrReadySegment(segment: RecognitionSegment) {
+        processMainRecognizedText(decodeMainSegment(segment))
+    }
+
+    private fun effectiveMinSegmentRms(): Double {
+        return ExperimentalRecognitionSensitivityPolicy.minSegmentRms(
+            minSegmentRms,
+            experimentalRecognitionSensitivity
+        )
+    }
+
+    private fun experimentalClassicVadThreshold(base: Double): Double {
+        return ExperimentalRecognitionSensitivityPolicy.classicVadThreshold(
+            base,
+            experimentalRecognitionSensitivity
+        )
+    }
+
+    private fun experimentalEndpointSilenceThreshold(base: Double): Double {
+        return ExperimentalRecognitionSensitivityPolicy.endpointSilenceThreshold(
+            base,
+            experimentalRecognitionSensitivity
+        )
+    }
+
+    private fun applyExperimentalInputGain(samples: FloatArray): FloatArray {
+        if (samples.isEmpty()) return samples
+        return ExperimentalRecognitionSensitivityPolicy.applyInputGain(
+            samples,
+            experimentalRecognitionSensitivity
+        )
+    }
+
+    private fun processRecognizedSegment(audio: FloatArray): Boolean {
         val rms = rmsEnergy(audio)
-        val minSegmentEnergy = minSegmentRms
-        if (rms < minSegmentEnergy) return
-        scope.launch(Dispatchers.IO) {
+        val minSegmentEnergy = effectiveMinSegmentRms()
+        if (rms < minSegmentEnergy) return false
+        val decodeForListening = listeningCaptureActive()
+        val decodeForMain = mainRecognitionEnabled
+        if (!decodeForListening && !decodeForMain) return false
+        launchTrackedAsrJob {
             segmentProcessMutex.withLock {
-                val (effectiveAudio, effectiveSampleRate) = prepareSpeechEnhancedAudio(audio, sampleRate)
+                val (speechEnhancedAudio, effectiveSampleRate) = prepareSpeechEnhancedAudio(audio, sampleRate)
+                val effectiveAudio = applyExperimentalInputGain(speechEnhancedAudio)
                 if (effectiveAudio.isEmpty()) return@withLock
                 val segment = RecognitionSegment(
                     audio = effectiveAudio,
                     sampleRate = effectiveSampleRate,
                     rms = max(rms, rmsEnergy(effectiveAudio))
                 )
-                when (val gate = resolveSpeakerGate(segment)) {
-                    SpeakerGateResult.Pending -> return@withLock
-                    is SpeakerGateResult.Ready -> {
-                        gate.segments.forEach { readySegment ->
-                            processAsrReadySegment(readySegment)
+                if (decodeForListening && listeningRecognizerReady()) {
+                    val listeningText = decodeListeningSegment(segment)
+                    // A VAD boundary must finalize the visible live caption even when the
+                    // final decode is empty; otherwise later segments accumulate in one row.
+                    notifyListeningResult(nextResultId(), listeningText)
+                }
+                if (decodeForMain) {
+                    when (val gate = resolveSpeakerGate(segment)) {
+                        SpeakerGateResult.Pending -> return@withLock
+                        is SpeakerGateResult.Ready -> {
+                            gate.segments.forEach { readySegment ->
+                                processAsrReadySegment(readySegment)
+                            }
                         }
                     }
                 }
             }
         }
+        return true
     }
 
     private fun maybeDecodeStreamingSenseVoice(window: List<Float>, nowMs: Long) {
-        if (!pttStreamingEnabled) return
-        if (asr == null) return
+        val decodeForListening = listeningCaptureActive()
+        if (!pttStreamingEnabled && !decodeForListening) return
+        if (asr == null && listeningAsr == null) return
         if (!classicVadEnabled && !sileroVadEnabled) return
-        if (!isSpeakerVerifySessionReadyForPreview()) return
-        val minSamples = sampleRate / 2
+        val mainPreviewReady = pttStreamingEnabled && isSpeakerVerifySessionReadyForPreview()
+        if (!mainPreviewReady && !decodeForListening) return
+        val minSamples = if (decodeForListening) sampleRate / 4 else sampleRate / 2
         if (window.size < minSamples) return
-        val decodeIntervalMs = 260L
+        // SenseVoice decodes the complete rolling window rather than advancing a streaming state.
+        // Leave an idle gap for continuous listening so background captions do not monopolize CPU.
+        val decodeIntervalMs = if (decodeForListening && !pttStreamingEnabled) 520L else 260L
         if ((nowMs - lastStreamingDecodeAtMs) < decodeIntervalMs) return
         if (!streamingDecodeBusy.compareAndSet(false, true)) return
         lastStreamingDecodeAtMs = nowMs
-        val maxSamples = sampleRate * 3
+        val decodeGeneration = streamingDecodeGeneration.get()
+        val maxSamples = if (decodeForListening) {
+            sampleRate * activeMaxSpeechDurationMs() / 1000 +
+                SILERO_WINDOW_SIZE_SAMPLES * LISTENING_PREVIEW_PREROLL_WINDOWS
+        } else {
+            sampleRate * 3
+        }
         val snapshot = if (window.size > maxSamples) {
             window.takeLast(maxSamples).toFloatArray()
         } else {
@@ -3514,7 +4207,10 @@ class RealtimeController(
         }
         val segmentRms = rmsEnergy(snapshot)
         if (classicVadEnabled) {
-            val minStreamingRms = kotlin.math.max(0.010, minSegmentRms * 0.85)
+            val minStreamingRms = kotlin.math.max(
+                experimentalClassicVadThreshold(0.010),
+                effectiveMinSegmentRms() * 0.85
+            )
             if (segmentRms < minStreamingRms) {
                 streamingDecodeBusy.set(false)
                 return
@@ -3535,25 +4231,245 @@ class RealtimeController(
                 }
             }
             val tailRms = kotlin.math.sqrt(tailSum / tailSize)
-            val minTailRms = kotlin.math.max(0.014, minSegmentRms * 0.65)
+            val minTailRms = kotlin.math.max(
+                experimentalClassicVadThreshold(0.014),
+                effectiveMinSegmentRms() * 0.65
+            )
             val voicedRatio = voicedCount.toDouble() / tailSize.toDouble()
             if (tailRms < minTailRms || voicedRatio < 0.08) {
                 streamingDecodeBusy.set(false)
                 return
             }
         }
-        scope.launch(Dispatchers.IO) {
+        launchTrackedAsrJob {
             try {
-                val raw = asr?.transcribe(snapshot, sampleRate).orEmpty()
-                val text = filterAsrText(raw, segmentRms)
-                if (text.isNotBlank()) {
-                    notifyStreamingResult(text)
+                if (decodeForListening && listeningRecognizerReady()) {
+                    val listeningRaw = if (listeningUsesMainRecognizer()) {
+                        asrDecodeMutex.withLock {
+                            asr?.transcribe(snapshot, sampleRate).orEmpty()
+                        }
+                    } else {
+                        listeningAsrDecodeMutex.withLock {
+                            listeningAsr?.transcribe(snapshot, sampleRate).orEmpty()
+                        }
+                    }
+                    val listeningText = filterAsrText(listeningRaw, segmentRms)
+                    if (
+                        listeningText.isNotBlank() &&
+                        decodeGeneration == streamingDecodeGeneration.get()
+                    ) {
+                        notifyListeningStreamingResult(listeningText)
+                    }
+                }
+                if (mainPreviewReady) {
+                    val raw = asrDecodeMutex.withLock {
+                        asr?.transcribe(snapshot, sampleRate).orEmpty()
+                    }
+                    val text = filterAsrText(raw, segmentRms)
+                    if (text.isNotBlank() && decodeGeneration == streamingDecodeGeneration.get()) {
+                        notifyStreamingResult(text)
+                    }
                 }
             } catch (e: Exception) {
                 AppLogger.e("ASR streaming failed", e)
             } finally {
                 streamingDecodeBusy.set(false)
             }
+        }
+    }
+
+    private fun launchTrackedAsrJob(block: suspend () -> Unit) {
+        lateinit var job: Job
+        job = scope.launch(Dispatchers.IO, start = CoroutineStart.LAZY) {
+            try {
+                block()
+            } finally {
+                synchronized(activeAsrJobsLock) { activeAsrJobs.remove(job) }
+            }
+        }
+        synchronized(activeAsrJobsLock) { activeAsrJobs.add(job) }
+        job.start()
+    }
+
+    private suspend fun cancelAndJoinActiveAsrJobs() {
+        val jobs = synchronized(activeAsrJobsLock) {
+            activeAsrJobs.toList().also { activeAsrJobs.clear() }
+        }
+        jobs.forEach(Job::cancel)
+        jobs.forEach { job ->
+            try {
+                job.join()
+            } catch (_: Exception) {
+            }
+        }
+    }
+
+    private suspend fun awaitActiveAsrJobs() {
+        while (true) {
+            val jobs = synchronized(activeAsrJobsLock) {
+                activeAsrJobs.filter { it.isActive }
+            }
+            if (jobs.isEmpty()) return
+            jobs.forEach { job ->
+                try {
+                    job.join()
+                } catch (_: Exception) {
+                }
+            }
+        }
+    }
+
+    private fun createSpeechAudioRecord(bufferSize: Int): AudioRecord? {
+        val sources = buildList {
+            if (useVoiceCommunication) {
+                add(MediaRecorder.AudioSource.VOICE_COMMUNICATION)
+            } else {
+                val rawSupported = audioManager
+                    .getProperty(AudioManager.PROPERTY_SUPPORT_AUDIO_SOURCE_UNPROCESSED)
+                    ?.equals("true", ignoreCase = true) == true
+                if (rawSupported && Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                    add(MediaRecorder.AudioSource.UNPROCESSED)
+                }
+                add(MediaRecorder.AudioSource.VOICE_RECOGNITION)
+            }
+            add(MediaRecorder.AudioSource.MIC)
+        }.distinct()
+        sources.forEach { source ->
+            val record = runCatching {
+                AudioRecord(
+                    source,
+                    sampleRate,
+                    AudioFormat.CHANNEL_IN_MONO,
+                    AudioFormat.ENCODING_PCM_16BIT,
+                    bufferSize
+                )
+            }.onFailure {
+                AppLogger.e("AudioRecord create failed source=$source", it)
+            }.getOrNull() ?: return@forEach
+            if (record.state == AudioRecord.STATE_INITIALIZED) {
+                AppLogger.i("AudioRecord selected speech source=$source")
+                return record
+            }
+            AppLogger.i("AudioRecord source unavailable source=$source state=${record.state}")
+            runCatching { record.release() }
+        }
+        return null
+    }
+
+    private fun applyPreferredMicrophoneDirection(record: AudioRecord) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return
+        val direction = when (preferredInputType) {
+            AudioRoutePreference.INPUT_USB,
+            AudioRoutePreference.INPUT_BLUETOOTH,
+            AudioRoutePreference.INPUT_WIRED -> MicrophoneDirection.MIC_DIRECTION_EXTERNAL
+            else -> MicrophoneDirection.MIC_DIRECTION_TOWARDS_USER
+        }
+        runCatching {
+            val directionApplied = record.setPreferredMicrophoneDirection(direction)
+            val fieldApplied = if (direction == MicrophoneDirection.MIC_DIRECTION_TOWARDS_USER) {
+                record.setPreferredMicrophoneFieldDimension(0.35f)
+            } else {
+                true
+            }
+            AppLogger.i(
+                "Microphone direction requested direction=$direction " +
+                    "directionApplied=$directionApplied fieldApplied=$fieldApplied"
+            )
+        }.onFailure {
+            AppLogger.e("Microphone direction request failed", it)
+        }
+    }
+
+    internal suspend fun runSimulatedAudio(
+        samples: FloatArray,
+        sourceSampleRate: Int,
+        chunkSamples: Int = 2048,
+        paceAsRealtime: Boolean = false,
+        callbacksSynchronous: Boolean = true
+    ): SimulatedAudioRunResult {
+        check(context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0) {
+            "Simulated audio is available only in debug builds"
+        }
+        require(sourceSampleRate > 0) { "sourceSampleRate must be positive" }
+        require(chunkSamples in 160..8192) { "chunkSamples must be between 160 and 8192" }
+        return recorderMutex.withLock {
+            check(asr != null) { "ASR must be loaded before simulated audio is processed" }
+            check(recorder == null && loopJob?.isActive != true) {
+                "Simulated audio cannot run while the microphone is active"
+            }
+            val normalized = resampleSimulatedAudio(samples, sourceSampleRate, sampleRate)
+            if (normalized.isEmpty()) {
+                return@withLock SimulatedAudioRunResult(
+                    inputSamples = samples.size,
+                    processedSamples = 0,
+                    chunkCount = 0,
+                    elapsedMs = 0L
+                )
+            }
+            lastStreamingDecodeAtMs = 0L
+            streamingDecodeGeneration.incrementAndGet()
+            streamingDecodeBusy.set(false)
+            resetSpeakerVerifyGateState()
+            resetSileroPreRollState()
+            releaseSileroVadProcessor()
+            SherpaSpeechEnhancer.resetStreaming()
+            val startedAt = SystemClock.elapsedRealtime()
+            var offset = 0
+            var chunks = 0
+            simulatedAudioCallbacksSynchronous.set(callbacksSynchronous)
+            try {
+                withContext(Dispatchers.Default) {
+                    withAndroidThreadPrioritySuspending(android.os.Process.THREAD_PRIORITY_AUDIO) {
+                        runRecognitionInputLoop(AtomicBoolean(true)) { buffer ->
+                            if (offset >= normalized.size) {
+                                SIMULATED_AUDIO_END_OF_STREAM
+                            } else {
+                                val count = minOf(buffer.size, chunkSamples, normalized.size - offset)
+                                for (index in 0 until count) {
+                                    buffer[index] = (
+                                        normalized[offset + index].coerceIn(-1f, 1f) * Short.MAX_VALUE
+                                        ).roundToInt().toShort()
+                                }
+                                offset += count
+                                chunks++
+                                if (paceAsRealtime) {
+                                    SystemClock.sleep(count * 1000L / sampleRate)
+                                }
+                                count
+                            }
+                        }
+                    }
+                }
+                awaitActiveAsrJobs()
+            } finally {
+                simulatedAudioCallbacksSynchronous.set(false)
+            }
+            SimulatedAudioRunResult(
+                inputSamples = samples.size,
+                processedSamples = normalized.size,
+                chunkCount = chunks,
+                elapsedMs = SystemClock.elapsedRealtime() - startedAt
+            )
+        }
+    }
+
+    private fun resampleSimulatedAudio(
+        samples: FloatArray,
+        sourceRate: Int,
+        targetRate: Int
+    ): FloatArray {
+        if (samples.isEmpty() || sourceRate == targetRate) return samples.copyOf()
+        val outputSize = (
+            samples.size.toLong() * targetRate.toLong() / sourceRate.toLong()
+            ).coerceAtLeast(1L).coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
+        if (samples.size == 1 || outputSize == 1) return FloatArray(outputSize) { samples[0] }
+        val scale = (samples.size - 1).toDouble() / (outputSize - 1).toDouble()
+        return FloatArray(outputSize) { outputIndex ->
+            val sourcePosition = outputIndex * scale
+            val lower = sourcePosition.toInt().coerceIn(0, samples.lastIndex)
+            val upper = minOf(lower + 1, samples.lastIndex)
+            val fraction = (sourcePosition - lower).toFloat()
+            samples[lower] + (samples[upper] - samples[lower]) * fraction
         }
     }
 
@@ -3568,25 +4484,14 @@ class RealtimeController(
             AudioFormat.CHANNEL_IN_MONO,
             AudioFormat.ENCODING_PCM_16BIT
         )
-        val audioSource = if (useVoiceCommunication) {
-            MediaRecorder.AudioSource.VOICE_COMMUNICATION
-        } else {
-            MediaRecorder.AudioSource.MIC
-        }
-        val rec = AudioRecord(
-            audioSource,
-            sampleRate,
-            AudioFormat.CHANNEL_IN_MONO,
-            AudioFormat.ENCODING_PCM_16BIT,
-            max(minBuf, 4096)
-        )
-        if (rec.state != AudioRecord.STATE_INITIALIZED) {
-            AppLogger.e("AudioRecord init failed state=${rec.state}")
-            rec.release()
+        val rec = createSpeechAudioRecord(max(minBuf, 4096))
+        if (rec == null) {
+            AppLogger.e("AudioRecord init failed for all speech sources")
             notifyError("录音初始化失败")
             return
         }
         applyInputRoutePreference(rec)
+        applyPreferredMicrophoneDirection(rec)
         if (useVoiceCommunication && (!useAec3 || allowSystemAecWithAec3)) {
             try {
                 if (AcousticEchoCanceler.isAvailable()) {
@@ -3602,121 +4507,305 @@ class RealtimeController(
             AppLogger.i("AEC3 active, skip system AEC")
         }
         recorder = rec
-        val buffer = ShortArray(2048)
-        val window = mutableListOf<Float>()
+        val flushOnStop = AtomicBoolean(true)
+        recorderFlushOnStop = flushOnStop
         loopJob = scope.launch(Dispatchers.Default) {
-            withAndroidThreadPriority(android.os.Process.THREAD_PRIORITY_AUDIO) {
+            withAndroidThreadPrioritySuspending(android.os.Process.THREAD_PRIORITY_AUDIO) {
                 try {
                     rec.startRecording()
                     reportInputDevice(rec)
                     updateOutputDeviceFromSystem()
-                    var silenceMs = 0
-                    var voicedMs = 0
-                    val minVoicedMs = 200
-                    val minVoicedRatio = 0.2
-                    val silenceThreshold = 0.015
-                    val speechThreshold = 0.03
-                    while (isActive) {
-                        val read = rec.read(buffer, 0, buffer.size)
-                        if (read <= 0) continue
-                        val floatBuf = FloatArray(read)
-                        for (i in 0 until read) {
-                            floatBuf[i] = buffer[i] / 32768f
+                    runRecognitionInputLoop(flushOnStop) { target ->
+                        val read = rec.read(target, 0, target.size)
+                        if (read > 0) read else 0
+                    }
+                } catch (e: Exception) {
+                    if (recorder === rec) {
+                        AppLogger.e("Realtime loop failed", e)
+                        notifyError("实时转换出现问题，请重新开始识别")
+                    }
+                }
+            }
+        }
+    }
+
+    private suspend fun runRecognitionInputLoop(
+        flushOnStop: AtomicBoolean,
+        readChunk: suspend (ShortArray) -> Int
+    ) {
+        val buffer = ShortArray(2048)
+        val window = mutableListOf<Float>()
+        var silenceMs = 0
+        var voicedMs = 0
+        var listeningSpeechSeen = false
+        var listeningTrailingSilenceMs = 0
+        var activeInputEpoch = recognitionInputEpoch.get()
+        val minVoicedMs = 200
+        val minVoicedRatio = 0.2
+        val minSpeechMs = 600
+
+        fun flushRecognitionWindow() {
+            if (sileroVadEnabled) {
+                val segments = drainSileroVadSegments(flush = true)
+                if (segments.isNotEmpty()) {
+                    streamingDecodeGeneration.incrementAndGet()
+                }
+                segments.forEach { segment ->
+                    val audio = prependPendingSileroPreRoll(segment)
+                    if (classicVadEnabled && !passesClassicVadGate(audio)) return@forEach
+                    processRecognizedSegment(audio)
+                }
+                window.clear()
+                resetSileroPreRollState()
+            } else if (window.isNotEmpty()) {
+                val audio = window.toFloatArray()
+                val durationMs = audio.size * 1000 / sampleRate
+                if (
+                    RecognitionWindowPolicy.shouldSubmit(
+                        durationMs = durationMs,
+                        voicedMs = voicedMs,
+                        rms = rmsEnergy(audio),
+                        minRms = effectiveMinSegmentRms()
+                    )
+                ) {
+                    streamingDecodeGeneration.incrementAndGet()
+                    processRecognizedSegment(audio)
+                }
+                window.clear()
+            }
+            silenceMs = 0
+            voicedMs = 0
+            listeningSpeechSeen = false
+            listeningTrailingSilenceMs = 0
+        }
+
+        fun completePendingFlushRequest() {
+            pendingRecognitionFlush.getAndSet(null)?.let { request ->
+                flushRecognitionWindow()
+                request.complete(Unit)
+            }
+        }
+
+        try {
+            while (currentCoroutineContext().isActive) {
+                val read = readChunk(buffer)
+                if (read == SIMULATED_AUDIO_END_OF_STREAM) break
+                if (read <= 0) {
+                    completePendingFlushRequest()
+                    continue
+                }
+                val floatBuf = FloatArray(read)
+                for (i in 0 until read) {
+                    floatBuf[i] = buffer[i] / 32768f
+                }
+                if (useAec3) {
+                    aec3?.processCapture(floatBuf, 0, read)
+                    captureFrames.incrementAndGet()
+                    lastCaptureMs.set(SystemClock.uptimeMillis())
+                }
+                applyNoiseSuppression(floatBuf, read)
+                var sumSq = 0.0
+                for (i in 0 until read) {
+                    val v = floatBuf[i]
+                    sumSq += v * v
+                }
+                val bufRms = if (read > 0) sqrt(sumSq / read) else 0.0
+                val now = SystemClock.uptimeMillis()
+                if (now - lastLevelReportMs >= 60L) {
+                    lastLevelReportMs = now
+                    notifyLevel(bufRms.toFloat())
+                    if (useAec3) {
+                        notifyAec3Diag(buildAec3Diag(now))
+                    }
+                }
+                if (suppressWhilePlaying && (player.isPlaying || now < suppressUntilMs)) {
+                    if (window.isNotEmpty()) {
+                        streamingDecodeGeneration.incrementAndGet()
+                    }
+                    window.clear()
+                    resetSileroPreRollState()
+                    silenceMs = 0
+                    voicedMs = 0
+                    completePendingFlushRequest()
+                    continue
+                }
+                val recognitionBuf = processRealtimeSpeechEnhancement(floatBuf, sampleRate)
+                if (recognitionBuf.isEmpty()) {
+                    completePendingFlushRequest()
+                    continue
+                }
+                val currentInputEpoch = recognitionInputEpoch.get()
+                if (currentInputEpoch != activeInputEpoch) {
+                    window.clear()
+                    resetSileroPreRollState()
+                    if (sileroVadEnabled) resetSileroVadProcessor()
+                    silenceMs = 0
+                    voicedMs = 0
+                    listeningSpeechSeen = false
+                    listeningTrailingSilenceMs = 0
+                    lastStreamingDecodeAtMs = 0L
+                    activeInputEpoch = currentInputEpoch
+                }
+                for (sample in recognitionBuf) {
+                    window.add(sample)
+                }
+                if (sileroVadEnabled) {
+                    acceptSileroVadWaveform(recognitionBuf)
+                    val speechDetected = isSileroSpeechDetected()
+                    updateSileroPreRollState(recognitionBuf, speechDetected)
+                    val segments = drainSileroVadSegments(flush = false)
+                    if (segments.isNotEmpty()) {
+                        streamingDecodeGeneration.incrementAndGet()
+                        window.clear()
+                        lastStreamingDecodeAtMs = 0L
+                        listeningSpeechSeen = false
+                        listeningTrailingSilenceMs = 0
+                    }
+                    segments.forEach { segment ->
+                        val audio = prependPendingSileroPreRoll(segment)
+                        if (classicVadEnabled && !passesClassicVadGate(audio)) return@forEach
+                        processRecognizedSegment(audio)
+                    }
+                    val forceListeningBoundary = ListeningEndpointPolicy.shouldForceBoundary(
+                        listeningEnabled = listeningCaptureActive(),
+                        speechDetected = speechDetected,
+                        windowSamples = window.size,
+                        sampleRate = sampleRate,
+                        maxSpeechDurationMs = activeMaxSpeechDurationMs(),
+                        preRollSamples =
+                            SILERO_WINDOW_SIZE_SAMPLES * LISTENING_PREVIEW_PREROLL_WINDOWS
+                    )
+                    if (forceListeningBoundary) {
+                        val forcedSegments = drainSileroVadSegments(flush = true)
+                        val forcedAudio = if (forcedSegments.isNotEmpty()) {
+                            forcedSegments.map(::prependPendingSileroPreRoll)
+                        } else {
+                            listOf(window.toFloatArray())
                         }
-                        if (useAec3) {
-                            aec3?.processCapture(floatBuf, 0, read)
-                            captureFrames.incrementAndGet()
-                            lastCaptureMs.set(SystemClock.uptimeMillis())
-                        }
-                        applyNoiseSuppression(floatBuf, read)
-                        var sumSq = 0.0
-                        for (i in 0 until read) {
-                            val v = floatBuf[i]
-                            sumSq += v * v
-                        }
-                        val bufRms = if (read > 0) sqrt(sumSq / read) else 0.0
-                        val now = SystemClock.uptimeMillis()
-                        if (now - lastLevelReportMs >= 60L) {
-                            lastLevelReportMs = now
-                            notifyLevel(bufRms.toFloat())
-                            if (useAec3) {
-                                notifyAec3Diag(buildAec3Diag(now))
+                        streamingDecodeGeneration.incrementAndGet()
+                        window.clear()
+                        lastStreamingDecodeAtMs = 0L
+                        resetSileroVadProcessor()
+                        var submitted = false
+                        forcedAudio.forEach { audio ->
+                            if (classicVadEnabled && !passesClassicVadGate(audio)) {
+                                return@forEach
                             }
+                            submitted = processRecognizedSegment(audio) || submitted
                         }
-                        if (suppressWhilePlaying && (player.isPlaying || now < suppressUntilMs)) {
+                        if (!submitted) {
+                            // A forced boundary must still clear the visible live row.
+                            notifyListeningResult(nextResultId(), "")
+                        }
+                        listeningSpeechSeen = false
+                        listeningTrailingSilenceMs = 0
+                    }
+                    if (listeningCaptureActive()) {
+                        val stepMs = recognitionBuf.size * 1000 / sampleRate
+                        if (speechDetected) {
+                            listeningSpeechSeen = true
+                            listeningTrailingSilenceMs = 0
+                        } else if (listeningSpeechSeen) {
+                            listeningTrailingSilenceMs += stepMs
+                        }
+                        if (
+                            ListeningEndpointPolicy.shouldFinalizeAfterSilence(
+                                listeningEnabled = true,
+                                speechSeen = listeningSpeechSeen,
+                                trailingSilenceMs = listeningTrailingSilenceMs,
+                                requiredSilenceMs = LISTENING_ENDPOINT_FALLBACK_SILENCE_MS
+                            )
+                        ) {
+                            val trailingSegments = drainSileroVadSegments(flush = true)
+                            val trailingAudio = if (trailingSegments.isNotEmpty()) {
+                                trailingSegments.map(::prependPendingSileroPreRoll)
+                            } else {
+                                listOf(window.toFloatArray())
+                            }
+                            streamingDecodeGeneration.incrementAndGet()
                             window.clear()
-                            resetSileroPreRollState()
+                            lastStreamingDecodeAtMs = 0L
+                            resetSileroVadProcessor()
+                            var submitted = false
+                            trailingAudio.forEach { audio ->
+                                if (classicVadEnabled && !passesClassicVadGate(audio)) {
+                                    return@forEach
+                                }
+                                submitted = processRecognizedSegment(audio) || submitted
+                            }
+                            if (!submitted) {
+                                notifyListeningResult(nextResultId(), "")
+                            }
+                            listeningSpeechSeen = false
+                            listeningTrailingSilenceMs = 0
+                        }
+                    } else {
+                        listeningSpeechSeen = false
+                        listeningTrailingSilenceMs = 0
+                    }
+                    val maxStreamingWindowSamples = when {
+                        listeningCaptureActive() && speechDetected -> {
+                            sampleRate * activeMaxSpeechDurationMs() / 1000 +
+                                SILERO_WINDOW_SIZE_SAMPLES * LISTENING_PREVIEW_PREROLL_WINDOWS
+                        }
+                        listeningCaptureActive() ->
+                            SILERO_WINDOW_SIZE_SAMPLES * LISTENING_PREVIEW_PREROLL_WINDOWS
+                        else -> sampleRate * 3
+                    }
+                    if (window.size > maxStreamingWindowSamples) {
+                        val overflow = window.size - maxStreamingWindowSamples
+                        if (overflow > 0) {
+                            window.subList(0, overflow).clear()
+                        }
+                    }
+                } else {
+                    resetSileroPreRollState()
+                }
+                maybeDecodeStreamingSenseVoice(window, now)
+                if (classicVadEnabled && !sileroVadEnabled) {
+                    val maxSpeechMs = activeMaxSpeechDurationMs()
+                    val endpointSilenceMs = if (listeningCaptureActive()) 100 else 400
+                    val energy = sqrt(window.takeLast(min(400, window.size)).map { it * it }.average())
+                    val stepMs = recognitionBuf.size * 1000 / sampleRate
+                    if (energy < experimentalEndpointSilenceThreshold(0.015)) {
+                        silenceMs += stepMs
+                    } else {
+                        silenceMs = 0
+                    }
+                    if (energy > experimentalClassicVadThreshold(0.03)) {
+                        voicedMs += stepMs
+                    }
+                    val durMs = window.size * 1000 / sampleRate
+                    if (
+                        silenceMs > endpointSilenceMs &&
+                        durMs in minSpeechMs..maxSpeechMs &&
+                        !player.isPlaying
+                    ) {
+                        val voicedRatio = if (durMs > 0) voicedMs.toDouble() / durMs else 0.0
+                        if (voicedMs < minVoicedMs || voicedRatio < minVoicedRatio) {
+                            window.clear()
                             silenceMs = 0
                             voicedMs = 0
                             continue
                         }
-                        val recognitionBuf = processRealtimeSpeechEnhancement(floatBuf, sampleRate)
-                        if (recognitionBuf.isEmpty()) {
-                            continue
-                        }
-                        for (sample in recognitionBuf) {
-                            window.add(sample)
-                        }
-                        if (sileroVadEnabled) {
-                            acceptSileroVadWaveform(recognitionBuf)
-                            val segments = drainSileroVadSegments(flush = false)
-                            updateSileroPreRollState(recognitionBuf, isSileroSpeechDetected())
-                            segments.forEach { segment ->
-                                val audio = prependPendingSileroPreRoll(segment)
-                                if (classicVadEnabled && !passesClassicVadGate(audio)) return@forEach
-                                processRecognizedSegment(audio)
-                            }
-                            val maxStreamingWindowSamples = sampleRate * 3
-                            if (window.size > maxStreamingWindowSamples) {
-                                val overflow = window.size - maxStreamingWindowSamples
-                                if (overflow > 0) {
-                                    window.subList(0, overflow).clear()
-                                }
-                            }
-                        } else {
-                            resetSileroPreRollState()
-                        }
-                        maybeDecodeStreamingSenseVoice(window, now)
-                        if (classicVadEnabled && !sileroVadEnabled) {
-                            val energy = sqrt(window.takeLast(min(400, window.size)).map { it * it }.average())
-                            val stepMs = recognitionBuf.size * 1000 / sampleRate
-                            if (energy < silenceThreshold) {
-                                silenceMs += stepMs
-                            } else {
-                                silenceMs = 0
-                            }
-                            if (energy > speechThreshold) {
-                                voicedMs += stepMs
-                            }
-                            val minSpeechMs = 600
-                            val maxSpeechMs = 12000
-                            val durMs = window.size * 1000 / sampleRate
-                            if (silenceMs > 400 && durMs in minSpeechMs..maxSpeechMs && !player.isPlaying) {
-                                val voicedRatio = if (durMs > 0) voicedMs.toDouble() / durMs else 0.0
-                                if (voicedMs < minVoicedMs || voicedRatio < minVoicedRatio) {
-                                    window.clear()
-                                    silenceMs = 0
-                                    voicedMs = 0
-                                    continue
-                                }
-                                val audio = window.toFloatArray()
-                                window.clear()
-                                silenceMs = 0
-                                voicedMs = 0
-                                processRecognizedSegment(audio)
-                            }
-                            if (durMs > maxSpeechMs) {
-                                window.clear()
-                                silenceMs = 0
-                                voicedMs = 0
-                            }
-                        }
+                        val audio = window.toFloatArray()
+                        streamingDecodeGeneration.incrementAndGet()
+                        window.clear()
+                        silenceMs = 0
+                        voicedMs = 0
+                        processRecognizedSegment(audio)
                     }
-                } catch (e: Exception) {
-                    AppLogger.e("Realtime loop failed", e)
-                    notifyError("实时转换出现问题，请重新开始识别")
+                    if (durMs > maxSpeechMs) {
+                        flushRecognitionWindow()
+                    }
                 }
+                completePendingFlushRequest()
             }
+        } finally {
+            if (flushOnStop.get()) {
+                flushRecognitionWindow()
+            }
+            pendingRecognitionFlush.getAndSet(null)?.complete(Unit)
         }
     }
 
@@ -3796,13 +4885,16 @@ class RealtimeController(
         return sqrt(sum / samples.size)
     }
 
-    private fun filterAsrText(raw: String, rms: Double): String {
+    private fun filterAsrText(
+        raw: String,
+        rms: Double
+    ): String {
         val text = raw.trim()
         if (text.isEmpty()) return ""
         val letters = text.count { it.isLetterOrDigit() }
         if (letters == 0) return ""
-        if (letters <= 1 && rms < minSegmentRms) return ""
-        return replaceNumbers(text)
+        if (letters <= 1 && rms < effectiveMinSegmentRms()) return ""
+        return text
     }
 
     private fun buildAec3Diag(nowMs: Long): String {
@@ -3815,105 +4907,6 @@ class RealtimeController(
         return "AEC3 诊断：渲染=$renderLabel($renderCount) 采集=$captureLabel($captureCount)"
     }
 
-    private fun replaceNumbers(text: String): String {
-        return when (numberReplaceMode) {
-            1 -> text.replace(Regex("\\d+")) { match ->
-                digitsToChineseChars(match.value)
-            }
-            2 -> text.replace(Regex("\\d+")) { match ->
-                digitsToChineseExpression(match.value)
-            }
-            else -> text
-        }
-    }
-
-    private fun digitsToChineseChars(digits: String): String {
-        val map = charArrayOf('零', '一', '二', '三', '四', '五', '六', '七', '八', '九')
-        val sb = StringBuilder(digits.length)
-        for (ch in digits) {
-            val idx = ch - '0'
-            if (idx in 0..9) sb.append(map[idx]) else sb.append(ch)
-        }
-        return sb.toString()
-    }
-
-    private fun digitsToChineseExpression(digits: String): String {
-        val trimmed = digits.trimStart('0')
-        if (trimmed.isEmpty()) return "零"
-        val groups = mutableListOf<String>()
-        var idx = trimmed.length
-        while (idx > 0) {
-            val start = kotlin.math.max(0, idx - 4)
-            groups.add(0, trimmed.substring(start, idx))
-            idx = start
-        }
-        val values = groups.map { it.toIntOrNull() ?: 0 }
-        val bigUnits = arrayOf("", "万", "亿", "兆", "京", "垓", "秭", "穰")
-        val sb = StringBuilder()
-        var zeroPending = false
-        for (i in groups.indices) {
-            val value = values[i]
-            if (value == 0) {
-                zeroPending = true
-                continue
-            }
-            if (zeroPending && sb.isNotEmpty()) {
-                sb.append("零")
-            }
-            var groupText = convertGroup(groups[i])
-            val unitIdx = groups.size - 1 - i
-            if (groupText == "二" && unitIdx > 0) {
-                groupText = "两"
-            }
-            sb.append(groupText)
-            if (unitIdx > 0) {
-                sb.append(bigUnits.getOrElse(unitIdx) { "" })
-            }
-            zeroPending = false
-            if (i < groups.lastIndex && value < 1000 && values[i + 1] > 0) {
-                zeroPending = true
-            }
-        }
-        return sb.toString()
-    }
-
-    private fun convertGroup(group: String): String {
-        val units = arrayOf("", "十", "百", "千")
-        val digits = group.toCharArray()
-        val sb = StringBuilder()
-        var zeroPending = false
-        val len = digits.size
-        for (i in 0 until len) {
-            val d = digits[i] - '0'
-            val pos = len - 1 - i
-            if (d == 0) {
-                if (sb.isNotEmpty()) zeroPending = true
-                continue
-            }
-            if (zeroPending) {
-                sb.append("零")
-                zeroPending = false
-            }
-            if (pos == 1 && d == 1 && sb.isEmpty()) {
-                sb.append("十")
-            } else {
-                val digitChar = if (d == 2 && pos >= 2) "两" else when (d) {
-                    0 -> "零"
-                    1 -> "一"
-                    2 -> "二"
-                    3 -> "三"
-                    4 -> "四"
-                    5 -> "五"
-                    6 -> "六"
-                    7 -> "七"
-                    8 -> "八"
-                    else -> "九"
-                }
-                sb.append(digitChar).append(units[pos])
-            }
-        }
-        return sb.toString()
-    }
 }
 
 private fun pickPreferredInputDevice(devices: Array<AudioDeviceInfo>, pref: Int): AudioDeviceInfo? {

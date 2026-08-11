@@ -238,16 +238,20 @@ import com.lhtstudio.kigtts.app.audio.AudioDenoiserMode
 import com.lhtstudio.kigtts.app.audio.AudioLoopbackTester
 import com.lhtstudio.kigtts.app.audio.AudioTestConfig
 import com.lhtstudio.kigtts.app.audio.SoundboardManager
+import com.lhtstudio.kigtts.app.audio.shouldSuppressTtsForSoundboardTrigger
 import com.lhtstudio.kigtts.app.audio.SoundboardPlaybackState
 import com.lhtstudio.kigtts.app.audio.SpeechEnhancementMode
 import com.lhtstudio.kigtts.app.audio.SpeakerEnrollResult
+import com.lhtstudio.kigtts.app.audio.SpeakerVerificationTolerance
 import com.lhtstudio.kigtts.app.audio.VadMode
 import com.lhtstudio.kigtts.app.data.ModelRepository
+import com.lhtstudio.kigtts.app.data.AsrRecognitionLanguage
 import com.lhtstudio.kigtts.app.data.AppFontRepository
 import com.lhtstudio.kigtts.app.data.AppFontChangeBus
 import com.lhtstudio.kigtts.app.data.AppConfigBackupIo
 import com.lhtstudio.kigtts.app.data.AppConfigBackupOptions
 import com.lhtstudio.kigtts.app.data.LockScreenSettings
+import com.lhtstudio.kigtts.app.data.ListeningModeSettings
 import com.lhtstudio.kigtts.app.data.LockScreenWallpaperStore
 import com.lhtstudio.kigtts.app.data.RecognitionResourceProgress
 import com.lhtstudio.kigtts.app.data.RecognitionResourceStatus
@@ -269,6 +273,8 @@ import com.lhtstudio.kigtts.app.data.QuickCardPackageSummary
 import com.lhtstudio.kigtts.app.data.SYSTEM_TTS_VOICE_NAME
 import com.lhtstudio.kigtts.app.data.VoicePackInfo
 import com.lhtstudio.kigtts.app.data.UserPrefs
+import com.lhtstudio.kigtts.app.data.resolveQuickSubtitleStartupText
+import com.lhtstudio.kigtts.app.data.SpeechButtonActionMode
 import com.lhtstudio.kigtts.app.data.VoicePackMeta
 import com.lhtstudio.kigtts.app.data.alignedQuickSubtitleItemColors
 import com.lhtstudio.kigtts.app.data.compactQuickSubtitleItemColors
@@ -292,6 +298,7 @@ import com.lhtstudio.kigtts.app.service.VolumeHotkeyService
 import com.lhtstudio.kigtts.app.util.AlipayScannerSupport
 import com.lhtstudio.kigtts.app.util.AppLogger
 import com.lhtstudio.kigtts.app.util.BluetoothMediaTitleBridge
+import com.lhtstudio.kigtts.app.widget.WidgetSnapshotStore
 import com.lhtstudio.kigtts.app.util.ExternalShortcutCatalog
 import com.lhtstudio.kigtts.app.util.ExternalShortcutChoice
 import com.lhtstudio.kigtts.app.util.LauncherMenuShortcuts
@@ -422,6 +429,7 @@ class MainViewModel(
     private var settingsObserveJob: Job? = null
     private var ledSubtitleSettingsSaveJob: Job? = null
     private var lanCastDisplaySettingsSaveJob: Job? = null
+    private var listeningModeSettingsSaveJob: Job? = null
     private var voicePackRefreshJob: Job? = null
     private val voicePackRefreshMutex = Mutex()
     private val lastProgressUpdateAtMs = mutableMapOf<Long, Long>()
@@ -514,7 +522,7 @@ class MainViewModel(
         private const val LEVEL_UPDATE_DELTA = 0.02f
         private const val PROGRESS_UPDATE_INTERVAL_MS = 48L
         private const val PROGRESS_UPDATE_DELTA = 0.02f
-        private const val MAX_RECOGNIZED_ITEMS = 100
+        private const val MAX_RECOGNIZED_ITEMS = 50
         private const val MAX_SPEAKER_PROFILES = 3
         private const val APP_REALTIME_OWNER_TAG = "app"
     }
@@ -533,7 +541,9 @@ class MainViewModel(
         private set
     var quickSubtitleSelectedGroupId by mutableLongStateOf(1L)
         private set
-    var quickSubtitleCurrentText by mutableStateOf("您好，我现在\n不太方便\n说话")
+    var quickSubtitleCurrentText by mutableStateOf(
+        UserPrefs.DEFAULT_QUICK_SUBTITLE_CLEARED_PLACEHOLDER
+    )
         private set
     var quickSubtitleInputText by mutableStateOf("")
         private set
@@ -588,6 +598,7 @@ class MainViewModel(
     var drawingManualRotationQuarterTurns by mutableIntStateOf(0)
         private set
     private var quickSubtitleNextGroupId = 10L
+    private var quickSubtitleStartupPolicyPending = true
     private var quickSubtitleSaving = false
     private var pendingQuickSubtitleSavePayload: String? = null
     private var lastAppliedQuickSubtitleRequestId = 0L
@@ -610,6 +621,7 @@ class MainViewModel(
         loadSoundboardConfig()
         loadQuickCardConfig()
         refreshRecognitionResourceStatus()
+        refreshNeuralSpeakerFilterResourceStatus()
         refreshKokoroVoiceStatus()
         observeSoundboardPlayback()
         observeSettingsChanges()
@@ -656,7 +668,7 @@ class MainViewModel(
         }
     }
 
-    fun attachRealtimeHost(service: RealtimeHostService) {
+    fun attachRealtimeHost(service: RealtimeHostService, refreshModels: Boolean = true) {
         if (realtimeHost === service) return
         detachRealtimeHost()
         realtimeHost = service
@@ -683,6 +695,12 @@ class MainViewModel(
                     aec3Diag = snapshot.aec3Diag,
                     pushToTalkPressed = snapshot.pushToTalkPressed,
                     pushToTalkStreamingText = snapshot.pushToTalkStreamingText,
+                    listeningModeSettings = uiState.listeningModeSettings.copy(
+                        enabled = snapshot.listeningEnabled
+                    ),
+                    listeningItems = snapshot.listeningItems,
+                    listeningStreamingText = snapshot.listeningStreamingText,
+                    listeningInputDeviceLabel = snapshot.listeningInputDeviceLabel,
                     speakerLastSimilarity = if (snapshot.speakerLastSimilarity >= 0f) {
                         snapshot.speakerLastSimilarity
                     } else {
@@ -732,7 +750,7 @@ class MainViewModel(
             pendingHostStartRequest = false
             service.startRealtime()
         }
-        refreshVoicePacks()
+        if (refreshModels) refreshVoicePacks()
     }
 
     fun detachRealtimeHost() {
@@ -818,6 +836,8 @@ class MainViewModel(
     }
 
     private fun applySettingsSnapshot(settings: UserPrefs.AppSettings) {
+        val wasShowingClearedPlaceholder =
+            quickSubtitleCurrentText == uiState.quickSubtitleClearedPlaceholderText
         FontScaleBlockRuntime.mode = settings.fontScaleBlockMode
         LanCastAudioBridge.setOutputMode(
             LanCastAudioOutputMode.fromPreferenceValue(settings.lanCastAudioOutputMode)
@@ -848,6 +868,7 @@ class MainViewModel(
                 .toMutableList()
         }
         val hasProfiles = speakerProfiles.isNotEmpty()
+        val hasNeuralProfiles = speakerProfiles.any { it.neuralVector?.size == 192 }
         val speakerVerifyEnabled = settings.speakerVerifyEnabled && hasProfiles
         val nextAec3Status = if (settings.aec3Enabled) {
             if (uiState.aec3Status == "未启用") "待启动" else uiState.aec3Status
@@ -892,7 +913,7 @@ class MainViewModel(
             piperNoiseW = settings.piperNoiseW,
             piperSentenceSilence = settings.piperSentenceSilence,
             keepAlive = settings.keepAlive,
-            numberReplaceMode = settings.numberReplaceMode,
+            asrRecognitionLanguage = settings.asrRecognitionLanguage,
             landscapeDrawerMode = settings.landscapeDrawerMode,
             solidTopBar = settings.solidTopBar,
             themeMode = settings.themeMode,
@@ -916,6 +937,7 @@ class MainViewModel(
             useBuiltinFileManager = settings.useBuiltinFileManager,
             useBuiltinGallery = settings.useBuiltinGallery,
             asrSendToQuickSubtitle = settings.asrSendToQuickSubtitle,
+            speechButtonActionMode = settings.speechButtonActionMode,
             pushToTalkMode = settings.pushToTalkMode,
             pushToTalkConfirmInputMode = settings.pushToTalkConfirmInput,
             floatingOverlayEnabled = settings.floatingOverlayEnabled,
@@ -949,6 +971,10 @@ class MainViewModel(
             quickSubtitlePanelGesturesReversed = settings.quickSubtitlePanelGesturesReversed,
             quickSubtitleFirstRunGuideCompleted = settings.quickSubtitleFirstRunGuideCompleted,
             quickSubtitleKeepInputPreview = settings.quickSubtitleKeepInputPreview,
+            quickSubtitleClearedPlaceholderText = settings.quickSubtitleClearedPlaceholderText,
+            quickSubtitleRestoreLastTextOnLaunch =
+                settings.quickSubtitleRestoreLastTextOnLaunch,
+            listeningModeSettings = settings.listeningModeSettings,
             ledSubtitleSettings = settings.ledSubtitleSettings,
             lanCastDisplaySettings = settings.lanCastDisplaySettings,
             bluetoothMediaTitleSubtitle = settings.bluetoothMediaTitleSubtitle,
@@ -960,12 +986,22 @@ class MainViewModel(
             drawingPalette = settings.drawingPalette,
             speakerVerifyEnabled = speakerVerifyEnabled,
             speakerVerifyThreshold = settings.speakerVerifyThreshold,
+            speakerVerifyToleranceLevel = settings.speakerVerifyToleranceLevel,
+            experimentalRecognitionSensitivity = settings.experimentalRecognitionSensitivity,
+            experimentalTargetSpeakerBackend = settings.experimentalTargetSpeakerBackend,
             speakerProfileReady = hasProfiles,
+            speakerNeuralProfileReady = hasNeuralProfiles,
             speakerProfiles = speakerProfileUiItems(),
             speakerLastSimilarity = if (speakerVerifyEnabled) uiState.speakerLastSimilarity else -1f,
             pushToTalkPressed = if (settings.pushToTalkMode) uiState.pushToTalkPressed else false,
             pushToTalkStreamingText = if (settings.pushToTalkMode) uiState.pushToTalkStreamingText else ""
         )
+        if (
+            wasShowingClearedPlaceholder &&
+            quickSubtitleCurrentText != settings.quickSubtitleClearedPlaceholderText
+        ) {
+            commitQuickSubtitleCurrentText(settings.quickSubtitleClearedPlaceholderText)
+        }
         quickSubtitleListPopupLayout =
             if (settings.quickSubtitleListPopupGridMode) {
                 QuickSubtitleListPopupLayout.Grid
@@ -991,16 +1027,31 @@ class MainViewModel(
     }
 
     private fun loadQuickSubtitleConfig() {
+        val applyStartupPolicy = quickSubtitleStartupPolicyPending
+        quickSubtitleStartupPolicyPending = false
         viewModelScope.launch {
+            val settings = UserPrefs.getSettings(appContext)
             val raw = UserPrefs.getQuickSubtitleConfig(appContext)
-            if (raw.isNullOrBlank()) return@launch
+            if (raw.isNullOrBlank()) {
+                if (applyStartupPolicy) {
+                    commitQuickSubtitleCurrentText(settings.quickSubtitleClearedPlaceholderText)
+                }
+                return@launch
+            }
             runCatching {
-                parseQuickSubtitleConfig(raw)
+                parseQuickSubtitleConfig(raw, settings, applyStartupPolicy)
+                withContext(Dispatchers.IO) {
+                    WidgetSnapshotStore.publishQuickSubtitle(appContext, raw)
+                }
             }
         }
     }
 
-    private fun parseQuickSubtitleConfig(raw: String) {
+    private fun parseQuickSubtitleConfig(
+        raw: String,
+        settings: UserPrefs.AppSettings,
+        applyStartupPolicy: Boolean
+    ) {
         val root = JSONObject(raw)
         val groupsArr = root.optJSONArray("groups") ?: JSONArray()
         val parsedGroups = mutableListOf<QuickSubtitleGroup>()
@@ -1025,7 +1076,16 @@ class MainViewModel(
         val finalGroups = if (parsedGroups.isNotEmpty()) parsedGroups else defaultQuickSubtitleGroups()
         val selectedId = root.optLong("selectedGroupId", finalGroups.first().id)
         val fontSize = root.optDouble("fontSizeSp", 56.0).toFloat().coerceIn(28f, 800f)
-        val currentText = root.optString("currentText", quickSubtitleCurrentText).ifBlank { quickSubtitleCurrentText }
+        val savedCurrentText = root.optString("currentText", "")
+        val currentText = if (applyStartupPolicy) {
+            resolveQuickSubtitleStartupText(
+                savedText = savedCurrentText,
+                clearedPlaceholderText = settings.quickSubtitleClearedPlaceholderText,
+                restoreLastTextOnLaunch = settings.quickSubtitleRestoreLastTextOnLaunch
+            )
+        } else {
+            savedCurrentText.ifBlank { settings.quickSubtitleClearedPlaceholderText }
+        }
         val inputText = root.optString("inputText", "")
         val playOnSend = root.optBoolean("playOnSend", true)
         val fontBold = root.optBoolean("fontBold", true)
@@ -1083,6 +1143,9 @@ class MainViewModel(
                 while (true) {
                     UserPrefs.setQuickSubtitleConfig(appContext, nextPayload)
                     realtimeHost?.publishQuickSubtitleConfig(nextPayload)
+                    withContext(Dispatchers.IO) {
+                        WidgetSnapshotStore.publishQuickSubtitle(appContext, nextPayload)
+                    }
                     val pending = pendingQuickSubtitleSavePayload
                     if (pending == null || pending == nextPayload) {
                         pendingQuickSubtitleSavePayload = null
@@ -1250,7 +1313,8 @@ class MainViewModel(
         target: String,
         text: String,
         navigateToPage: Boolean = true,
-        soundboardGroupId: Long? = null
+        soundboardGroupId: Long? = null,
+        quickCardId: Long? = null
     ) {
         val normalized = text.trim()
         val openPageTarget = isOverlayOpenTarget(target)
@@ -1268,7 +1332,8 @@ class MainViewModel(
             target = target,
             text = normalized,
             navigateToPage = navigateToPage,
-            soundboardGroupId = soundboardGroupId
+            soundboardGroupId = soundboardGroupId,
+            quickCardId = quickCardId
         )
     }
 
@@ -1487,7 +1552,15 @@ class MainViewModel(
     }
 
     fun setQuickSubtitleFontSize(size: Float) {
+        updateQuickSubtitleFontSize(size)
+        commitQuickSubtitleFontSize()
+    }
+
+    fun updateQuickSubtitleFontSize(size: Float) {
         quickSubtitleFontSizeSp = size.coerceIn(28f, quickSubtitleFontSizeMaxSp())
+    }
+
+    fun commitQuickSubtitleFontSize() {
         saveQuickSubtitleConfig()
     }
 
@@ -1544,7 +1617,7 @@ class MainViewModel(
     }
 
     fun clearQuickSubtitleText() {
-        commitQuickSubtitleCurrentText(QUICK_SUBTITLE_CLEARED_HINT)
+        commitQuickSubtitleCurrentText(uiState.quickSubtitleClearedPlaceholderText)
         saveQuickSubtitleConfig()
     }
 
@@ -1622,6 +1695,16 @@ class MainViewModel(
         )
         quickSubtitleGroups = next
         saveQuickSubtitleConfig()
+    }
+
+    fun removeQuickSubtitleDisplayItem(groupId: Long, displayIndex: Int): Boolean {
+        val groupIndex = quickSubtitleGroups.indexOfFirst { it.id == groupId }
+        if (groupIndex < 0) return false
+        val group = quickSubtitleGroups[groupIndex]
+        val sourceIndex = quickSubtitleDisplaySourceIndex(group, displayIndex) ?: return false
+        if (group.items.size <= 1) return false
+        removeQuickSubtitleItem(groupIndex, sourceIndex)
+        return true
     }
 
     fun removeQuickSubtitleItems(groupIndex: Int, itemIndexes: Set<Int>): Int {
@@ -1711,6 +1794,43 @@ class MainViewModel(
         )
         quickSubtitleGroups = next
         saveQuickSubtitleConfig()
+    }
+
+    fun updateQuickSubtitleDisplayItem(
+        groupId: Long,
+        displayIndex: Int,
+        value: String,
+        colorArgb: Int?
+    ): Boolean {
+        val groupIndex = quickSubtitleGroups.indexOfFirst { it.id == groupId }
+        if (groupIndex < 0) return false
+        val group = quickSubtitleGroups[groupIndex]
+        val sourceIndex = quickSubtitleDisplaySourceIndex(group, displayIndex) ?: return false
+        updateQuickSubtitleItem(groupIndex, sourceIndex, value, colorArgb)
+        return true
+    }
+
+    fun setQuickSubtitleDisplayItems(
+        groupId: Long,
+        items: List<String>,
+        colors: List<Int?>
+    ): Boolean {
+        if (uiState.quickSubtitleFrequencySortEnabled) return false
+        val groupIndex = quickSubtitleGroups.indexOfFirst { it.id == groupId }
+        if (groupIndex < 0 || items.isEmpty()) return false
+        setQuickSubtitleItems(groupIndex, items, colors)
+        return true
+    }
+
+    private fun quickSubtitleDisplaySourceIndex(
+        group: QuickSubtitleGroup,
+        displayIndex: Int
+    ): Int? {
+        if (displayIndex !in group.items.indices) return null
+        if (!uiState.quickSubtitleFrequencySortEnabled) return displayIndex
+        return uiState.quickSubtitleUsageStats
+            .sortedIndices(group.id, group.items)
+            .getOrNull(displayIndex)
     }
 
     fun setQuickSubtitleItems(groupIndex: Int, items: List<String>, colors: List<Int?>) {
@@ -2144,12 +2264,19 @@ class MainViewModel(
         }
     }
 
-    private suspend fun shouldSuppressVoiceTtsForSoundboard(text: String): Boolean {
+    private suspend fun shouldSuppressTtsForSoundboard(
+        text: String,
+        fromQuickText: Boolean
+    ): Boolean {
         val normalized = text.trim()
         if (normalized.isEmpty()) return false
-        return uiState.soundboardKeywordTriggerEnabled &&
-            uiState.soundboardSuppressTtsOnKeyword &&
-            SoundboardManager.hasTriggerMatch(appContext, normalized)
+        return shouldSuppressTtsForSoundboardTrigger(
+            fromQuickText = fromQuickText,
+            keywordTriggerEnabled = uiState.soundboardKeywordTriggerEnabled,
+            allowQuickTextTrigger = uiState.allowQuickTextTriggerSoundboard,
+            suppressTtsOnKeyword = uiState.soundboardSuppressTtsOnKeyword,
+            hasTriggerMatch = SoundboardManager.hasTriggerMatch(appContext, normalized)
+        )
     }
 
     private fun quickCardDir(): File {
@@ -2192,6 +2319,9 @@ class MainViewModel(
             if (raw.isNullOrBlank()) return@launch
             runCatching {
                 parseQuickCardConfig(raw)
+                withContext(Dispatchers.IO) {
+                    WidgetSnapshotStore.publishQuickCards(appContext, raw)
+                }
             }
         }
     }
@@ -2257,6 +2387,9 @@ class MainViewModel(
         viewModelScope.launch {
             try {
                 UserPrefs.setQuickCardConfig(appContext, payload)
+                withContext(Dispatchers.IO) {
+                    WidgetSnapshotStore.publishQuickCards(appContext, payload)
+                }
             } finally {
                 quickCardsSaving = false
             }
@@ -2898,6 +3031,104 @@ class MainViewModel(
                     preloadAsr(installedAsrDir)
                 }
             }
+            refreshNeuralSpeakerFilterResourceStatus()
+        }
+    }
+
+    fun refreshNeuralSpeakerFilterResourceStatus() {
+        viewModelScope.launch {
+            val resourceStatus = withContext(Dispatchers.IO) {
+                repo.neuralSpeakerFilterResourceStatus()
+            }
+            uiState = uiState.copy(
+                neuralSpeakerFilterInstalled = resourceStatus.installed,
+                neuralSpeakerFilterBundled = resourceStatus.bundledWithRecognitionResources,
+                neuralSpeakerFilterDownloading = false,
+                neuralSpeakerFilterProgressStage = "",
+                neuralSpeakerFilterProgress = -1f
+            )
+        }
+    }
+
+    fun downloadNeuralSpeakerFilterResources() {
+        if (uiState.neuralSpeakerFilterDownloading) return
+        uiState = uiState.copy(
+            neuralSpeakerFilterDownloading = true,
+            neuralSpeakerFilterProgressStage = "准备下载神经分离资源",
+            neuralSpeakerFilterProgress = 0f,
+            status = "正在准备神经分离资源"
+        )
+        viewModelScope.launch {
+            runCatching {
+                withContext(Dispatchers.IO) {
+                    repo.downloadNeuralSpeakerFilterResources(::postNeuralSpeakerFilterProgress)
+                }
+            }.onSuccess { resourceStatus ->
+                uiState = uiState.copy(
+                    neuralSpeakerFilterInstalled = resourceStatus.installed,
+                    neuralSpeakerFilterBundled = resourceStatus.bundledWithRecognitionResources,
+                    neuralSpeakerFilterDownloading = false,
+                    neuralSpeakerFilterProgressStage = "",
+                    neuralSpeakerFilterProgress = -1f,
+                    status = if (resourceStatus.installed) {
+                        "语音识别资源已更新，重新录制声纹后可获得更好的过滤效果"
+                    } else {
+                        "神经分离资源安装后校验失败"
+                    }
+                )
+            }.onFailure { error ->
+                AppLogger.e("Neural speaker filter resource download failed", error)
+                uiState = uiState.copy(
+                    neuralSpeakerFilterDownloading = false,
+                    neuralSpeakerFilterProgressStage = "",
+                    neuralSpeakerFilterProgress = -1f,
+                    status = error.message?.takeIf { it.isNotBlank() }
+                        ?: "神经分离资源下载失败，请稍后重试"
+                )
+            }
+        }
+    }
+
+    fun deleteNeuralSpeakerFilterResources() {
+        if (uiState.neuralSpeakerFilterDownloading) return
+        realtimeHost?.releaseNeuralSpeakerFilterResources()
+        viewModelScope.launch {
+            runCatching {
+                withContext(Dispatchers.IO) {
+                    repo.deleteNeuralSpeakerFilterResources()
+                    repo.neuralSpeakerFilterResourceStatus()
+                }
+            }.onSuccess { resourceStatus ->
+                uiState = uiState.copy(
+                    neuralSpeakerFilterInstalled = resourceStatus.installed,
+                    neuralSpeakerFilterBundled = resourceStatus.bundledWithRecognitionResources,
+                    neuralSpeakerFilterProgressStage = "",
+                    neuralSpeakerFilterProgress = -1f,
+                    status = if (resourceStatus.bundledWithRecognitionResources) {
+                        "单独神经分离资源已删除，继续使用语音识别资源包内资源"
+                    } else {
+                        "神经分离资源已删除，将使用轻量筛选"
+                    }
+                )
+            }.onFailure { error ->
+                AppLogger.e("Neural speaker filter resource deletion failed", error)
+                uiState = uiState.copy(status = "神经分离资源删除失败")
+            }
+        }
+    }
+
+    private fun postNeuralSpeakerFilterProgress(progress: RecognitionResourceProgress) {
+        appContext.runOnUiThread {
+            uiState = uiState.copy(
+                neuralSpeakerFilterDownloading = true,
+                neuralSpeakerFilterProgressStage = progress.stage,
+                neuralSpeakerFilterProgress = progress.fraction,
+                status = if (progress.fraction in 0f..1f) {
+                    "${progress.stage} ${(progress.fraction * 100f).roundToInt()}%"
+                } else {
+                    progress.stage
+                }
+            )
         }
     }
 
@@ -3195,6 +3426,7 @@ class MainViewModel(
         if (uiState.floatingOverlayEnabled) {
             FloatingOverlayService.refresh(appContext)
         }
+        refreshNeuralSpeakerFilterResourceStatus()
     }
 
     fun loadLastVoice() {
@@ -3736,12 +3968,12 @@ class MainViewModel(
         }
     }
 
-    fun setNumberReplaceMode(mode: Int) {
-        val clamped = mode.coerceIn(0, 2)
-        uiState = uiState.copy(numberReplaceMode = clamped)
-        realtimeHost?.setNumberReplaceMode(clamped)
+    fun setAsrRecognitionLanguage(language: String) {
+        val normalized = AsrRecognitionLanguage.normalize(language)
+        uiState = uiState.copy(asrRecognitionLanguage = normalized)
+        realtimeHost?.setAsrRecognitionLanguage(normalized)
         viewModelScope.launch {
-            UserPrefs.setNumberReplaceMode(appContext, clamped)
+            UserPrefs.setAsrRecognitionLanguage(appContext, normalized)
         }
     }
 
@@ -3752,37 +3984,72 @@ class MainViewModel(
         }
     }
 
-    fun setPushToTalkMode(enabled: Boolean) {
+    fun setSpeechButtonActionMode(value: Int) {
+        val mode = SpeechButtonActionMode.normalize(value)
+        val enabled = SpeechButtonActionMode.usesPushToTalk(mode)
+        val confirmEnabled = SpeechButtonActionMode.usesConfirmation(mode)
         pttSessionLastText = ""
         resetPttHistoryDedup()
         if (enabled && uiState.running) {
             stop()
         }
         uiState = uiState.copy(
+            speechButtonActionMode = mode,
             pushToTalkMode = enabled,
+            pushToTalkConfirmInputMode = confirmEnabled,
             running = if (enabled) false else uiState.running,
             pushToTalkPressed = false,
             pushToTalkStreamingText = ""
         )
+        realtimeHost?.setSpeechButtonActionMode(mode)
         realtimeHost?.setPushToTalkStreamingEnabled(false)
-        realtimeHost?.setSuppressAsrAutoSpeak(uiState.ttsDisabled || (enabled && uiState.pushToTalkConfirmInputMode))
+        realtimeHost?.setSuppressAsrAutoSpeak(uiState.ttsDisabled || confirmEnabled)
         viewModelScope.launch {
-            UserPrefs.setPushToTalkMode(appContext, enabled)
+            UserPrefs.setSpeechButtonActionMode(appContext, mode)
         }
     }
 
-    fun setPushToTalkConfirmInputMode(enabled: Boolean) {
-        pttSessionLastText = ""
-        resetPttHistoryDedup()
+    fun updateListeningModeSettings(
+        transform: (ListeningModeSettings) -> ListeningModeSettings
+    ) {
+        val next = transform(uiState.listeningModeSettings).normalized()
+        if (next == uiState.listeningModeSettings) return
+        uiState = uiState.copy(listeningModeSettings = next)
+        realtimeHost?.updateListeningModeSettings(next)
+        listeningModeSettingsSaveJob?.cancel()
+        listeningModeSettingsSaveJob = viewModelScope.launch {
+            UserPrefs.setListeningModeSettings(appContext, next)
+        }
+    }
+
+    fun updateListeningModeFontSize(sizeSp: Float) {
+        if (!sizeSp.isFinite()) return
+        val next = uiState.listeningModeSettings.copy(fontSizeSp = sizeSp).normalized()
+        if (next.fontSizeSp == uiState.listeningModeSettings.fontSizeSp) return
+        uiState = uiState.copy(listeningModeSettings = next)
+    }
+
+    fun commitListeningModeFontSize() {
+        val current = uiState.listeningModeSettings
+        realtimeHost?.updateListeningModeSettings(current)
+        listeningModeSettingsSaveJob?.cancel()
+        listeningModeSettingsSaveJob = viewModelScope.launch {
+            UserPrefs.setListeningModeSettings(appContext, current)
+        }
+    }
+
+    fun isListeningModeEnabled(): Boolean = uiState.listeningModeSettings.enabled
+
+    fun setListeningModeEnabled(enabled: Boolean) {
+        val next = uiState.listeningModeSettings.copy(enabled = enabled).normalized()
         uiState = uiState.copy(
-            pushToTalkConfirmInputMode = enabled,
-            pushToTalkStreamingText = if (enabled) uiState.pushToTalkStreamingText else ""
+            listeningModeSettings = next,
+            listeningStreamingText = if (enabled) uiState.listeningStreamingText else ""
         )
-        val streamingEnabled = enabled && uiState.pushToTalkMode && uiState.pushToTalkPressed
-        realtimeHost?.setPushToTalkStreamingEnabled(streamingEnabled)
-        realtimeHost?.setSuppressAsrAutoSpeak(uiState.ttsDisabled || (enabled && uiState.pushToTalkMode))
-        viewModelScope.launch {
-            UserPrefs.setPushToTalkConfirmInput(appContext, enabled)
+        requestRealtimeHost("聆听模式初始化中")?.setListeningModeEnabled(enabled)
+        listeningModeSettingsSaveJob?.cancel()
+        listeningModeSettingsSaveJob = viewModelScope.launch {
+            UserPrefs.setListeningModeSettings(appContext, next)
         }
     }
 
@@ -4060,6 +4327,28 @@ class MainViewModel(
         }
     }
 
+    fun setQuickSubtitleClearedPlaceholderText(text: String) {
+        val normalized = UserPrefs.normalizeQuickSubtitleClearedPlaceholder(text)
+        val previous = uiState.quickSubtitleClearedPlaceholderText
+        if (normalized == previous) return
+        val currentlyCleared = quickSubtitleCurrentText == previous
+        uiState = uiState.copy(quickSubtitleClearedPlaceholderText = normalized)
+        if (currentlyCleared) {
+            commitQuickSubtitleCurrentText(normalized)
+            saveQuickSubtitleConfig()
+        }
+        viewModelScope.launch {
+            UserPrefs.setQuickSubtitleClearedPlaceholderText(appContext, normalized)
+        }
+    }
+
+    fun setQuickSubtitleRestoreLastTextOnLaunch(enabled: Boolean) {
+        uiState = uiState.copy(quickSubtitleRestoreLastTextOnLaunch = enabled)
+        viewModelScope.launch {
+            UserPrefs.setQuickSubtitleRestoreLastTextOnLaunch(appContext, enabled)
+        }
+    }
+
     fun updateLedSubtitleSettings(settings: LedSubtitleSettings) {
         val normalized = settings.normalized()
         if (uiState.ledSubtitleSettings == normalized) return
@@ -4254,7 +4543,7 @@ class MainViewModel(
             return
         }
         viewModelScope.launch {
-            if (shouldSuppressVoiceTtsForSoundboard(message)) {
+            if (shouldSuppressTtsForSoundboard(message, fromQuickText = false)) {
                 appendRecognizedHistory(message)
                 uiState = uiState.copy(status = "已触发音效板，跳过本句朗读")
                 return@launch
@@ -4276,12 +4565,25 @@ class MainViewModel(
 
     private fun speakerProfileUiItems(): List<SpeakerProfileUiItem> {
         return speakerProfiles.mapIndexed { index, profile ->
-            SpeakerProfileUiItem(id = profile.id, name = "样本 ${index + 1}")
+            SpeakerProfileUiItem(
+                id = profile.id,
+                name = "样本 ${index + 1}",
+                confirmationReady = profile.confirmationVector?.isNotEmpty() == true,
+                neuralReady = profile.neuralVector?.size == 192
+            )
         }
     }
 
     private fun speakerProfileVectors(): List<FloatArray> {
         return speakerProfiles.map { it.vector.copyOf() }
+    }
+
+    private fun neuralSpeakerProfileVectors(): List<FloatArray?> {
+        return speakerProfiles.map { it.neuralVector?.copyOf() }
+    }
+
+    private fun confirmationSpeakerProfileVectors(): List<FloatArray?> {
+        return speakerProfiles.map { it.confirmationVector?.copyOf() }
     }
 
     fun setSpeakerVerifyEnabled(enabled: Boolean) {
@@ -4291,16 +4593,41 @@ class MainViewModel(
             UserPrefs.setSpeakerVerifyEnabled(appContext, enabled)
         }
         if (enabled && speakerProfiles.isEmpty()) {
-            uiState = uiState.copy(status = "说话人验证已开启，请先采集本人语音样本")
+            uiState = uiState.copy(status = "请先录制自己的声纹")
         }
     }
 
     fun setSpeakerVerifyThreshold(threshold: Float) {
-        val clamped = threshold.coerceIn(0.05f, 0.95f)
-        uiState = uiState.copy(speakerVerifyThreshold = clamped)
-        realtimeHost?.setSpeakerVerifyThreshold(clamped)
+        setSpeakerVerifyTolerance(SpeakerVerificationTolerance.fromThreshold(threshold).index)
+    }
+
+    fun setSpeakerVerifyTolerance(level: Int) {
+        val tolerance = SpeakerVerificationTolerance.fromIndex(level)
+        uiState = uiState.copy(
+            speakerVerifyThreshold = tolerance.primaryThreshold,
+            speakerVerifyToleranceLevel = tolerance.index
+        )
+        realtimeHost?.setSpeakerVerifyTolerance(tolerance.index)
         viewModelScope.launch {
-            UserPrefs.setSpeakerVerifyThreshold(appContext, clamped)
+            UserPrefs.setSpeakerVerifyTolerance(appContext, tolerance.index)
+        }
+    }
+
+    fun setExperimentalRecognitionSensitivity(sensitivity: Int) {
+        val normalized = sensitivity.coerceIn(0, 100)
+        uiState = uiState.copy(experimentalRecognitionSensitivity = normalized)
+        realtimeHost?.setExperimentalRecognitionSensitivity(normalized)
+        viewModelScope.launch {
+            UserPrefs.setExperimentalRecognitionSensitivity(appContext, normalized)
+        }
+    }
+
+    fun setExperimentalTargetSpeakerBackend(backend: Int) {
+        val normalized = UserPrefs.normalizeExperimentalTargetSpeakerBackend(backend)
+        uiState = uiState.copy(experimentalTargetSpeakerBackend = normalized)
+        realtimeHost?.setExperimentalTargetSpeakerBackend(normalized)
+        viewModelScope.launch {
+            UserPrefs.setExperimentalTargetSpeakerBackend(appContext, normalized)
         }
     }
 
@@ -4309,9 +4636,10 @@ class MainViewModel(
         uiState = uiState.copy(
             speakerVerifyEnabled = false,
             speakerProfileReady = false,
+            speakerNeuralProfileReady = false,
             speakerProfiles = emptyList(),
             speakerLastSimilarity = -1f,
-            status = "已清除本人语音样本"
+            status = "已删除本人声纹"
         )
         realtimeHost?.let { host ->
             host.setSpeakerVerifyEnabled(false)
@@ -4331,13 +4659,18 @@ class MainViewModel(
         uiState = uiState.copy(
             speakerVerifyEnabled = keepVerify,
             speakerProfileReady = hasProfiles,
+            speakerNeuralProfileReady = speakerProfiles.any { it.neuralVector?.size == 192 },
             speakerProfiles = speakerProfileUiItems(),
             speakerLastSimilarity = if (hasProfiles) uiState.speakerLastSimilarity else -1f,
-            status = if (hasProfiles) "已移除注册样本" else "已清除本人语音样本"
+            status = if (hasProfiles) "已更新本人声纹" else "已删除本人声纹"
         )
         realtimeHost?.let { host ->
             host.setSpeakerVerifyEnabled(keepVerify)
-            host.setSpeakerProfiles(speakerProfileVectors())
+            host.setSpeakerProfiles(
+                speakerProfileVectors(),
+                neuralSpeakerProfileVectors(),
+                confirmationSpeakerProfileVectors()
+            )
         }
         viewModelScope.launch {
             UserPrefs.setSpeakerVerifyEnabled(appContext, keepVerify)
@@ -4364,12 +4697,55 @@ class MainViewModel(
                 vector = profile
             )
         }.toMutableList()
-        realtimeHost?.setSpeakerProfiles(speakerProfileVectors())
+        realtimeHost?.setSpeakerProfiles(
+            speakerProfileVectors(),
+            neuralSpeakerProfileVectors(),
+            confirmationSpeakerProfileVectors()
+        )
         uiState = uiState.copy(
             speakerProfileReady = true,
+            speakerNeuralProfileReady = false,
             speakerProfiles = speakerProfileUiItems(),
             speakerLastSimilarity = -1f,
-            status = "本人语音样本已保存（${speakerProfiles.size}/$MAX_SPEAKER_PROFILES）"
+            status = "本人声纹已保存"
+        )
+        viewModelScope.launch {
+            UserPrefs.setSpeakerVerifyProfiles(appContext, speakerProfiles)
+        }
+        return true
+    }
+
+    fun applySpeakerEnrollResults(results: List<SpeakerEnrollResult>): Boolean {
+        val validResults = results
+            .filter { it.success && it.profile?.isNotEmpty() == true }
+            .take(MAX_SPEAKER_PROFILES)
+        if (validResults.isEmpty()) return false
+        val baseId = SystemClock.elapsedRealtime()
+        speakerProfiles = validResults.mapIndexed { index, result ->
+            UserPrefs.SpeakerVerifyProfile(
+                id = "spk-$baseId-${index + 1}",
+                name = "样本 ${index + 1}",
+                vector = result.profile!!.copyOf(),
+                confirmationVector = result.confirmationProfile?.copyOf(),
+                neuralVector = result.neuralProfile?.takeIf { it.size == 192 }?.copyOf()
+            )
+        }.toMutableList()
+        realtimeHost?.setSpeakerProfiles(
+            speakerProfileVectors(),
+            neuralSpeakerProfileVectors(),
+            confirmationSpeakerProfileVectors()
+        )
+        val neuralReady = speakerProfiles.any { it.neuralVector?.size == 192 }
+        uiState = uiState.copy(
+            speakerProfileReady = true,
+            speakerNeuralProfileReady = neuralReady,
+            speakerProfiles = speakerProfileUiItems(),
+            speakerLastSimilarity = -1f,
+            status = if (uiState.neuralSpeakerFilterInstalled && !neuralReady) {
+                "本人声纹已保存"
+            } else {
+                "本人声纹已保存"
+            }
         )
         viewModelScope.launch {
             UserPrefs.setSpeakerVerifyProfiles(appContext, speakerProfiles)
@@ -4383,11 +4759,11 @@ class MainViewModel(
         persist: Boolean = true
     ): SpeakerEnrollResult {
         if (uiState.running) {
-            val msg = "请先停止麦克风再采集本人样本"
+            val msg = "请先停止麦克风再录制声纹"
             uiState = uiState.copy(status = msg)
             return SpeakerEnrollResult(success = false, message = msg)
         }
-        uiState = uiState.copy(status = "说话人注册中（请持续说话约${durationSec.toInt()}秒）...")
+        uiState = uiState.copy(status = "正在录制声纹，请持续朗读...")
         val host = requestRealtimeHost("音频宿主初始化中，请稍后重试")
             ?: return SpeakerEnrollResult(
                 success = false,
@@ -4396,7 +4772,7 @@ class MainViewModel(
         val result = host.enrollSpeaker(durationSec, onCapture)
         if (result.success && result.profile != null) {
             if (persist) {
-                val applied = applySpeakerProfile(result.profile)
+                val applied = applySpeakerEnrollResults(listOf(result))
                 if (applied) {
                     uiState = uiState.copy(status = result.message)
                 }
@@ -4834,7 +5210,15 @@ class MainViewModel(
 
     fun setDenoiserMode(mode: Int) {
         val normalized = mode.coerceIn(AudioDenoiserMode.OFF, AudioDenoiserMode.SPEEX)
-        uiState = uiState.copy(denoiserMode = normalized)
+        val disablesSpeechEnhancement = normalized != AudioDenoiserMode.OFF
+        uiState = uiState.copy(
+            denoiserMode = normalized,
+            speechEnhancementMode = if (disablesSpeechEnhancement) {
+                SpeechEnhancementMode.OFF
+            } else {
+                uiState.speechEnhancementMode
+            }
+        )
         realtimeHost?.setDenoiserMode(normalized)
         viewModelScope.launch {
             UserPrefs.setDenoiserMode(appContext, normalized)
@@ -4843,7 +5227,11 @@ class MainViewModel(
 
     fun setSpeechEnhancementMode(mode: Int) {
         val normalized = SpeechEnhancementMode.clamp(mode)
-        uiState = uiState.copy(speechEnhancementMode = normalized)
+        val disablesLegacyDenoiser = SpeechEnhancementMode.isEnabled(normalized)
+        uiState = uiState.copy(
+            speechEnhancementMode = normalized,
+            denoiserMode = if (disablesLegacyDenoiser) AudioDenoiserMode.OFF else uiState.denoiserMode
+        )
         realtimeHost?.setSpeechEnhancementMode(normalized)
         viewModelScope.launch {
             UserPrefs.setSpeechEnhancementMode(appContext, normalized)
@@ -4948,6 +5336,11 @@ class MainViewModel(
         }
         viewModelScope.launch {
             if (interruptSerial != null && interruptSerial != quickSubtitleInterruptRequestSerial.get()) {
+                return@launch
+            }
+            if (shouldSuppressTtsForSoundboard(message, fromQuickText = fromQuickText)) {
+                appendRecognizedHistory(message, fromQuickText = fromQuickText)
+                uiState = uiState.copy(status = "已触发音效板，跳过本句朗读")
                 return@launch
             }
             val host = requestRealtimeHost("音频宿主初始化中")
@@ -5065,10 +5458,16 @@ class MainViewModel(
             host.setSileroVadEnabled(settings.sileroVadEnabled)
             host.setSileroVadThreshold(settings.sileroVadThreshold)
             host.setSileroVadPreRollMs(settings.sileroVadPreRollMs)
-            host.setNumberReplaceMode(settings.numberReplaceMode)
+            host.setAsrRecognitionLanguage(settings.asrRecognitionLanguage)
             host.setSpeakerVerifyEnabled(uiState.speakerVerifyEnabled)
-            host.setSpeakerVerifyThreshold(settings.speakerVerifyThreshold)
-            host.setSpeakerProfiles(speakerProfileVectors())
+            host.setSpeakerVerifyTolerance(settings.speakerVerifyToleranceLevel)
+            host.setExperimentalRecognitionSensitivity(settings.experimentalRecognitionSensitivity)
+            host.setExperimentalTargetSpeakerBackend(settings.experimentalTargetSpeakerBackend)
+            host.setSpeakerProfiles(
+                speakerProfileVectors(),
+                neuralSpeakerProfileVectors(),
+                confirmationSpeakerProfileVectors()
+            )
             host.setSuppressAsrAutoSpeak(
                 uiState.pushToTalkMode && uiState.pushToTalkConfirmInputMode
             )

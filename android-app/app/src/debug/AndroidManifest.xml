@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <receiver
+            android:name=".audio.VoiceModuleSmokeReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.lhtstudio.kigtts.app.action.RUN_VOICE_MODULE_SMOKE" />
+            </intent-filter>
+        </receiver>
+        <receiver
+            android:name=".audio.RealtimePipelineSmokeReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.lhtstudio.kigtts.app.action.RUN_REALTIME_PIPELINE_SMOKE" />
+            </intent-filter>
+        </receiver>
+        <receiver
+            android:name=".audio.SyntheticVoiceprintMatrixReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.lhtstudio.kigtts.app.action.RUN_SYNTHETIC_VOICEPRINT_MATRIX" />
+            </intent-filter>
+        </receiver>
+        <receiver
+            android:name=".audio.MultilingualPiperSmokeReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.lhtstudio.kigtts.app.action.RUN_MULTILINGUAL_PIPER_SMOKE" />
+            </intent-filter>
+        </receiver>
+    </application>
+</manifest>

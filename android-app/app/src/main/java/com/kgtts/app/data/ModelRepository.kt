@@ -48,6 +48,7 @@ class ModelRepository(private val context: Context) {
     private val asrRoot = File(root, "asr")
     private val voiceRoot = File(root, "voice")
     private val recognitionResources = RecognitionResourceRepository(context)
+    private val neuralSpeakerFilterResources = NeuralSpeakerFilterResourceRepository(context)
     private val kokoroVoice = KokoroVoiceRepository(context)
 
     init {
@@ -180,6 +181,19 @@ class ModelRepository(private val context: Context) {
         onProgress: (RecognitionResourceProgress) -> Unit
     ): RecognitionResourceStatus {
         return recognitionResources.downloadAndInstall(url, onProgress)
+    }
+
+    fun neuralSpeakerFilterResourceStatus(): NeuralSpeakerFilterResourceStatus =
+        neuralSpeakerFilterResources.status()
+
+    fun downloadNeuralSpeakerFilterResources(
+        onProgress: (RecognitionResourceProgress) -> Unit
+    ): NeuralSpeakerFilterResourceStatus {
+        return neuralSpeakerFilterResources.downloadAndInstall(onProgress)
+    }
+
+    fun deleteNeuralSpeakerFilterResources() {
+        neuralSpeakerFilterResources.delete()
     }
 
     fun resolveVoicePack(name: String): File? {

@@ -7,12 +7,97 @@ import org.junit.Test
 
 class LockScreenLayoutPolicyTest {
     @Test
+    fun `compact clock aligns to the visible phone overlay card`() {
+        assertEquals(
+            CompactClockFrame(leftPx = 78, widthPx = 924),
+            LockScreenLayoutPolicy.compactClockFrame(
+                mode = LockScreenLayoutMode.PhonePortrait,
+                screenWidthPx = 1080,
+                density = 3f,
+                sideMarginPx = 48,
+                overlayHorizontalPaddingPx = 30
+            )
+        )
+    }
+
+    @Test
+    fun `compact clock aligns to the visible large square overlay card`() {
+        assertEquals(
+            CompactClockFrame(leftPx = 629, widthPx = 950),
+            LockScreenLayoutPolicy.compactClockFrame(
+                mode = LockScreenLayoutMode.LargeSquare,
+                screenWidthPx = 2208,
+                density = 2.5f,
+                sideMarginPx = 40,
+                overlayHorizontalPaddingPx = 25
+            )
+        )
+    }
+
+    @Test
     fun `clock only hides for phone portrait mini pages`() {
         assertTrue(LockScreenLayoutPolicy.hideClock(LockScreenLayoutMode.PhonePortrait, true))
         assertFalse(LockScreenLayoutPolicy.hideClock(LockScreenLayoutMode.PhonePortrait, false))
         assertFalse(LockScreenLayoutPolicy.hideClock(LockScreenLayoutMode.PhoneLandscape, true))
         assertFalse(LockScreenLayoutPolicy.hideClock(LockScreenLayoutMode.TabletPortrait, true))
         assertFalse(LockScreenLayoutPolicy.hideClock(LockScreenLayoutMode.TabletLandscape, true))
+        assertTrue(LockScreenLayoutPolicy.hideClock(LockScreenLayoutMode.LargeSquare, true))
+    }
+
+    @Test
+    fun `phone portrait listening launcher uses compact clock but mini pages hide it`() {
+        assertTrue(
+            LockScreenLayoutPolicy.useCompactClock(
+                mode = LockScreenLayoutMode.PhonePortrait,
+                miniOverlayVisible = false,
+                listeningOverlayVisible = true,
+                listeningTopClearancePx = 260,
+                normalClockRequiredHeightPx = 180
+            )
+        )
+        assertFalse(
+            LockScreenLayoutPolicy.useCompactClock(
+                mode = LockScreenLayoutMode.PhonePortrait,
+                miniOverlayVisible = true,
+                listeningOverlayVisible = true,
+                listeningTopClearancePx = 80,
+                normalClockRequiredHeightPx = 180
+            )
+        )
+    }
+
+    @Test
+    fun `large square only compacts clock when normal stack does not fit`() {
+        assertTrue(
+            LockScreenLayoutPolicy.useCompactClock(
+                mode = LockScreenLayoutMode.LargeSquare,
+                miniOverlayVisible = false,
+                listeningOverlayVisible = true,
+                listeningTopClearancePx = 150,
+                normalClockRequiredHeightPx = 180
+            )
+        )
+        assertFalse(
+            LockScreenLayoutPolicy.useCompactClock(
+                mode = LockScreenLayoutMode.LargeSquare,
+                miniOverlayVisible = false,
+                listeningOverlayVisible = true,
+                listeningTopClearancePx = 220,
+                normalClockRequiredHeightPx = 180
+            )
+        )
+    }
+
+    @Test
+    fun `large unfolded square is distinct from a small square cover screen`() {
+        assertEquals(
+            LockScreenLayoutMode.LargeSquare,
+            LockScreenLayoutPolicy.mode(2208, 1840, 2.5f)
+        )
+        assertEquals(
+            LockScreenLayoutMode.PhonePortrait,
+            LockScreenLayoutPolicy.mode(720, 748, 3f)
+        )
     }
 
     @Test

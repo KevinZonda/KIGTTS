@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <mutex>
 #include <vector>
 
 #include "rnnoise.h"
@@ -9,6 +10,11 @@
 namespace {
 
 constexpr int kRnNoiseFrameSize = 480;
+
+// This RNNoise snapshot keeps its FFT plan in process-global state. Serialize native access and
+// clean that plan only after the final denoiser is destroyed.
+std::mutex gRnNoiseMutex;
+size_t gRnNoiseHandleCount = 0;
 
 struct RnNoiseHandle {
     DenoiseState* state = nullptr;
@@ -22,6 +28,7 @@ RnNoiseHandle* fromHandle(jlong handle) {
 
 extern "C" JNIEXPORT jlong JNICALL
 Java_com_lhtstudio_kigtts_app_audio_RnNoiseNative_nativeCreate(JNIEnv*, jclass) {
+    const std::lock_guard<std::mutex> guard(gRnNoiseMutex);
     auto* handle = new (std::nothrow) RnNoiseHandle();
     if (handle == nullptr) {
         return 0;
@@ -31,11 +38,13 @@ Java_com_lhtstudio_kigtts_app_audio_RnNoiseNative_nativeCreate(JNIEnv*, jclass) 
         delete handle;
         return 0;
     }
+    ++gRnNoiseHandleCount;
     return static_cast<jlong>(reinterpret_cast<intptr_t>(handle));
 }
 
 extern "C" JNIEXPORT void JNICALL
 Java_com_lhtstudio_kigtts_app_audio_RnNoiseNative_nativeDestroy(JNIEnv*, jclass, jlong handlePtr) {
+    const std::lock_guard<std::mutex> guard(gRnNoiseMutex);
     auto* handle = fromHandle(handlePtr);
     if (handle == nullptr) {
         return;
@@ -43,6 +52,12 @@ Java_com_lhtstudio_kigtts_app_audio_RnNoiseNative_nativeDestroy(JNIEnv*, jclass,
     if (handle->state != nullptr) {
         rnnoise_destroy(handle->state);
         handle->state = nullptr;
+        if (gRnNoiseHandleCount > 0) {
+            --gRnNoiseHandleCount;
+        }
+        if (gRnNoiseHandleCount == 0) {
+            rnnoise_global_cleanup();
+        }
     }
     delete handle;
 }
@@ -59,6 +74,7 @@ Java_com_lhtstudio_kigtts_app_audio_RnNoiseNative_nativeProcessFrame(
     jlong handlePtr,
     jfloatArray inputArray,
     jfloatArray outputArray) {
+    const std::lock_guard<std::mutex> guard(gRnNoiseMutex);
     auto* handle = fromHandle(handlePtr);
     if (handle == nullptr || handle->state == nullptr || inputArray == nullptr || outputArray == nullptr) {
         return 0.0f;

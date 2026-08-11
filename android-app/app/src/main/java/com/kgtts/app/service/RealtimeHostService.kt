@@ -3,38 +3,50 @@ package com.lhtstudio.kigtts.app.service
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ApplicationInfo
 import android.os.Binder
 import android.os.IBinder
 import android.os.SystemClock
 import com.lhtstudio.kigtts.app.audio.RealtimeController
+import com.lhtstudio.kigtts.app.audio.SimulatedAudioRunResult
 import com.lhtstudio.kigtts.app.audio.SoundboardManager
+import com.lhtstudio.kigtts.app.audio.shouldSuppressTtsForSoundboardTrigger
 import com.lhtstudio.kigtts.app.audio.SpeakerEnrollResult
+import com.lhtstudio.kigtts.app.audio.SpeakerVerificationTolerance
 import com.lhtstudio.kigtts.app.data.KOKORO_VOICE_NAME
 import com.lhtstudio.kigtts.app.data.ModelRepository
 import com.lhtstudio.kigtts.app.data.SYSTEM_TTS_VOICE_NAME
+import com.lhtstudio.kigtts.app.data.AsrRecognitionLanguage
+import com.lhtstudio.kigtts.app.data.ListeningModeSettings
+import com.lhtstudio.kigtts.app.data.SpeechButtonActionMode
 import com.lhtstudio.kigtts.app.data.UserPrefs
+import com.lhtstudio.kigtts.app.data.resolveQuickSubtitleStartupText
 import com.lhtstudio.kigtts.app.data.isSystemTtsVoiceDir
 import com.lhtstudio.kigtts.app.overlay.OverlayBridge
 import com.lhtstudio.kigtts.app.overlay.RealtimeOwnerGate
 import com.lhtstudio.kigtts.app.overlay.RealtimeRuntimeBridge
+import com.lhtstudio.kigtts.app.overlay.ListeningCaptionItem
 import com.lhtstudio.kigtts.app.ui.ExternalQuickSubtitleRequest
 import com.lhtstudio.kigtts.app.ui.RecognizedItem
 import com.lhtstudio.kigtts.app.util.AppLogger
 import com.lhtstudio.kigtts.app.util.BluetoothMediaTitleBridge
 import com.lhtstudio.kigtts.app.util.LiveSubtitleNotificationBridge
 import com.lhtstudio.kigtts.app.lan.LanCastRuntime
-import com.lhtstudio.kigtts.app.ui.QUICK_SUBTITLE_CLEARED_HINT
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.io.File
@@ -52,6 +64,10 @@ data class RealtimeHostState(
     val outputDeviceLabel: String = "",
     val pushToTalkPressed: Boolean = false,
     val pushToTalkStreamingText: String = "",
+    val listeningEnabled: Boolean = false,
+    val listeningItems: List<ListeningCaptionItem> = emptyList(),
+    val listeningStreamingText: String = "",
+    val listeningInputDeviceLabel: String = "",
     val aec3Status: String = "未启用",
     val aec3Diag: String = "AEC3 诊断：未启用",
     val speakerLastSimilarity: Float = -1f,
@@ -68,15 +84,26 @@ class RealtimeHostService : Service(), RealtimeRuntimeBridge.AppDelegate, LanCas
 
     private var controller: RealtimeController? = null
     private var settingsJob: Job? = null
+    private var initializationJob: Job? = null
+    private val listeningConfigurationMutex = Mutex()
+    @Volatile
     private var currentSettings = UserPrefs.AppSettings()
     private var speakerProfiles = mutableListOf<UserPrefs.SpeakerVerifyProfile>()
     private val lastProgressUpdateAtMs = mutableMapOf<Long, Long>()
     private var lastLevelUpdateAtMs = 0L
     private var pttSessionLastText = ""
     private var pttSessionCommitConsumed = false
+    @Volatile private var pttCommitRequested = false
+    private var pttCommitJob: Job? = null
+    @Volatile private var simplePttReleasePending = false
+    private var simplePttReleaseJob: Job? = null
     private var lastPttHistoryTextKey = ""
     private var lastPttHistoryAtMs = 0L
     private var manualRecognizedIdSeed = -1L
+    private val listeningIdAllocator = ListeningCaptionIdAllocator()
+    private var listeningPreviewCommitJob: Job? = null
+    private var listeningPreviewRevision = 0L
+    private var fallbackCommittedListeningKey = ""
     private var quickSubtitlePlayOnSend = true
     private var committedQuickSubtitleText = ""
     private var lastQuickSubtitleRequestId = 0L
@@ -142,6 +169,10 @@ class RealtimeHostService : Service(), RealtimeRuntimeBridge.AppDelegate, LanCas
     override fun onDestroy() {
         settingsJob?.cancel()
         settingsJob = null
+        initializationJob?.cancel()
+        initializationJob = null
+        listeningPreviewCommitJob?.cancel()
+        listeningPreviewCommitJob = null
         RealtimeRuntimeBridge.unregisterAppDelegate(this)
         LanCastRuntime.unregisterCommandHandler(this)
         val activeController = controller
@@ -165,6 +196,58 @@ class RealtimeHostService : Service(), RealtimeRuntimeBridge.AppDelegate, LanCas
     fun stateFlow(): StateFlow<RealtimeHostState> = _state.asStateFlow()
 
     fun quickSubtitleRequestFlow(): StateFlow<ExternalQuickSubtitleRequest?> = _quickSubtitleRequests.asStateFlow()
+
+    internal suspend fun prepareListeningSimulationForTest() {
+        check(applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0) {
+            "Listening simulation is available only in debug builds"
+        }
+        initializationJob?.join()
+        val listening = currentSettings.listeningModeSettings.copy(enabled = true).normalized()
+        currentSettings = currentSettings.copy(listeningModeSettings = listening)
+        val activeController = ensureController()
+        activeController.stopMic()
+        val asrDir = currentState().asrDir ?: loadInitialAsrDir()
+            ?: error("Recognition resource is not installed")
+        check(activeController.loadAsr(asrDir)) { "Recognition resource failed to load" }
+        activeController.setMinVolumePercent(listening.minVolumePercent)
+        activeController.setDenoiserMode(listening.denoiserMode)
+        activeController.setSpeechEnhancementMode(listening.speechEnhancementMode)
+        activeController.setClassicVadEnabled(listening.classicVadEnabled)
+        activeController.setSileroVadEnabled(listening.sileroVadEnabled)
+        activeController.setSileroVadThreshold(listening.sileroVadThreshold)
+        activeController.setSileroVadPreRollMs(listening.sileroVadPreRollMs)
+        activeController.setMainRecognitionEnabled(false)
+        activeController.setListeningCapturePaused(false)
+        activeController.setListeningRecognitionEnabled(true, listening.recognitionLanguage)
+        updateState {
+            it.copy(
+                asrDir = asrDir,
+                running = false,
+                listeningEnabled = true,
+                listeningItems = emptyList(),
+                listeningStreamingText = "",
+                pushToTalkPressed = false,
+                pushToTalkStreamingText = ""
+            )
+        }
+    }
+
+    internal suspend fun runSimulatedRecognitionForTest(
+        samples: FloatArray,
+        sourceSampleRate: Int,
+        paceAsRealtime: Boolean,
+        callbacksSynchronous: Boolean = true
+    ): SimulatedAudioRunResult {
+        check(applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0) {
+            "Recognition simulation is available only in debug builds"
+        }
+        return ensureController().runSimulatedAudio(
+            samples = samples,
+            sourceSampleRate = sourceSampleRate,
+            paceAsRealtime = paceAsRealtime,
+            callbacksSynchronous = callbacksSynchronous
+        )
+    }
 
     fun publishQuickSubtitleConfig(json: String) {
         val normalized = json.trim()
@@ -382,8 +465,68 @@ class RealtimeHostService : Service(), RealtimeRuntimeBridge.AppDelegate, LanCas
         controller?.setSileroVadPreRollMs(currentSettings.sileroVadPreRollMs)
     }
 
-    fun setNumberReplaceMode(mode: Int) {
-        controller?.setNumberReplaceMode(mode)
+    fun setAsrRecognitionLanguage(language: String) {
+        val normalized = AsrRecognitionLanguage.normalize(language)
+        currentSettings = currentSettings.copy(asrRecognitionLanguage = normalized)
+        serviceScope.launch(Dispatchers.IO) {
+            controller?.setAsrRecognitionLanguage(normalized)
+        }
+    }
+
+    fun setListeningModeEnabled(enabled: Boolean) {
+        val next = currentSettings.listeningModeSettings.copy(enabled = enabled).normalized()
+        currentSettings = currentSettings.copy(listeningModeSettings = next)
+        updateState {
+            it.copy(
+                listeningEnabled = enabled,
+                listeningStreamingText = if (enabled) it.listeningStreamingText else ""
+            )
+        }
+        if (!enabled) {
+            cancelListeningPreviewCommit()
+            fallbackCommittedListeningKey = ""
+            finishSimplePttRelease()
+        }
+        synchronizeRecognitionOwnership()
+        serviceScope.launch {
+            configureListeningRecognition(next)
+            if (currentSettings.listeningModeSettings.enabled) {
+                startRealtimeInternal()
+            } else if (currentSettings.pushToTalkMode && !currentState().pushToTalkPressed) {
+                stopRealtimeInternal()
+            }
+        }
+    }
+
+    fun updateListeningModeSettings(settings: ListeningModeSettings) {
+        val normalized = settings.normalized()
+        val previous = currentSettings.listeningModeSettings
+        currentSettings = currentSettings.copy(listeningModeSettings = normalized)
+        updateState { it.copy(listeningEnabled = normalized.enabled) }
+        if (listeningEngineSettingsChanged(previous, normalized)) {
+            serviceScope.launch { configureListeningRecognition(normalized) }
+        }
+    }
+
+    fun setSpeechButtonActionMode(value: Int) {
+        val mode = SpeechButtonActionMode.normalize(value)
+        val pushToTalk = SpeechButtonActionMode.usesPushToTalk(mode)
+        val confirm = SpeechButtonActionMode.usesConfirmation(mode)
+        currentSettings = currentSettings.copy(
+            speechButtonActionMode = mode,
+            pushToTalkMode = pushToTalk,
+            pushToTalkConfirmInput = confirm
+        )
+        if (!pushToTalk) {
+            pttCommitJob?.cancel()
+            pttCommitJob = null
+            pttCommitRequested = false
+            finishSimplePttRelease()
+            updateState { it.copy(pushToTalkPressed = false, pushToTalkStreamingText = "") }
+        }
+        controller?.setSuppressAsrAutoSpeak(currentSettings.ttsDisabled || (pushToTalk && confirm))
+        synchronizeRecognitionOwnership()
+        AppLogger.i("Speech button mode synchronized mode=$mode")
     }
 
     fun setPushToTalkStreamingEnabled(enabled: Boolean) {
@@ -399,7 +542,24 @@ class RealtimeHostService : Service(), RealtimeRuntimeBridge.AppDelegate, LanCas
     }
 
     fun setSpeakerVerifyThreshold(threshold: Float) {
-        controller?.setSpeakerVerifyThreshold(threshold)
+        setSpeakerVerifyTolerance(SpeakerVerificationTolerance.fromThreshold(threshold).index)
+    }
+
+    fun setSpeakerVerifyTolerance(level: Int) {
+        val tolerance = SpeakerVerificationTolerance.fromIndex(level)
+        currentSettings = currentSettings.copy(
+            speakerVerifyThreshold = tolerance.primaryThreshold,
+            speakerVerifyToleranceLevel = tolerance.index
+        )
+        controller?.setSpeakerVerifyTolerance(tolerance.index)
+    }
+
+    fun setExperimentalRecognitionSensitivity(sensitivity: Int) {
+        controller?.setExperimentalRecognitionSensitivity(sensitivity)
+    }
+
+    fun setExperimentalTargetSpeakerBackend(backend: Int) {
+        controller?.setExperimentalTargetSpeakerBackend(backend)
     }
 
     fun getSpeakerLastSimilarity(): Float {
@@ -407,9 +567,17 @@ class RealtimeHostService : Service(), RealtimeRuntimeBridge.AppDelegate, LanCas
         return if (controllerSimilarity >= 0f) controllerSimilarity else currentState().speakerLastSimilarity
     }
 
-    fun setSpeakerProfiles(profiles: List<FloatArray>) {
-        controller?.setSpeakerProfiles(profiles)
+    fun setSpeakerProfiles(
+        profiles: List<FloatArray>,
+        neuralProfiles: List<FloatArray?> = emptyList(),
+        confirmationProfiles: List<FloatArray?> = emptyList()
+    ) {
+        controller?.setSpeakerProfiles(profiles, neuralProfiles, confirmationProfiles)
         updateState { it.copy(speakerLastSimilarity = -1f) }
+    }
+
+    fun releaseNeuralSpeakerFilterResources() {
+        controller?.releaseNeuralSpeakerFilterResources()
     }
 
     fun clearSpeakerProfiles() {
@@ -509,7 +677,7 @@ class RealtimeHostService : Service(), RealtimeRuntimeBridge.AppDelegate, LanCas
     override fun clearSubtitle() {
         emitQuickSubtitleRequest(
             OverlayBridge.TARGET_SUBTITLE,
-            QUICK_SUBTITLE_CLEARED_HINT,
+            currentSettings.quickSubtitleClearedPlaceholderText,
             navigateToPage = false
         )
     }
@@ -596,28 +764,72 @@ class RealtimeHostService : Service(), RealtimeRuntimeBridge.AppDelegate, LanCas
     }
 
     override fun beginPushToTalkSession() {
+        pttCommitJob?.cancel()
+        pttCommitJob = null
         pttSessionLastText = ""
         pttSessionCommitConsumed = false
+        pttCommitRequested = false
         resetPttHistoryDedup()
         updateState { it.copy(pushToTalkStreamingText = "") }
     }
 
     override fun setPushToTalkPressed(pressed: Boolean) {
+        val wasPressed = currentState().pushToTalkPressed
+        if (pressed) {
+            finishSimplePttRelease()
+            if (currentSettings.listeningModeSettings.enabled) {
+                commitListeningCaption(0L, "", "fab-handoff")
+            }
+        }
         updateState {
             it.copy(
                 pushToTalkPressed = pressed,
-                pushToTalkStreamingText = if (pressed) it.pushToTalkStreamingText else ""
+                pushToTalkStreamingText = if (pressed || pttCommitRequested) {
+                    it.pushToTalkStreamingText
+                } else {
+                    ""
+                }
             )
         }
-        controller?.setPushToTalkStreamingEnabled(
+        synchronizeRecognitionOwnership()
+        if (
+            !pressed &&
+            wasPressed &&
+            currentSettings.listeningModeSettings.enabled &&
             currentSettings.pushToTalkMode &&
-                currentSettings.pushToTalkConfirmInput &&
-                pressed
-        )
+            !currentSettings.pushToTalkConfirmInput
+        ) {
+            simplePttReleasePending = true
+            synchronizeRecognitionOwnership()
+            simplePttReleaseJob?.cancel()
+            simplePttReleaseJob = serviceScope.launch {
+                controller?.flushPendingRecognition()
+                delay(SIMPLE_PTT_RELEASE_GRACE_MS)
+                finishSimplePttRelease()
+            }
+            return
+        }
+        synchronizeRecognitionOwnership()
     }
 
     override fun commitPushToTalkSession(action: RealtimeRuntimeBridge.PttCommitAction) {
         if (!currentSettings.pushToTalkConfirmInput) return
+        if (pttSessionCommitConsumed || pttCommitRequested) return
+        pttCommitRequested = true
+        synchronizeRecognitionOwnership()
+        if (action == RealtimeRuntimeBridge.PttCommitAction.Cancel) {
+            finalizePushToTalkCommit(action)
+            return
+        }
+        val job = serviceScope.launch(start = CoroutineStart.LAZY) {
+            controller?.flushPendingRecognition()
+            finalizePushToTalkCommit(action)
+        }
+        pttCommitJob = job
+        job.start()
+    }
+
+    private fun finalizePushToTalkCommit(action: RealtimeRuntimeBridge.PttCommitAction) {
         if (pttSessionCommitConsumed) return
         pttSessionCommitConsumed = true
         val text = currentState().pushToTalkStreamingText.trim().ifBlank { pttSessionLastText.trim() }
@@ -651,6 +863,7 @@ class RealtimeHostService : Service(), RealtimeRuntimeBridge.AppDelegate, LanCas
             RealtimeRuntimeBridge.PttCommitAction.Cancel -> Unit
         }
         pttSessionLastText = ""
+        pttCommitRequested = false
         resetPttHistoryDedup()
         updateState {
             it.copy(
@@ -658,14 +871,140 @@ class RealtimeHostService : Service(), RealtimeRuntimeBridge.AppDelegate, LanCas
                 pushToTalkStreamingText = ""
             )
         }
-        controller?.setPushToTalkStreamingEnabled(false)
+        synchronizeRecognitionOwnership()
+    }
+
+    private fun finishSimplePttRelease() {
+        simplePttReleasePending = false
+        simplePttReleaseJob?.cancel()
+        simplePttReleaseJob = null
+        synchronizeRecognitionOwnership()
+    }
+
+    private fun cancelListeningPreviewCommit() {
+        listeningPreviewRevision++
+        listeningPreviewCommitJob?.cancel()
+        listeningPreviewCommitJob = null
+    }
+
+    private fun scheduleListeningPreviewCommit() {
+        val revision = ++listeningPreviewRevision
+        listeningPreviewCommitJob?.cancel()
+        listeningPreviewCommitJob = serviceScope.launch {
+            delay(LISTENING_PREVIEW_STABLE_COMMIT_MS)
+            if (
+                revision == listeningPreviewRevision &&
+                currentSettings.listeningModeSettings.enabled &&
+                !currentState().pushToTalkPressed
+            ) {
+                commitListeningCaption(0L, "", "stable-preview")
+            }
+        }
+    }
+
+    private fun commitListeningCaption(id: Long, finalText: String, reason: String) {
+        cancelListeningPreviewCommit()
+        var committedLength = 0
+        updateState { state ->
+            val finalized = PttTranscriptMerger.finalizeListeningCaption(
+                state.listeningStreamingText,
+                finalText.trim()
+            )
+            committedLength = finalized.length
+            val finalizedKey = listeningComparisonKey(finalized)
+            val consumesFallback =
+                reason == "engine-final" &&
+                    finalizedKey.isNotEmpty() &&
+                    PttTranscriptMerger.isSameRollingUtterance(
+                        finalizedKey,
+                        fallbackCommittedListeningKey
+                    ) &&
+                    state.listeningStreamingText.isBlank() &&
+                    state.listeningItems.isNotEmpty()
+            val nextItems = if (consumesFallback) {
+                state.listeningItems.dropLast(1) +
+                    state.listeningItems.last().copy(text = finalized)
+            } else if (finalized.isNotEmpty()) {
+                val itemId = listeningIdAllocator.allocate(
+                    preferredId = id,
+                    existingIds = state.listeningItems.mapTo(mutableSetOf()) { it.id }
+                )
+                state.listeningItems + ListeningCaptionItem(
+                    id = itemId,
+                    text = finalized
+                )
+            } else {
+                state.listeningItems
+            }
+            fallbackCommittedListeningKey = if (reason == "stable-preview") {
+                finalizedKey
+            } else {
+                ""
+            }
+            state.copy(
+                listeningItems = nextItems.takeLast(MAX_LISTENING_ITEMS),
+                listeningStreamingText = ""
+            )
+        }
+        if (committedLength > 0) {
+            AppLogger.i("Listening caption committed reason=$reason chars=$committedLength")
+        }
+    }
+
+    private fun updateListeningPreviewTranscript(text: String) {
+        val normalized = text.trim()
+        if (normalized.isEmpty()) return
+        val incomingKey = listeningComparisonKey(normalized)
+        if (
+            incomingKey.isNotEmpty() &&
+            PttTranscriptMerger.isSameRollingUtterance(
+                incomingKey,
+                fallbackCommittedListeningKey
+            )
+        ) {
+            return
+        }
+        if (incomingKey != fallbackCommittedListeningKey) {
+            fallbackCommittedListeningKey = ""
+        }
+        val current = currentState().listeningStreamingText
+        val preview = PttTranscriptMerger.updateListeningPreview(current, normalized)
+        if (preview == current) return
+        updateState { it.copy(listeningStreamingText = preview) }
+        scheduleListeningPreviewCommit()
+    }
+
+    private fun listeningComparisonKey(text: String): String = buildString(text.length) {
+        text.forEach { character ->
+            if (!character.isWhitespace() && character !in LISTENING_COMPARISON_PUNCTUATION) {
+                append(character)
+            }
+        }
+    }
+
+    private fun synchronizeRecognitionOwnership() {
+        val activeController = controller ?: return
+        val listeningEnabled = currentSettings.listeningModeSettings.enabled
+        val fabOwnsRecognition =
+            currentState().pushToTalkPressed || pttCommitRequested || simplePttReleasePending
+        if (fabOwnsRecognition) {
+            activeController.setListeningCapturePaused(listeningEnabled)
+            activeController.setMainRecognitionEnabled(true)
+            activeController.setPushToTalkStreamingEnabled(
+                currentSettings.pushToTalkMode && currentSettings.pushToTalkConfirmInput
+            )
+        } else {
+            activeController.setPushToTalkStreamingEnabled(false)
+            activeController.setMainRecognitionEnabled(!listeningEnabled)
+            activeController.setListeningCapturePaused(false)
+        }
     }
 
     private fun initializeSelections() {
-        serviceScope.launch {
+        initializationJob = serviceScope.launch {
             val settings = UserPrefs.getSettings(applicationContext)
             currentSettings = settings
-            committedQuickSubtitleText = loadCommittedQuickSubtitleText()
+            committedQuickSubtitleText = loadCommittedQuickSubtitleText(applyStartupPolicy = true)
             BluetoothMediaTitleBridge.setEnabled(
                 applicationContext,
                 settings.bluetoothMediaTitleSubtitle,
@@ -711,6 +1050,11 @@ class RealtimeHostService : Service(), RealtimeRuntimeBridge.AppDelegate, LanCas
                     )
                 }
             }
+            if (settings.listeningModeSettings.enabled && asrDir != null) {
+                updateState { it.copy(listeningEnabled = true) }
+                configureListeningRecognition(settings.listeningModeSettings)
+                startRealtimeInternal()
+            }
         }
     }
 
@@ -721,19 +1065,31 @@ class RealtimeHostService : Service(), RealtimeRuntimeBridge.AppDelegate, LanCas
         }.getOrDefault(true)
     }
 
-    private suspend fun loadCommittedQuickSubtitleText(): String {
+    private suspend fun loadCommittedQuickSubtitleText(
+        applyStartupPolicy: Boolean = false
+    ): String {
         return runCatching {
             val raw = UserPrefs.getQuickSubtitleConfig(applicationContext)
-            if (raw.isNullOrBlank()) {
-                ""
+            val savedText = raw
+                ?.takeIf { it.isNotBlank() }
+                ?.let { JSONObject(it).optString("currentText", "") }
+            if (applyStartupPolicy) {
+                resolveQuickSubtitleStartupText(
+                    savedText = savedText,
+                    clearedPlaceholderText = currentSettings.quickSubtitleClearedPlaceholderText,
+                    restoreLastTextOnLaunch =
+                        currentSettings.quickSubtitleRestoreLastTextOnLaunch
+                )
             } else {
-                JSONObject(raw).optString("currentText", "").trim()
+                savedText
+                    ?.trim()
+                    ?.takeIf { it.isNotEmpty() }
+                    ?: currentSettings.quickSubtitleClearedPlaceholderText
             }
-        }.getOrDefault("")
+        }.getOrDefault(currentSettings.quickSubtitleClearedPlaceholderText)
     }
 
     private suspend fun syncBluetoothMediaTitleToCommittedQuickSubtitleConfig() {
-        committedQuickSubtitleText = loadCommittedQuickSubtitleText()
         syncLiveSubtitleNotification()
         if (!currentSettings.bluetoothMediaTitleSubtitle) return
         if (committedQuickSubtitleText.isNotEmpty()) {
@@ -766,12 +1122,19 @@ class RealtimeHostService : Service(), RealtimeRuntimeBridge.AppDelegate, LanCas
             UserPrefs.observeSettings(this@RealtimeHostService).collectLatest { next ->
                 val previous = currentSettings
                 currentSettings = next
+                if (
+                    committedQuickSubtitleText == previous.quickSubtitleClearedPlaceholderText &&
+                    next.quickSubtitleClearedPlaceholderText !=
+                        previous.quickSubtitleClearedPlaceholderText
+                ) {
+                    committedQuickSubtitleText = next.quickSubtitleClearedPlaceholderText
+                }
                 SoundboardManager.setPlaybackGainPercent(next.playbackGainPercent)
                 SoundboardManager.setAudioFocusAvoidanceMode(applicationContext, next.audioFocusAvoidanceMode)
                 BluetoothMediaTitleBridge.setEnabled(
                     applicationContext,
                     next.bluetoothMediaTitleSubtitle,
-                    loadCommittedQuickSubtitleText()
+                    committedQuickSubtitleText
                 )
                 if (next.bluetoothMediaTitleSubtitle) {
                     syncBluetoothMediaTitleToCommittedQuickSubtitleConfig()
@@ -785,6 +1148,34 @@ class RealtimeHostService : Service(), RealtimeRuntimeBridge.AppDelegate, LanCas
                     UserPrefs.parseSpeakerVerifyProfiles(next.speakerVerifyProfileCsv).toMutableList()
                 }
                 applySettingsToController(next)
+                if (previous.listeningModeSettings != next.listeningModeSettings) {
+                    if (
+                        listeningEngineSettingsChanged(
+                            previous.listeningModeSettings,
+                            next.listeningModeSettings
+                        )
+                    ) {
+                        configureListeningRecognition(next.listeningModeSettings)
+                    }
+                    updateState {
+                        it.copy(
+                            listeningEnabled = next.listeningModeSettings.enabled,
+                            listeningStreamingText = if (next.listeningModeSettings.enabled) {
+                                it.listeningStreamingText
+                            } else {
+                                ""
+                            }
+                        )
+                    }
+                }
+                if (
+                    controller != null &&
+                    previous.asrRecognitionLanguage != next.asrRecognitionLanguage
+                ) {
+                    withContext(Dispatchers.IO) {
+                        controller?.setAsrRecognitionLanguage(next.asrRecognitionLanguage)
+                    }
+                }
                 if (
                     controller != null &&
                     (previous.echoSuppression != next.echoSuppression ||
@@ -804,6 +1195,7 @@ class RealtimeHostService : Service(), RealtimeRuntimeBridge.AppDelegate, LanCas
         }
     }
 
+    @Synchronized
     private fun ensureController(): RealtimeController {
         controller?.let { return it }
         val created = RealtimeController(
@@ -813,8 +1205,18 @@ class RealtimeHostService : Service(), RealtimeRuntimeBridge.AppDelegate, LanCas
                 val normalized = text.trim()
                 val isPttConfirmMode = currentSettings.pushToTalkMode && currentSettings.pushToTalkConfirmInput
                 val isPttConfirmSessionOpen = isPttConfirmMode && !pttSessionCommitConsumed
-                val isPttConfirmPressed = isPttConfirmSessionOpen && currentState().pushToTalkPressed
-                if (!isPttConfirmMode && normalized.isNotEmpty()) {
+                val acceptsPttResult = isPttConfirmSessionOpen &&
+                    (currentState().pushToTalkPressed || pttCommitRequested)
+                val acceptsSimplePttRelease = simplePttReleasePending
+                if (
+                    !isPttConfirmMode &&
+                    normalized.isNotEmpty() &&
+                    (
+                        !currentSettings.listeningModeSettings.enabled ||
+                            currentState().pushToTalkPressed ||
+                            acceptsSimplePttRelease
+                        )
+                ) {
                     appendRecognizedHistory(normalized, id)
                     if (currentSettings.asrSendToQuickSubtitle) {
                         emitQuickSubtitleRequest(
@@ -823,9 +1225,10 @@ class RealtimeHostService : Service(), RealtimeRuntimeBridge.AppDelegate, LanCas
                             navigateToPage = false
                         )
                     }
+                    if (acceptsSimplePttRelease) finishSimplePttRelease()
                 }
                 if (isPttConfirmMode) {
-                    if (isPttConfirmPressed && normalized.isNotEmpty()) {
+                    if (acceptsPttResult && normalized.isNotEmpty()) {
                         appendPttFinalTranscript(normalized)
                     }
                 }
@@ -837,9 +1240,24 @@ class RealtimeHostService : Service(), RealtimeRuntimeBridge.AppDelegate, LanCas
                     currentSettings.pushToTalkMode &&
                     currentSettings.pushToTalkConfirmInput &&
                     !pttSessionCommitConsumed &&
-                    currentState().pushToTalkPressed
+                    (currentState().pushToTalkPressed || pttCommitRequested)
                 ) {
                     updatePttPreviewTranscript(normalized)
+                }
+            },
+            onListeningResult = { id, text ->
+                serviceScope.launch {
+                    if (currentSettings.listeningModeSettings.enabled) {
+                        commitListeningCaption(id, text, "engine-final")
+                    }
+                }
+            },
+            onListeningStreamingResult = { text ->
+                val normalized = text.trim()
+                serviceScope.launch {
+                    if (normalized.isNotEmpty() && currentSettings.listeningModeSettings.enabled) {
+                        updateListeningPreviewTranscript(normalized)
+                    }
                 }
             },
             onProgress = { id, progress ->
@@ -885,7 +1303,12 @@ class RealtimeHostService : Service(), RealtimeRuntimeBridge.AppDelegate, LanCas
             },
             onInputDevice = { label ->
                 if (label != currentState().inputDeviceLabel) {
-                    updateState { it.copy(inputDeviceLabel = label) }
+                    updateState {
+                        it.copy(
+                            inputDeviceLabel = label,
+                            listeningInputDeviceLabel = if (it.listeningEnabled) label else it.listeningInputDeviceLabel
+                        )
+                    }
                 }
             },
             onOutputDevice = { label ->
@@ -943,11 +1366,19 @@ class RealtimeHostService : Service(), RealtimeRuntimeBridge.AppDelegate, LanCas
             initialSileroVadEnabled = currentSettings.sileroVadEnabled,
             initialSileroVadThreshold = currentSettings.sileroVadThreshold,
             initialSileroVadPreRollMs = currentSettings.sileroVadPreRollMs,
-            initialNumberReplaceMode = currentSettings.numberReplaceMode,
+            initialAsrRecognitionLanguage = currentSettings.asrRecognitionLanguage,
             initialAllowSystemAecWithAec3 = currentSettings.allowSystemAecWithAec3,
             initialSpeakerVerifyEnabled = currentSettings.speakerVerifyEnabled && speakerProfiles.isNotEmpty(),
             initialSpeakerVerifyThreshold = currentSettings.speakerVerifyThreshold,
+            initialSpeakerVerifyToleranceLevel = currentSettings.speakerVerifyToleranceLevel,
+            initialExperimentalRecognitionSensitivity =
+                currentSettings.experimentalRecognitionSensitivity,
+            initialExperimentalTargetSpeakerBackend =
+                currentSettings.experimentalTargetSpeakerBackend,
             initialSpeakerProfiles = speakerProfiles.map { it.vector.copyOf() },
+            initialNeuralSpeakerProfiles = speakerProfiles.map { it.neuralVector?.copyOf() },
+            initialConfirmationSpeakerProfiles =
+                speakerProfiles.map { it.confirmationVector?.copyOf() },
             shouldSuppressAutoSpeakForText = { text ->
                 currentSettings.soundboardKeywordTriggerEnabled &&
                     currentSettings.soundboardSuppressTtsOnKeyword &&
@@ -957,20 +1388,99 @@ class RealtimeHostService : Service(), RealtimeRuntimeBridge.AppDelegate, LanCas
         created.setPushToTalkStreamingEnabled(
             currentSettings.pushToTalkMode &&
                 currentSettings.pushToTalkConfirmInput &&
-                currentState().pushToTalkPressed
+                (
+                    currentState().pushToTalkPressed ||
+                        pttCommitRequested ||
+                        simplePttReleasePending
+                    )
         )
         created.setSuppressAsrAutoSpeak(
             currentSettings.ttsDisabled ||
                 (currentSettings.pushToTalkMode && currentSettings.pushToTalkConfirmInput)
         )
+        created.setMainRecognitionEnabled(
+            !currentSettings.listeningModeSettings.enabled ||
+                currentState().pushToTalkPressed ||
+                pttCommitRequested ||
+                simplePttReleasePending
+        )
+        created.setListeningCapturePaused(
+            currentSettings.listeningModeSettings.enabled &&
+                (
+                    currentState().pushToTalkPressed ||
+                        pttCommitRequested ||
+                        simplePttReleasePending
+                    )
+        )
         controller = created
         return created
     }
 
+    private suspend fun configureListeningRecognition(requested: ListeningModeSettings) =
+        withContext(Dispatchers.IO) {
+            listeningConfigurationMutex.withLock {
+                val settings = currentSettings.listeningModeSettings
+                if (requested != settings) {
+                    AppLogger.i("Listening configuration superseded; applying latest settings")
+                }
+                val activeController = ensureController()
+                val asrDir = currentState().asrDir
+                if (settings.enabled && asrDir != null) {
+                    activeController.loadAsr(asrDir)
+                }
+                activeController.setListeningRecognitionEnabled(
+                    settings.enabled,
+                    settings.recognitionLanguage
+                )
+                activeController.setListeningCapturePaused(
+                    settings.enabled &&
+                        (
+                            currentState().pushToTalkPressed ||
+                                pttCommitRequested ||
+                                simplePttReleasePending
+                            )
+                )
+                activeController.setMainRecognitionEnabled(
+                    !settings.enabled ||
+                        currentState().pushToTalkPressed ||
+                        pttCommitRequested ||
+                        simplePttReleasePending
+                )
+                if (settings.enabled) {
+                    activeController.setPreferredInputType(settings.preferredInputType)
+                    activeController.setMinVolumePercent(settings.minVolumePercent)
+                    activeController.setDenoiserMode(settings.denoiserMode)
+                    activeController.setSpeechEnhancementMode(settings.speechEnhancementMode)
+                    activeController.setClassicVadEnabled(settings.classicVadEnabled)
+                    activeController.setSileroVadEnabled(settings.sileroVadEnabled)
+                    activeController.setSileroVadThreshold(settings.sileroVadThreshold)
+                    activeController.setSileroVadPreRollMs(settings.sileroVadPreRollMs)
+                } else {
+                    applySettingsToController(currentSettings)
+                }
+            }
+        }
+
+    private fun listeningEngineSettingsChanged(
+        previous: ListeningModeSettings,
+        next: ListeningModeSettings
+    ): Boolean =
+        previous.enabled != next.enabled ||
+            previous.recognitionLanguage != next.recognitionLanguage ||
+            previous.preferredInputType != next.preferredInputType ||
+            previous.minVolumePercent != next.minVolumePercent ||
+            previous.denoiserMode != next.denoiserMode ||
+            previous.speechEnhancementMode != next.speechEnhancementMode ||
+            previous.classicVadEnabled != next.classicVadEnabled ||
+            previous.sileroVadEnabled != next.sileroVadEnabled ||
+            previous.sileroVadThreshold != next.sileroVadThreshold ||
+            previous.sileroVadPreRollMs != next.sileroVadPreRollMs
+
     private suspend fun startRealtimeInternal(): Boolean {
         val asr = currentState().asrDir
         val voice = currentState().voiceDir
-        val requireVoice = !currentSettings.ttsDisabled
+        val requireVoice =
+            !currentSettings.ttsDisabled && !currentSettings.listeningModeSettings.enabled
         if (asr == null || (requireVoice && voice == null)) {
             updateStatus(if (requireVoice) "请先安装语音识别资源并导入语音包" else "请先安装语音识别资源")
             return false
@@ -1017,6 +1527,13 @@ class RealtimeHostService : Service(), RealtimeRuntimeBridge.AppDelegate, LanCas
     }
 
     private suspend fun stopRealtimeInternal() {
+        val pendingPttCommit = pttCommitJob
+        if (pendingPttCommit?.isActive == true) {
+            pendingPttCommit.join()
+        }
+        if (pttCommitJob === pendingPttCommit) {
+            pttCommitJob = null
+        }
         withContext(Dispatchers.IO) {
             controller?.stopMic()
         }
@@ -1024,6 +1541,8 @@ class RealtimeHostService : Service(), RealtimeRuntimeBridge.AppDelegate, LanCas
         KeepAliveService.stop(applicationContext)
         pttSessionLastText = ""
         pttSessionCommitConsumed = false
+        pttCommitRequested = false
+        finishSimplePttRelease()
         resetPttHistoryDedup()
         updateState {
             it.copy(
@@ -1061,11 +1580,16 @@ class RealtimeHostService : Service(), RealtimeRuntimeBridge.AppDelegate, LanCas
         controller?.setSileroVadEnabled(settings.sileroVadEnabled)
         controller?.setSileroVadThreshold(settings.sileroVadThreshold)
         controller?.setSileroVadPreRollMs(settings.sileroVadPreRollMs)
-        controller?.setNumberReplaceMode(settings.numberReplaceMode)
         controller?.setAllowSystemAecWithAec3(settings.allowSystemAecWithAec3)
         controller?.setSpeakerVerifyEnabled(settings.speakerVerifyEnabled && speakerProfiles.isNotEmpty())
-        controller?.setSpeakerVerifyThreshold(settings.speakerVerifyThreshold)
-        controller?.setSpeakerProfiles(speakerProfiles.map { it.vector.copyOf() })
+        controller?.setSpeakerVerifyTolerance(settings.speakerVerifyToleranceLevel)
+        controller?.setExperimentalRecognitionSensitivity(settings.experimentalRecognitionSensitivity)
+        controller?.setExperimentalTargetSpeakerBackend(settings.experimentalTargetSpeakerBackend)
+        controller?.setSpeakerProfiles(
+            speakerProfiles.map { it.vector.copyOf() },
+            speakerProfiles.map { it.neuralVector?.copyOf() },
+            speakerProfiles.map { it.confirmationVector?.copyOf() }
+        )
         controller?.setSuppressAsrAutoSpeak(
             settings.ttsDisabled || (settings.pushToTalkMode && settings.pushToTalkConfirmInput)
         )
@@ -1074,6 +1598,17 @@ class RealtimeHostService : Service(), RealtimeRuntimeBridge.AppDelegate, LanCas
                 settings.pushToTalkConfirmInput &&
                 currentState().pushToTalkPressed
         )
+        if (settings.listeningModeSettings.enabled) {
+            val listening = settings.listeningModeSettings
+            controller?.setPreferredInputType(listening.preferredInputType)
+            controller?.setMinVolumePercent(listening.minVolumePercent)
+            controller?.setDenoiserMode(listening.denoiserMode)
+            controller?.setSpeechEnhancementMode(listening.speechEnhancementMode)
+            controller?.setClassicVadEnabled(listening.classicVadEnabled)
+            controller?.setSileroVadEnabled(listening.sileroVadEnabled)
+            controller?.setSileroVadThreshold(listening.sileroVadThreshold)
+            controller?.setSileroVadPreRollMs(listening.sileroVadPreRollMs)
+        }
     }
 
     private suspend fun loadInitialAsrDir(): File? {
@@ -1121,13 +1656,16 @@ class RealtimeHostService : Service(), RealtimeRuntimeBridge.AppDelegate, LanCas
     ) {
         val message = text.trim()
         if (message.isEmpty()) return
-        val suppressTtsForSoundboard =
-            !fromQuickText &&
-                currentSettings.soundboardKeywordTriggerEnabled &&
-                currentSettings.soundboardSuppressTtsOnKeyword &&
-                SoundboardManager.hasTriggerMatch(applicationContext, message)
+        val hasSoundboardTrigger = SoundboardManager.hasTriggerMatch(applicationContext, message)
+        val suppressTtsForSoundboard = shouldSuppressTtsForSoundboardTrigger(
+            fromQuickText = fromQuickText,
+            keywordTriggerEnabled = currentSettings.soundboardKeywordTriggerEnabled,
+            allowQuickTextTrigger = currentSettings.allowQuickTextTriggerSoundboard,
+            suppressTtsOnKeyword = currentSettings.soundboardSuppressTtsOnKeyword,
+            hasTriggerMatch = hasSoundboardTrigger
+        )
         if (suppressTtsForSoundboard) {
-            appendRecognizedHistory(message, fromQuickText = false)
+            appendRecognizedHistory(message, fromQuickText = fromQuickText)
             updateStatus("已触发音效板，跳过本句朗读")
             return
         }
@@ -1141,22 +1679,7 @@ class RealtimeHostService : Service(), RealtimeRuntimeBridge.AppDelegate, LanCas
     }
 
     private fun mergePttTranscript(existing: String, incoming: String): String {
-        val a = existing.trim()
-        val b = incoming.trim()
-        if (a.isEmpty()) return b
-        if (b.isEmpty()) return a
-        if (a == b) return a
-        if (b.startsWith(a)) return b
-        if (a.startsWith(b)) return a
-        if (a.contains(b)) return a
-        if (b.contains(a)) return b
-        val overlapMax = minOf(a.length, b.length)
-        for (k in overlapMax downTo 1) {
-            if (a.regionMatches(a.length - k, b, 0, k, ignoreCase = false)) {
-                return (a + b.substring(k)).trim()
-            }
-        }
-        return (a + b).replace(Regex("\\s+"), "").trim()
+        return PttTranscriptMerger.merge(existing, incoming)
     }
 
     private fun appendPttFinalTranscript(text: String) {
@@ -1204,7 +1727,11 @@ class RealtimeHostService : Service(), RealtimeRuntimeBridge.AppDelegate, LanCas
                 inputDeviceLabel = snapshot.inputDeviceLabel,
                 outputDeviceLabel = snapshot.outputDeviceLabel,
                 pushToTalkPressed = snapshot.pushToTalkPressed,
-                pushToTalkStreamingText = snapshot.pushToTalkStreamingText
+                pushToTalkStreamingText = snapshot.pushToTalkStreamingText,
+                listeningEnabled = snapshot.listeningEnabled,
+                listeningItems = snapshot.listeningItems,
+                listeningStreamingText = snapshot.listeningStreamingText,
+                listeningInputDeviceLabel = snapshot.listeningInputDeviceLabel
             )
         )
         LanCastRuntime.updateRealtimeState(snapshot.running, snapshot.playbackProgress)
@@ -1227,7 +1754,14 @@ class RealtimeHostService : Service(), RealtimeRuntimeBridge.AppDelegate, LanCas
 
     companion object {
         private const val APP_OWNER_TAG = RealtimeRuntimeBridge.APP_OWNER_TAG
-        private const val MAX_RECOGNIZED_ITEMS = 100
+        private const val MAX_RECOGNIZED_ITEMS = 50
+        private const val MAX_LISTENING_ITEMS = 120
+        private const val SIMPLE_PTT_RELEASE_GRACE_MS = 800L
+        private const val LISTENING_PREVIEW_STABLE_COMMIT_MS = 1_500L
+        private val LISTENING_COMPARISON_PUNCTUATION = setOf(
+            '，', '。', '！', '？', '；', '：', '、',
+            ',', '.', '!', '?', ';', ':'
+        )
         private const val LEVEL_UPDATE_INTERVAL_MS = 33L
         private const val LEVEL_UPDATE_DELTA = 0.02f
         private const val PROGRESS_UPDATE_INTERVAL_MS = 48L

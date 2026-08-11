@@ -68,7 +68,6 @@ internal enum class QuickSubtitleGuideAnchor {
     BottomBar,
     RecognitionFab,
     ActionBold,
-    ActionAlignment,
     ActionRotate,
     ActionLed,
     ActionClear,
@@ -84,7 +83,8 @@ internal enum class QuickSubtitleGuideAnchor {
     TopBarMenu,
     TopBarStatus,
     TopBarEdit,
-    TopBarFullscreen
+    TopBarFullscreen,
+    ActionListening
 }
 
 internal data class QuickSubtitleGuideStep(
@@ -176,7 +176,8 @@ internal fun quickSubtitleGuideSteps(
             QuickSubtitleGuideAnchor.TopBarMenu,
             QuickSubtitleGuideAnchor.TopBarStatus,
             QuickSubtitleGuideAnchor.TopBarEdit,
-            QuickSubtitleGuideAnchor.TopBarFullscreen
+            QuickSubtitleGuideAnchor.TopBarFullscreen,
+            QuickSubtitleGuideAnchor.ActionListening
         ),
         messages = listOf("点按大字幕进入全屏预览，长按大字幕可复制当前内容。"),
         callouts = listOf(
@@ -184,8 +185,7 @@ internal fun quickSubtitleGuideSteps(
                 QuickSubtitleGuideAnchor.SubtitleDisplay,
                 "大字幕（点按进入预览，长按复制文本）"
             ),
-            QuickSubtitleGuideCallout(QuickSubtitleGuideAnchor.ActionBold, "粗体"),
-            QuickSubtitleGuideCallout(QuickSubtitleGuideAnchor.ActionAlignment, "对齐"),
+            QuickSubtitleGuideCallout(QuickSubtitleGuideAnchor.ActionBold, "文本样式"),
             QuickSubtitleGuideCallout(QuickSubtitleGuideAnchor.ActionRotate, "倒置"),
             QuickSubtitleGuideCallout(QuickSubtitleGuideAnchor.ActionLed, "LED"),
             QuickSubtitleGuideCallout(QuickSubtitleGuideAnchor.ActionClear, "清屏"),
@@ -194,7 +194,8 @@ internal fun quickSubtitleGuideSteps(
             QuickSubtitleGuideCallout(QuickSubtitleGuideAnchor.TopBarMenu, "菜单"),
             QuickSubtitleGuideCallout(QuickSubtitleGuideAnchor.TopBarStatus, "音频设置菜单"),
             QuickSubtitleGuideCallout(QuickSubtitleGuideAnchor.TopBarEdit, "编辑"),
-            QuickSubtitleGuideCallout(QuickSubtitleGuideAnchor.TopBarFullscreen, "全屏")
+            QuickSubtitleGuideCallout(QuickSubtitleGuideAnchor.TopBarFullscreen, "全屏"),
+            QuickSubtitleGuideCallout(QuickSubtitleGuideAnchor.ActionListening, "聆听模式")
         )
     ),
     QuickSubtitleGuideStep(

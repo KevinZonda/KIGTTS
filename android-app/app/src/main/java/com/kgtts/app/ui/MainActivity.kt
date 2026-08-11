@@ -346,15 +346,30 @@ class MainActivity : ComponentActivity() {
     private var lastHandledExternalVoicePackIntentKey: String? = null
     private var lastHandledExternalPresetIntentKey: String? = null
     private var realtimeHostBound = false
+    private var realtimeHostService: RealtimeHostService? = null
+    private var realtimeHostModelsInitialized = false
+
+    private fun attachRealtimeHostForVisibleUi(service: RealtimeHostService) {
+        viewModel.attachRealtimeHost(
+            service = service,
+            refreshModels = !realtimeHostModelsInitialized
+        )
+        realtimeHostModelsInitialized = true
+    }
+
     private val realtimeHostConnection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
             val binder = service as? RealtimeHostService.LocalBinder ?: return
             realtimeHostBound = true
-            viewModel.attachRealtimeHost(binder.getService())
+            realtimeHostService = binder.getService()
+            if (lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) {
+                attachRealtimeHostForVisibleUi(binder.getService())
+            }
         }
 
         override fun onServiceDisconnected(name: ComponentName?) {
             realtimeHostBound = false
+            realtimeHostService = null
             viewModel.detachRealtimeHost()
         }
     }
@@ -492,8 +507,16 @@ class MainActivity : ComponentActivity() {
             unbindService(realtimeHostConnection)
             realtimeHostBound = false
         }
+        realtimeHostService = null
         viewModel.detachRealtimeHost()
         super.onDestroy()
+    }
+
+    override fun onStart() {
+        super.onStart()
+        realtimeHostService?.let { service ->
+            attachRealtimeHostForVisibleUi(service)
+        }
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -550,6 +573,7 @@ class MainActivity : ComponentActivity() {
     override fun onStop() {
         pendingBackgroundReturnFix = true
         AppLogger.i("MainActivity.onStop markPendingBackgroundReturnFix=true")
+        viewModel.detachRealtimeHost()
         super.onStop()
     }
 
@@ -581,12 +605,17 @@ class MainActivity : ComponentActivity() {
                     intent.takeIf { it.hasExtra(OverlayBridge.EXTRA_SOUNDBOARD_GROUP_ID) }
                         ?.getLongExtra(OverlayBridge.EXTRA_SOUNDBOARD_GROUP_ID, Long.MIN_VALUE)
                         ?.takeIf { it != Long.MIN_VALUE }
+                val quickCardId =
+                    intent.takeIf { it.hasExtra(OverlayBridge.EXTRA_QUICK_CARD_ID) }
+                        ?.getLongExtra(OverlayBridge.EXTRA_QUICK_CARD_ID, Long.MIN_VALUE)
+                        ?.takeIf { it != Long.MIN_VALUE }
                 viewModel.handleQuickSubtitleLaunchRequest(
                     requestId = requestId,
                     target = target,
                     text = text,
                     navigateToPage = navigateToPage,
-                    soundboardGroupId = soundboardGroupId
+                    soundboardGroupId = soundboardGroupId,
+                    quickCardId = quickCardId
                 )
                 setIntent(Intent())
             }

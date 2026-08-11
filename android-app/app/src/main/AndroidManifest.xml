@@ -179,6 +179,48 @@
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="custom_lock_screen_monitor" />
         </service>
+        <receiver
+            android:name=".widget.QuickEntryWidgetProvider"
+            android:description="@string/widget_quick_entry_description"
+            android:exported="false"
+            android:label="@string/widget_quick_entry_name"
+            android:process=":widgets">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="android.intent.action.CONFIGURATION_CHANGED" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_quick_entry_info" />
+        </receiver>
+        <receiver
+            android:name=".widget.QuickCardWidgetProvider"
+            android:description="@string/widget_quick_card_description"
+            android:exported="false"
+            android:label="@string/widget_quick_card_name"
+            android:process=":widgets">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="android.intent.action.CONFIGURATION_CHANGED" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_quick_card_info" />
+        </receiver>
+        <receiver
+            android:name=".widget.QuickSubtitleWidgetProvider"
+            android:description="@string/widget_quick_subtitle_description"
+            android:exported="false"
+            android:label="@string/widget_quick_subtitle_name"
+            android:process=":widgets">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="android.intent.action.CONFIGURATION_CHANGED" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_quick_subtitle_info" />
+        </receiver>
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"

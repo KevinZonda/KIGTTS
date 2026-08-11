@@ -14,6 +14,7 @@ import androidx.datastore.preferences.preferencesDataStore
 import com.lhtstudio.kigtts.app.audio.AudioDenoiserMode
 import com.lhtstudio.kigtts.app.audio.AudioRoutePreference
 import com.lhtstudio.kigtts.app.audio.SpeechEnhancementMode
+import com.lhtstudio.kigtts.app.audio.SpeakerVerificationTolerance
 import com.lhtstudio.kigtts.app.util.VolumeHotkeyActionSpec
 import com.lhtstudio.kigtts.app.util.VolumeHotkeyActions
 import com.lhtstudio.kigtts.app.util.VolumeHotkeySequence
@@ -30,7 +31,20 @@ internal fun resolveQuickSubtitleFirstRunGuideCompleted(
     onboardingCompleted: Boolean
 ): Boolean = stored ?: onboardingCompleted
 
+internal fun resolveQuickSubtitleStartupText(
+    savedText: String?,
+    clearedPlaceholderText: String?,
+    restoreLastTextOnLaunch: Boolean
+): String {
+    val placeholder = UserPrefs.normalizeQuickSubtitleClearedPlaceholder(clearedPlaceholderText)
+    val saved = savedText?.trim().orEmpty()
+    return if (restoreLastTextOnLaunch && saved.isNotEmpty()) saved else placeholder
+}
+
 object UserPrefs {
+    const val DEFAULT_QUICK_SUBTITLE_CLEARED_PLACEHOLDER =
+        "我不太方便说话，请等我一下……"
+    const val QUICK_SUBTITLE_CLEARED_PLACEHOLDER_MAX_LENGTH = 200
     const val DRAWER_MODE_HIDDEN = 0
     const val DRAWER_MODE_PERMANENT = 1
     const val THEME_MODE_FOLLOW_SYSTEM = 0
@@ -53,7 +67,8 @@ object UserPrefs {
     const val SILERO_VAD_DEFAULT_THRESHOLD = 0.5f
     const val SILERO_VAD_MIN_PRE_ROLL_MS = 0
     const val SILERO_VAD_MAX_PRE_ROLL_MS = 800
-    const val SILERO_VAD_DEFAULT_PRE_ROLL_MS = 100
+    private const val SILERO_VAD_PREVIOUS_DEFAULT_PRE_ROLL_MS = 100
+    const val SILERO_VAD_DEFAULT_PRE_ROLL_MS = 240
     const val VOLUME_HOTKEY_MIN_WINDOW_MS = 500
     const val VOLUME_HOTKEY_MAX_WINDOW_MS = 3000
     const val VOLUME_HOTKEY_DEFAULT_WINDOW_MS = 1500
@@ -68,9 +83,41 @@ object UserPrefs {
     const val KOKORO_MAX_SPEAKER_ID = 102
     const val KOKORO_DEFAULT_SPEAKER_ID = 3
     const val DEFAULT_RECOGNITION_RESOURCE_MODELSCOPE_URL =
-        "https://modelscope.cn/models/LHTSTUDIO/KIGTTS_ASR_Resource/resolve/master/kigtts-recognition-resources-20260505.7z"
+        "https://modelscope.cn/models/LHTSTUDIO/KIGTTS_ASR_Resource/resolve/master/" +
+            "kigtts-recognition-resources-v6-20260810.7z"
     const val DEFAULT_RECOGNITION_RESOURCE_HUGGINGFACE_URL =
-        "https://huggingface.co/LHT02/KIGTTS_ASR_Resource/resolve/main/kigtts-recognition-resources-20260505.7z"
+        "https://huggingface.co/LHT02/KIGTTS_ASR_Resource/resolve/main/" +
+            "kigtts-recognition-resources-v6-20260810.7z"
+    private const val LEGACY_RECOGNITION_RESOURCE_MODELSCOPE_URL =
+        "https://modelscope.cn/models/LHTSTUDIO/KIGTTS_ASR_Resource/resolve/master/" +
+            "kigtts-recognition-resources-20260505.7z"
+    private const val LEGACY_RECOGNITION_RESOURCE_HUGGINGFACE_URL =
+        "https://huggingface.co/LHT02/KIGTTS_ASR_Resource/resolve/main/" +
+            "kigtts-recognition-resources-20260505.7z"
+    private const val PREVIOUS_EXPERIMENTAL_RECOGNITION_RESOURCE_MODELSCOPE_URL =
+        "https://modelscope.cn/models/LHTSTUDIO/KIGTTS_ASR_Resource/resolve/master/" +
+            "kigtts-recognition-resources-experimental-20260808.7z"
+    private const val PREVIOUS_EXPERIMENTAL_RECOGNITION_RESOURCE_HUGGINGFACE_URL =
+        "https://huggingface.co/LHT02/KIGTTS_ASR_Resource/resolve/main/" +
+            "kigtts-recognition-resources-experimental-20260808.7z"
+    private const val PREVIOUS_V4_RECOGNITION_RESOURCE_MODELSCOPE_URL =
+        "https://modelscope.cn/models/LHTSTUDIO/KIGTTS_ASR_Resource/resolve/master/" +
+            "kigtts-recognition-resources-experimental-v4-20260808.7z"
+    private const val PREVIOUS_V4_RECOGNITION_RESOURCE_HUGGINGFACE_URL =
+        "https://huggingface.co/LHT02/KIGTTS_ASR_Resource/resolve/main/" +
+            "kigtts-recognition-resources-experimental-v4-20260808.7z"
+    private const val PREVIOUS_V5_RECOGNITION_RESOURCE_MODELSCOPE_URL =
+        "https://modelscope.cn/models/LHTSTUDIO/KIGTTS_ASR_Resource/resolve/master/" +
+            "kigtts-recognition-resources-experimental-v5-20260809.7z"
+    private const val PREVIOUS_V5_RECOGNITION_RESOURCE_HUGGINGFACE_URL =
+        "https://huggingface.co/LHT02/KIGTTS_ASR_Resource/resolve/main/" +
+            "kigtts-recognition-resources-experimental-v5-20260809.7z"
+    private const val PREVIOUS_V6_RECOGNITION_RESOURCE_MODELSCOPE_URL =
+        "https://modelscope.cn/models/LHTSTUDIO/KIGTTS_ASR_Resource/resolve/master/" +
+            "kigtts-recognition-resources-experimental-v6-20260809.7z"
+    private const val PREVIOUS_V6_RECOGNITION_RESOURCE_HUGGINGFACE_URL =
+        "https://huggingface.co/LHT02/KIGTTS_ASR_Resource/resolve/main/" +
+            "kigtts-recognition-resources-experimental-v6-20260809.7z"
     const val DEFAULT_KOKORO_HF_URL =
         "https://huggingface.co/csukuangfj/kokoro-multi-lang-v1_1"
     const val DEFAULT_KOKORO_HFMIRROR_URL =
@@ -119,7 +166,8 @@ object UserPrefs {
     private val KEY_PIPER_NOISE_W = floatPreferencesKey("piper_noise_w")
     private val KEY_PIPER_SENTENCE_SILENCE = floatPreferencesKey("piper_sentence_silence")
     private val KEY_KEEP_ALIVE = booleanPreferencesKey("keep_alive")
-    private val KEY_NUMBER_REPLACE_MODE = intPreferencesKey("number_replace_mode")
+    private val KEY_ASR_RECOGNITION_LANGUAGE =
+        stringPreferencesKey("asr_recognition_language")
     private val KEY_LANDSCAPE_DRAWER_MODE = intPreferencesKey("landscape_drawer_mode")
     private val KEY_SOLID_TOP_BAR = booleanPreferencesKey("solid_top_bar")
     private val KEY_THEME_MODE = intPreferencesKey("theme_mode")
@@ -151,6 +199,7 @@ object UserPrefs {
     private val KEY_ASR_SEND_TO_QUICK_SUBTITLE = booleanPreferencesKey("asr_send_to_quick_subtitle")
     private val KEY_PUSH_TO_TALK_MODE = booleanPreferencesKey("push_to_talk_mode")
     private val KEY_PUSH_TO_TALK_CONFIRM_INPUT = booleanPreferencesKey("push_to_talk_confirm_input")
+    private val KEY_SPEECH_BUTTON_ACTION_MODE = intPreferencesKey("speech_button_action_mode")
     private val KEY_FLOATING_OVERLAY_ENABLED = booleanPreferencesKey("floating_overlay_enabled")
     private val KEY_FLOATING_OVERLAY_AUTO_DOCK = booleanPreferencesKey("floating_overlay_auto_dock")
     private val KEY_FLOATING_OVERLAY_SHOW_ON_LOCK_SCREEN =
@@ -208,6 +257,11 @@ object UserPrefs {
         booleanPreferencesKey("quick_subtitle_list_popup_grid_mode")
     private val KEY_QUICK_SUBTITLE_KEEP_INPUT_PREVIEW =
         booleanPreferencesKey("quick_subtitle_keep_input_preview")
+    private val KEY_QUICK_SUBTITLE_CLEARED_PLACEHOLDER =
+        stringPreferencesKey("quick_subtitle_cleared_placeholder")
+    private val KEY_QUICK_SUBTITLE_RESTORE_LAST_TEXT_ON_LAUNCH =
+        booleanPreferencesKey("quick_subtitle_restore_last_text_on_launch")
+    private val KEY_LISTENING_MODE_SETTINGS = stringPreferencesKey("listening_mode_settings")
     private val KEY_LED_SUBTITLE_SETTINGS = stringPreferencesKey("led_subtitle_settings")
     private val KEY_LAN_CAST_DISPLAY_SETTINGS = stringPreferencesKey("lan_cast_display_settings")
     private val KEY_BLUETOOTH_MEDIA_TITLE_SUBTITLE =
@@ -223,15 +277,29 @@ object UserPrefs {
     private val KEY_DRAWING_PALETTE = stringPreferencesKey("drawing_palette")
     private val KEY_SPEAKER_VERIFY_ENABLED = booleanPreferencesKey("speaker_verify_enabled")
     private val KEY_SPEAKER_VERIFY_THRESHOLD = floatPreferencesKey("speaker_verify_threshold")
+    private val KEY_SPEAKER_VERIFY_TOLERANCE_LEVEL =
+        intPreferencesKey("speaker_verify_tolerance_level")
+    private val KEY_RECOGNITION_MODULE_MODE = intPreferencesKey("recognition_module_mode")
+    private val KEY_EXPERIMENTAL_RECOGNITION_SENSITIVITY =
+        intPreferencesKey("experimental_recognition_sensitivity")
+    private val KEY_EXPERIMENTAL_TARGET_SPEAKER_BACKEND =
+        intPreferencesKey("experimental_target_speaker_backend")
     private val KEY_SPEAKER_VERIFY_PROFILE = stringPreferencesKey("speaker_verify_profile")
     private val KEY_SPEAKER_VERIFY_BACKEND_VERSION = intPreferencesKey("speaker_verify_backend_version")
 
     const val SPEAKER_VERIFY_BACKEND_SHERPA_V1 = 1
+    const val RECOGNITION_MODULE_MODE_LEGACY = 0
+    const val RECOGNITION_MODULE_MODE_EXPERIMENTAL = 1
+    const val EXPERIMENTAL_TARGET_SPEAKER_BACKEND_AUTO = 0
+    const val EXPERIMENTAL_TARGET_SPEAKER_BACKEND_NEURAL = 1
+    const val EXPERIMENTAL_TARGET_SPEAKER_BACKEND_LIGHTWEIGHT = 2
 
     data class SpeakerVerifyProfile(
         val id: String,
         val name: String,
-        val vector: FloatArray
+        val vector: FloatArray,
+        val confirmationVector: FloatArray? = null,
+        val neuralVector: FloatArray? = null
     )
 
     data class AppSettings(
@@ -242,8 +310,8 @@ object UserPrefs {
         val preferredInputType: Int = AudioRoutePreference.INPUT_AUTO,
         val preferredOutputType: Int = AudioRoutePreference.OUTPUT_AUTO,
         val aec3Enabled: Boolean = true,
-        val denoiserMode: Int = AudioDenoiserMode.RNNOISE,
-        val speechEnhancementMode: Int = SpeechEnhancementMode.DPDFNET4_STREAMING,
+        val denoiserMode: Int = AudioDenoiserMode.OFF,
+        val speechEnhancementMode: Int = SpeechEnhancementMode.GTCRN_STREAMING,
         val classicVadEnabled: Boolean = false,
         val sileroVadEnabled: Boolean = true,
         val sileroVadThreshold: Float = SILERO_VAD_DEFAULT_THRESHOLD,
@@ -264,7 +332,7 @@ object UserPrefs {
         val piperNoiseW: Float = 0.8f,
         val piperSentenceSilence: Float = 0.2f,
         val keepAlive: Boolean = true,
-        val numberReplaceMode: Int = 0,
+        val asrRecognitionLanguage: String = AsrRecognitionLanguage.DEFAULT,
         val landscapeDrawerMode: Int = DRAWER_MODE_PERMANENT,
         val solidTopBar: Boolean = false,
         val themeMode: Int = THEME_MODE_FOLLOW_SYSTEM,
@@ -289,6 +357,7 @@ object UserPrefs {
         val useBuiltinFileManager: Boolean = false,
         val useBuiltinGallery: Boolean = false,
         val asrSendToQuickSubtitle: Boolean = true,
+        val speechButtonActionMode: Int = SpeechButtonActionMode.TOGGLE,
         val pushToTalkMode: Boolean = false,
         val pushToTalkConfirmInput: Boolean = false,
         val floatingOverlayEnabled: Boolean = false,
@@ -324,6 +393,10 @@ object UserPrefs {
         val quickSubtitleFirstRunGuideCompleted: Boolean = false,
         val quickSubtitleListPopupGridMode: Boolean = true,
         val quickSubtitleKeepInputPreview: Boolean = true,
+        val quickSubtitleClearedPlaceholderText: String =
+            DEFAULT_QUICK_SUBTITLE_CLEARED_PLACEHOLDER,
+        val quickSubtitleRestoreLastTextOnLaunch: Boolean = false,
+        val listeningModeSettings: ListeningModeSettings = ListeningModeSettings(),
         val ledSubtitleSettings: LedSubtitleSettings = LedSubtitleSettings(),
         val lanCastDisplaySettings: LedSubtitleSettings = defaultLanCastDisplaySettings(),
         val bluetoothMediaTitleSubtitle: Boolean = false,
@@ -333,7 +406,11 @@ object UserPrefs {
         val drawingKeepCanvasOrientationToDevice: Boolean = true,
         val drawingPalette: DrawingPalette = DrawingPalette(),
         val speakerVerifyEnabled: Boolean = false,
-        val speakerVerifyThreshold: Float = 0.5f,
+        val speakerVerifyThreshold: Float = SpeakerVerificationTolerance.SMART.primaryThreshold,
+        val speakerVerifyToleranceLevel: Int = SpeakerVerificationTolerance.SMART.index,
+        val recognitionModuleMode: Int = RECOGNITION_MODULE_MODE_EXPERIMENTAL,
+        val experimentalRecognitionSensitivity: Int = 50,
+        val experimentalTargetSpeakerBackend: Int = EXPERIMENTAL_TARGET_SPEAKER_BACKEND_AUTO,
         val speakerVerifyProfileCsv: String = "",
         val speakerVerifyBackendVersion: Int = 0,
         val allowSystemAecWithAec3: Boolean = true
@@ -341,6 +418,16 @@ object UserPrefs {
 
     fun normalizeThemeMode(mode: Int): Int =
         mode.coerceIn(THEME_MODE_FOLLOW_SYSTEM, THEME_MODE_DARK)
+
+    fun normalizeQuickSubtitleClearedPlaceholder(text: String?): String {
+        val normalized = text
+            ?.replace("\r\n", "\n")
+            ?.replace('\r', '\n')
+            ?.trim()
+            .orEmpty()
+            .take(QUICK_SUBTITLE_CLEARED_PLACEHOLDER_MAX_LENGTH)
+        return normalized.ifBlank { DEFAULT_QUICK_SUBTITLE_CLEARED_PLACEHOLDER }
+    }
 
     fun normalizeLanCastAudioOutputMode(mode: Int): Int =
         mode.coerceIn(LAN_CAST_AUDIO_LOCAL, LAN_CAST_AUDIO_BOTH)
@@ -364,6 +451,45 @@ object UserPrefs {
 
     fun normalizeAudioFocusAvoidanceMode(mode: Int): Int =
         mode.coerceIn(AUDIO_FOCUS_AVOID_DUCK, AUDIO_FOCUS_AVOID_NONE)
+
+    fun normalizeRecognitionResourceModelScopeUrl(url: String?): String =
+        normalizeRecognitionResourceUrl(
+            url = url,
+            builtInDefaults = setOf(
+                LEGACY_RECOGNITION_RESOURCE_MODELSCOPE_URL,
+                PREVIOUS_EXPERIMENTAL_RECOGNITION_RESOURCE_MODELSCOPE_URL,
+                PREVIOUS_V4_RECOGNITION_RESOURCE_MODELSCOPE_URL,
+                PREVIOUS_V5_RECOGNITION_RESOURCE_MODELSCOPE_URL,
+                PREVIOUS_V6_RECOGNITION_RESOURCE_MODELSCOPE_URL
+            ),
+            currentDefault = DEFAULT_RECOGNITION_RESOURCE_MODELSCOPE_URL
+        )
+
+    fun normalizeRecognitionResourceHuggingFaceUrl(url: String?): String =
+        normalizeRecognitionResourceUrl(
+            url = url,
+            builtInDefaults = setOf(
+                LEGACY_RECOGNITION_RESOURCE_HUGGINGFACE_URL,
+                PREVIOUS_EXPERIMENTAL_RECOGNITION_RESOURCE_HUGGINGFACE_URL,
+                PREVIOUS_V4_RECOGNITION_RESOURCE_HUGGINGFACE_URL,
+                PREVIOUS_V5_RECOGNITION_RESOURCE_HUGGINGFACE_URL,
+                PREVIOUS_V6_RECOGNITION_RESOURCE_HUGGINGFACE_URL
+            ),
+            currentDefault = DEFAULT_RECOGNITION_RESOURCE_HUGGINGFACE_URL
+        )
+
+    private fun normalizeRecognitionResourceUrl(
+        url: String?,
+        builtInDefaults: Set<String>,
+        currentDefault: String
+    ): String {
+        val normalized = url?.trim().orEmpty()
+        return if (normalized.isBlank() || normalized in builtInDefaults) {
+            currentDefault
+        } else {
+            normalized
+        }
+    }
 
     fun resolveThemeMode(mode: Int, followSystemDark: Boolean): Boolean =
         when (normalizeThemeMode(mode)) {
@@ -525,12 +651,22 @@ object UserPrefs {
         } else if (legacySpeechEnhancementEnabled) {
             SpeechEnhancementMode.GTCRN_OFFLINE
         } else {
-            SpeechEnhancementMode.DPDFNET4_STREAMING
+            SpeechEnhancementMode.GTCRN_STREAMING
         }
         if (!classicVadEnabled && !sileroVadEnabled) {
             classicVadEnabled = false
             sileroVadEnabled = true
         }
+        val speakerTolerance = SpeakerVerificationTolerance.fromIndex(
+            this[KEY_SPEAKER_VERIFY_TOLERANCE_LEVEL]
+                ?: SpeakerVerificationTolerance.SMART.index
+        )
+        val speechButtonActionMode = SpeechButtonActionMode.normalize(
+            this[KEY_SPEECH_BUTTON_ACTION_MODE] ?: SpeechButtonActionMode.fromLegacy(
+                pushToTalkEnabled = this[KEY_PUSH_TO_TALK_MODE] ?: false,
+                confirmEnabled = this[KEY_PUSH_TO_TALK_CONFIRM_INPUT] ?: false
+            )
+        )
         return AppSettings(
             muteWhilePlaying = this[KEY_MUTE_WHILE_PLAYING] ?: true,
             muteWhilePlayingDelaySec = this[KEY_MUTE_DELAY_SEC] ?: 0.2f,
@@ -541,21 +677,30 @@ object UserPrefs {
             preferredOutputType = this[KEY_PREFERRED_OUTPUT_TYPE]
                 ?: if (legacySpeaker) AudioRoutePreference.OUTPUT_SPEAKER else AudioRoutePreference.OUTPUT_AUTO,
             aec3Enabled = this[KEY_AEC3_ENABLED] ?: true,
-            denoiserMode = (this[KEY_DENOISER_MODE] ?: AudioDenoiserMode.RNNOISE)
-                .coerceIn(AudioDenoiserMode.OFF, AudioDenoiserMode.SPEEX),
+            denoiserMode = (this[KEY_DENOISER_MODE] ?: AudioDenoiserMode.OFF)
+                .coerceIn(AudioDenoiserMode.OFF, AudioDenoiserMode.SPEEX)
+                .takeUnless { SpeechEnhancementMode.isEnabled(speechEnhancementMode) }
+                ?: AudioDenoiserMode.OFF,
             speechEnhancementMode = speechEnhancementMode,
             classicVadEnabled = classicVadEnabled,
             sileroVadEnabled = sileroVadEnabled,
             sileroVadThreshold = (this[KEY_SILERO_VAD_THRESHOLD] ?: SILERO_VAD_DEFAULT_THRESHOLD)
                 .coerceIn(SILERO_VAD_MIN_THRESHOLD, SILERO_VAD_MAX_THRESHOLD),
             sileroVadPreRollMs = (this[KEY_SILERO_VAD_PRE_ROLL_MS] ?: SILERO_VAD_DEFAULT_PRE_ROLL_MS)
+                .let { stored ->
+                    if (stored == SILERO_VAD_PREVIOUS_DEFAULT_PRE_ROLL_MS) {
+                        SILERO_VAD_DEFAULT_PRE_ROLL_MS
+                    } else {
+                        stored
+                    }
+                }
                 .coerceIn(SILERO_VAD_MIN_PRE_ROLL_MS, SILERO_VAD_MAX_PRE_ROLL_MS),
-            recognitionResourceModelScopeUrl = this[KEY_RECOGNITION_RESOURCE_MODELSCOPE_URL]
-                ?.takeIf { it.isNotBlank() }
-                ?: DEFAULT_RECOGNITION_RESOURCE_MODELSCOPE_URL,
-            recognitionResourceHuggingFaceUrl = this[KEY_RECOGNITION_RESOURCE_HUGGINGFACE_URL]
-                ?.takeIf { it.isNotBlank() }
-                ?: DEFAULT_RECOGNITION_RESOURCE_HUGGINGFACE_URL,
+            recognitionResourceModelScopeUrl = normalizeRecognitionResourceModelScopeUrl(
+                this[KEY_RECOGNITION_RESOURCE_MODELSCOPE_URL]
+            ),
+            recognitionResourceHuggingFaceUrl = normalizeRecognitionResourceHuggingFaceUrl(
+                this[KEY_RECOGNITION_RESOURCE_HUGGINGFACE_URL]
+            ),
             recognitionResourcePreferredSource = (this[KEY_RECOGNITION_RESOURCE_PREFERRED_SOURCE]
                 ?: RECOGNITION_RESOURCE_SOURCE_MODELSCOPE)
                 .coerceIn(RECOGNITION_RESOURCE_SOURCE_MODELSCOPE, RECOGNITION_RESOURCE_SOURCE_HUGGINGFACE),
@@ -579,7 +724,9 @@ object UserPrefs {
             piperNoiseW = (this[KEY_PIPER_NOISE_W] ?: 0.8f).coerceIn(0.3f, 1.5f),
             piperSentenceSilence = (this[KEY_PIPER_SENTENCE_SILENCE] ?: 0.2f).coerceIn(0f, 2f),
             keepAlive = true,
-            numberReplaceMode = this[KEY_NUMBER_REPLACE_MODE] ?: 0,
+            asrRecognitionLanguage = AsrRecognitionLanguage.normalize(
+                this[KEY_ASR_RECOGNITION_LANGUAGE]
+            ),
             landscapeDrawerMode = (this[KEY_LANDSCAPE_DRAWER_MODE] ?: DRAWER_MODE_PERMANENT)
                 .coerceIn(DRAWER_MODE_HIDDEN, DRAWER_MODE_PERMANENT),
             solidTopBar = this[KEY_SOLID_TOP_BAR] ?: false,
@@ -616,8 +763,9 @@ object UserPrefs {
             useBuiltinFileManager = this[KEY_USE_BUILTIN_FILE_MANAGER] ?: false,
             useBuiltinGallery = this[KEY_USE_BUILTIN_GALLERY] ?: false,
             asrSendToQuickSubtitle = this[KEY_ASR_SEND_TO_QUICK_SUBTITLE] ?: true,
-            pushToTalkMode = this[KEY_PUSH_TO_TALK_MODE] ?: false,
-            pushToTalkConfirmInput = this[KEY_PUSH_TO_TALK_CONFIRM_INPUT] ?: false,
+            speechButtonActionMode = speechButtonActionMode,
+            pushToTalkMode = SpeechButtonActionMode.usesPushToTalk(speechButtonActionMode),
+            pushToTalkConfirmInput = SpeechButtonActionMode.usesConfirmation(speechButtonActionMode),
             floatingOverlayEnabled = this[KEY_FLOATING_OVERLAY_ENABLED] ?: false,
             floatingOverlayAutoDock = this[KEY_FLOATING_OVERLAY_AUTO_DOCK] ?: true,
             floatingOverlayShowOnLockScreen = this[KEY_FLOATING_OVERLAY_SHOW_ON_LOCK_SCREEN] ?: false,
@@ -671,6 +819,14 @@ object UserPrefs {
             ),
             quickSubtitleListPopupGridMode = this[KEY_QUICK_SUBTITLE_LIST_POPUP_GRID_MODE] ?: true,
             quickSubtitleKeepInputPreview = this[KEY_QUICK_SUBTITLE_KEEP_INPUT_PREVIEW] ?: true,
+            quickSubtitleClearedPlaceholderText = normalizeQuickSubtitleClearedPlaceholder(
+                this[KEY_QUICK_SUBTITLE_CLEARED_PLACEHOLDER]
+            ),
+            quickSubtitleRestoreLastTextOnLaunch =
+                this[KEY_QUICK_SUBTITLE_RESTORE_LAST_TEXT_ON_LAUNCH] ?: false,
+            listeningModeSettings = ListeningModeSettings.fromJson(
+                this[KEY_LISTENING_MODE_SETTINGS]
+            ),
             ledSubtitleSettings = decodeLedSubtitleSettings(this[KEY_LED_SUBTITLE_SETTINGS]),
             lanCastDisplaySettings = decodeLedSubtitleSettings(
                 this[KEY_LAN_CAST_DISPLAY_SETTINGS],
@@ -686,7 +842,11 @@ object UserPrefs {
             drawingKeepCanvasOrientationToDevice = this[KEY_DRAWING_KEEP_CANVAS_ORIENTATION_TO_DEVICE] ?: true,
             drawingPalette = decodeDrawingPalette(this[KEY_DRAWING_PALETTE]),
             speakerVerifyEnabled = this[KEY_SPEAKER_VERIFY_ENABLED] ?: false,
-            speakerVerifyThreshold = (this[KEY_SPEAKER_VERIFY_THRESHOLD] ?: 0.5f).coerceIn(0.05f, 0.95f),
+            speakerVerifyThreshold = speakerTolerance.primaryThreshold,
+            speakerVerifyToleranceLevel = speakerTolerance.index,
+            recognitionModuleMode = RECOGNITION_MODULE_MODE_EXPERIMENTAL,
+            experimentalRecognitionSensitivity = 50,
+            experimentalTargetSpeakerBackend = EXPERIMENTAL_TARGET_SPEAKER_BACKEND_AUTO,
             speakerVerifyProfileCsv = this[KEY_SPEAKER_VERIFY_PROFILE] ?: "",
             speakerVerifyBackendVersion = this[KEY_SPEAKER_VERIFY_BACKEND_VERSION] ?: 0,
             allowSystemAecWithAec3 = true
@@ -742,15 +902,24 @@ object UserPrefs {
     }
 
     suspend fun setDenoiserMode(context: Context, mode: Int) {
+        val normalized = mode.coerceIn(AudioDenoiserMode.OFF, AudioDenoiserMode.SPEEX)
         context.dataStore.edit { prefs ->
-            prefs[KEY_DENOISER_MODE] = mode.coerceIn(AudioDenoiserMode.OFF, AudioDenoiserMode.SPEEX)
+            prefs[KEY_DENOISER_MODE] = normalized
+            if (normalized != AudioDenoiserMode.OFF) {
+                prefs[KEY_SPEECH_ENHANCEMENT_MODE] = SpeechEnhancementMode.OFF
+                prefs[KEY_SPEECH_ENHANCEMENT_ENABLED] = false
+            }
         }
     }
 
     suspend fun setSpeechEnhancementMode(context: Context, mode: Int) {
+        val normalized = SpeechEnhancementMode.clamp(mode)
         context.dataStore.edit { prefs ->
-            prefs[KEY_SPEECH_ENHANCEMENT_MODE] = SpeechEnhancementMode.clamp(mode)
-            prefs[KEY_SPEECH_ENHANCEMENT_ENABLED] = SpeechEnhancementMode.isEnabled(mode)
+            prefs[KEY_SPEECH_ENHANCEMENT_MODE] = normalized
+            prefs[KEY_SPEECH_ENHANCEMENT_ENABLED] = SpeechEnhancementMode.isEnabled(normalized)
+            if (SpeechEnhancementMode.isEnabled(normalized)) {
+                prefs[KEY_DENOISER_MODE] = AudioDenoiserMode.OFF
+            }
         }
     }
 
@@ -928,9 +1097,9 @@ object UserPrefs {
         }
     }
 
-    suspend fun setNumberReplaceMode(context: Context, mode: Int) {
+    suspend fun setAsrRecognitionLanguage(context: Context, language: String) {
         context.dataStore.edit { prefs ->
-            prefs[KEY_NUMBER_REPLACE_MODE] = mode
+            prefs[KEY_ASR_RECOGNITION_LANGUAGE] = AsrRecognitionLanguage.normalize(language)
         }
     }
 
@@ -1091,12 +1260,31 @@ object UserPrefs {
     suspend fun setPushToTalkMode(context: Context, enabled: Boolean) {
         context.dataStore.edit { prefs ->
             prefs[KEY_PUSH_TO_TALK_MODE] = enabled
+            val mode = SpeechButtonActionMode.fromLegacy(
+                pushToTalkEnabled = enabled,
+                confirmEnabled = prefs[KEY_PUSH_TO_TALK_CONFIRM_INPUT] ?: false
+            )
+            prefs[KEY_SPEECH_BUTTON_ACTION_MODE] = mode
         }
     }
 
     suspend fun setPushToTalkConfirmInput(context: Context, enabled: Boolean) {
         context.dataStore.edit { prefs ->
             prefs[KEY_PUSH_TO_TALK_CONFIRM_INPUT] = enabled
+            val mode = SpeechButtonActionMode.fromLegacy(
+                pushToTalkEnabled = prefs[KEY_PUSH_TO_TALK_MODE] ?: false,
+                confirmEnabled = enabled
+            )
+            prefs[KEY_SPEECH_BUTTON_ACTION_MODE] = mode
+        }
+    }
+
+    suspend fun setSpeechButtonActionMode(context: Context, value: Int) {
+        val mode = SpeechButtonActionMode.normalize(value)
+        context.dataStore.edit { prefs ->
+            prefs[KEY_SPEECH_BUTTON_ACTION_MODE] = mode
+            prefs[KEY_PUSH_TO_TALK_MODE] = SpeechButtonActionMode.usesPushToTalk(mode)
+            prefs[KEY_PUSH_TO_TALK_CONFIRM_INPUT] = SpeechButtonActionMode.usesConfirmation(mode)
         }
     }
 
@@ -1305,6 +1493,28 @@ object UserPrefs {
         }
     }
 
+    suspend fun setQuickSubtitleClearedPlaceholderText(context: Context, text: String) {
+        context.dataStore.edit { prefs ->
+            prefs[KEY_QUICK_SUBTITLE_CLEARED_PLACEHOLDER] =
+                normalizeQuickSubtitleClearedPlaceholder(text)
+        }
+    }
+
+    suspend fun setQuickSubtitleRestoreLastTextOnLaunch(context: Context, enabled: Boolean) {
+        context.dataStore.edit { prefs ->
+            prefs[KEY_QUICK_SUBTITLE_RESTORE_LAST_TEXT_ON_LAUNCH] = enabled
+        }
+    }
+
+    suspend fun setListeningModeSettings(
+        context: Context,
+        settings: ListeningModeSettings
+    ) {
+        context.dataStore.edit { prefs ->
+            prefs[KEY_LISTENING_MODE_SETTINGS] = settings.normalized().toJson()
+        }
+    }
+
     suspend fun setLedSubtitleSettings(context: Context, settings: LedSubtitleSettings) {
         context.dataStore.edit { prefs ->
             prefs[KEY_LED_SUBTITLE_SETTINGS] = encodeLedSubtitleSettings(settings)
@@ -1363,8 +1573,52 @@ object UserPrefs {
     }
 
     suspend fun setSpeakerVerifyThreshold(context: Context, threshold: Float) {
+        val tolerance = SpeakerVerificationTolerance.fromThreshold(threshold)
         context.dataStore.edit { prefs ->
-            prefs[KEY_SPEAKER_VERIFY_THRESHOLD] = threshold.coerceIn(0.05f, 0.95f)
+            prefs[KEY_SPEAKER_VERIFY_THRESHOLD] = tolerance.primaryThreshold
+            prefs[KEY_SPEAKER_VERIFY_TOLERANCE_LEVEL] = tolerance.index
+        }
+    }
+
+    suspend fun setSpeakerVerifyTolerance(context: Context, level: Int) {
+        val tolerance = SpeakerVerificationTolerance.fromIndex(level)
+        context.dataStore.edit { prefs ->
+            prefs[KEY_SPEAKER_VERIFY_THRESHOLD] = tolerance.primaryThreshold
+            prefs[KEY_SPEAKER_VERIFY_TOLERANCE_LEVEL] = tolerance.index
+        }
+    }
+
+    suspend fun setRecognitionModuleMode(context: Context, mode: Int) {
+        context.dataStore.edit { prefs ->
+            prefs[KEY_RECOGNITION_MODULE_MODE] = normalizeRecognitionModuleMode(mode)
+        }
+    }
+
+    suspend fun setExperimentalRecognitionSensitivity(context: Context, sensitivity: Int) {
+        context.dataStore.edit { prefs ->
+            prefs[KEY_EXPERIMENTAL_RECOGNITION_SENSITIVITY] = sensitivity.coerceIn(0, 100)
+        }
+    }
+
+    suspend fun setExperimentalTargetSpeakerBackend(context: Context, backend: Int) {
+        context.dataStore.edit { prefs ->
+            prefs[KEY_EXPERIMENTAL_TARGET_SPEAKER_BACKEND] =
+                normalizeExperimentalTargetSpeakerBackend(backend)
+        }
+    }
+
+    fun normalizeExperimentalTargetSpeakerBackend(backend: Int): Int {
+        return backend.coerceIn(
+            EXPERIMENTAL_TARGET_SPEAKER_BACKEND_AUTO,
+            EXPERIMENTAL_TARGET_SPEAKER_BACKEND_LIGHTWEIGHT
+        )
+    }
+
+    fun normalizeRecognitionModuleMode(mode: Int): Int {
+        return if (mode == RECOGNITION_MODULE_MODE_EXPERIMENTAL) {
+            RECOGNITION_MODULE_MODE_EXPERIMENTAL
+        } else {
+            RECOGNITION_MODULE_MODE_LEGACY
         }
     }
 
@@ -1413,6 +1667,20 @@ object UserPrefs {
                     put("id", profile.id)
                     put("name", profile.name)
                     put("vector", vectorArr)
+                    profile.confirmationVector?.takeIf { it.isNotEmpty() }?.let { confirmation ->
+                        put(
+                            "confirmationVector",
+                            JSONArray().apply {
+                                confirmation.forEach { value -> put(value.toDouble()) }
+                            }
+                        )
+                    }
+                    profile.neuralVector?.takeIf { it.isNotEmpty() }?.let { neural ->
+                        put(
+                            "neuralVector",
+                            JSONArray().apply { neural.forEach { value -> put(value.toDouble()) } }
+                        )
+                    }
                 }
             )
         }
@@ -1444,7 +1712,17 @@ object UserPrefs {
                     if (!ok || vec.isEmpty()) continue
                     val id = obj.optString("id").ifBlank { "profile-${i + 1}" }
                     val name = obj.optString("name").ifBlank { "说话人 ${i + 1}" }
-                    out.add(SpeakerVerifyProfile(id = id, name = name, vector = vec))
+                    val confirmation = obj.optJSONArray("confirmationVector")?.let(::parseFloatArray)
+                    val neural = obj.optJSONArray("neuralVector")?.let(::parseFloatArray)
+                    out.add(
+                        SpeakerVerifyProfile(
+                            id = id,
+                            name = name,
+                            vector = vec,
+                            confirmationVector = confirmation?.takeIf { it.isNotEmpty() },
+                            neuralVector = neural?.takeIf { it.size == 192 }
+                        )
+                    )
                 }
                 out
             }.getOrElse { emptyList() }
@@ -1476,6 +1754,17 @@ object UserPrefs {
             .mapNotNull { token -> token.trim().toFloatOrNull() }
             .toFloatArray()
         return if (values.isEmpty()) null else values
+    }
+
+    private fun parseFloatArray(array: JSONArray): FloatArray? {
+        if (array.length() <= 0) return null
+        val output = FloatArray(array.length())
+        for (index in 0 until array.length()) {
+            val value = array.optDouble(index, Double.NaN)
+            if (!value.isFinite()) return null
+            output[index] = value.toFloat()
+        }
+        return output
     }
 
     @Deprecated("Use parseSpeakerVerifyProfiles instead")

@@ -82,6 +82,8 @@ internal class LockScreenOverlayHostActivity : Activity() {
     private lateinit var root: FrameLayout
     private lateinit var timeView: TextClock
     private lateinit var dateView: TextView
+    private lateinit var batteryIcon: TextView
+    private lateinit var batteryGroup: LinearLayout
     private lateinit var batteryView: TextView
     private lateinit var wallpaperView: ImageView
     private lateinit var unlockHint: LinearLayout
@@ -107,6 +109,8 @@ internal class LockScreenOverlayHostActivity : Activity() {
                     token = token,
                     unlockRequester = { action -> unlockController.runAfterUnlock(action) },
                     miniVisibilityListener = layoutController::setMiniOverlayVisible,
+                    listeningVisibilityListener = layoutController::setListeningOverlayVisible,
+                    listeningTopClearanceListener = layoutController::setListeningTopClearance,
                     entryRevealListener = { root.post(::revealHostWithAnimation) }
                 )
             }
@@ -239,7 +243,31 @@ internal class LockScreenOverlayHostActivity : Activity() {
             includeFontPadding = false
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
             setShadowLayer(dp(2).toFloat(), 0f, dp(1).toFloat(), 0xB3000000.toInt())
+        }
+        batteryIcon = TextView(this).apply {
+            gravity = Gravity.CENTER
+            includeFontPadding = false
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
+            typeface = runCatching {
+                ResourcesCompat.getFont(this@LockScreenOverlayHostActivity, R.font.material_symbols_sharp)
+            }.getOrNull()
+            text = "battery_android_full"
+        }
+        batteryGroup = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
             visibility = View.GONE
+            addView(
+                batteryIcon,
+                LinearLayout.LayoutParams(dp(20), dp(20))
+            )
+            addView(
+                batteryView,
+                LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                ).apply { marginStart = dp(4) }
+            )
         }
         unlockIcon = TextView(this).apply {
             gravity = Gravity.CENTER
@@ -279,7 +307,6 @@ internal class LockScreenOverlayHostActivity : Activity() {
             dp = ::dp,
             onUnlocked = ::finishWithoutAnimation
         )
-        batteryController = LockScreenBatteryController(this, batteryView)
         root = FrameLayout(this).apply {
             setBackgroundColor(Color.TRANSPARENT)
             clipToPadding = false
@@ -298,15 +325,26 @@ internal class LockScreenOverlayHostActivity : Activity() {
             backgroundView = wallpaperView,
             timeView = timeView,
             dateView = dateView,
+            batteryGroup = batteryGroup,
             batteryView = batteryView,
             unlockHint = unlockHint,
+            unlockIcon = unlockIcon,
+            unlockText = unlockText,
             dp = ::dp
+        )
+        batteryController = LockScreenBatteryController(
+            context = this,
+            batteryContainer = batteryGroup,
+            batteryIcon = batteryIcon,
+            batteryView = batteryView,
+            onVisibilityChanged = layoutController::setBatteryVisible
         )
         appearanceController = LockScreenHostAppearanceController(
             context = this,
             wallpaperView = wallpaperView,
             timeView = timeView,
             dateView = dateView,
+            batteryIcon = batteryIcon,
             batteryView = batteryView,
             unlockIcon = unlockIcon,
             unlockText = unlockText,

@@ -74,6 +74,7 @@ Electron_Trainer/.electron-cache/
 # Android / Gradle
 # -----------------------------
 android-app/.gradle/
+.gradle-codex/
 android-app/.idea/
 android-app/local.properties
 android-app/keystore.properties
@@ -93,6 +94,7 @@ Electron_Trainer/dist/win-unpacked/
 Electron_Trainer/dist/win-*/
 *.apk
 *.aab
+outputs/
 
 # Keep Electron source build scripts and config tracked
 !Electron_Trainer/build_exe.ps1

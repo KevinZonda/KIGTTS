@@ -1,0 +1,8 @@
+<resources>
+    <color name="widget_card_surface">#212121</color>
+    <color name="widget_card_surface_variant">#282828</color>
+    <color name="widget_text_primary">#FFFFFFFF</color>
+    <color name="widget_text_secondary">#B3FFFFFF</color>
+    <color name="widget_divider">#3DFFFFFF</color>
+    <color name="widget_pressed_surface">#1FFFFFFF</color>
+</resources>

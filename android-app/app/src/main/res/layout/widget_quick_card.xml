@@ -1,0 +1,114 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_card_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@android:color/transparent"
+    android:orientation="vertical"
+    android:padding="0dp">
+
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1">
+        <ImageView
+            android:id="@+id/widget_card_preview"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:contentDescription="名片预览"
+            android:scaleType="fitCenter" />
+        <ImageView
+            android:id="@+id/widget_card_qr"
+            android:layout_width="148dp"
+            android:layout_height="148dp"
+            android:layout_gravity="center"
+            android:background="@drawable/bg_widget_qr"
+            android:contentDescription="名片二维码"
+            android:padding="10dp"
+            android:scaleType="fitCenter" />
+        <LinearLayout
+            android:id="@+id/widget_card_header"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_gravity="top"
+            android:orientation="vertical"
+            android:paddingStart="14dp"
+            android:paddingTop="10dp"
+            android:paddingEnd="48dp">
+            <TextView
+                android:id="@+id/widget_card_title"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:shadowColor="#99000000"
+                android:shadowDx="0"
+                android:shadowDy="1"
+                android:shadowRadius="2"
+                android:text="快捷名片"
+                android:textSize="20sp"
+                android:textStyle="bold" />
+            <TextView
+                android:id="@+id/widget_card_note"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:ellipsize="end"
+                android:maxLines="5"
+                android:shadowColor="#99000000"
+                android:shadowDx="0"
+                android:shadowDy="1"
+                android:shadowRadius="2"
+                android:textSize="12sp" />
+        </LinearLayout>
+        <ImageView
+            android:id="@+id/widget_card_open"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:layout_gravity="top|end"
+            android:contentDescription="打开快捷名片"
+            android:padding="8dp"
+            android:src="@drawable/ic_widget_open_light" />
+        <LinearLayout
+            android:id="@+id/widget_card_pager"
+            android:layout_width="88dp"
+            android:layout_height="40dp"
+            android:layout_gravity="bottom|start"
+            android:orientation="horizontal">
+            <ImageView
+                android:id="@+id/widget_card_previous"
+                android:layout_width="44dp"
+                android:layout_height="40dp"
+                android:contentDescription="上一张名片"
+                android:padding="10dp"
+                android:src="@drawable/ic_widget_previous_light" />
+            <ImageView
+                android:id="@+id/widget_card_next"
+                android:layout_width="44dp"
+                android:layout_height="40dp"
+                android:contentDescription="下一张名片"
+                android:padding="10dp"
+                android:src="@drawable/ic_widget_next_light" />
+        </LinearLayout>
+        <ImageView
+            android:id="@+id/widget_card_logo"
+            android:layout_width="88dp"
+            android:layout_height="22dp"
+            android:layout_gravity="bottom|end"
+            android:layout_marginEnd="12dp"
+            android:layout_marginBottom="10dp"
+            android:contentDescription="KIGTTS"
+            android:scaleType="fitEnd"
+            android:src="@drawable/logo_white" />
+        <TextView
+            android:id="@+id/widget_card_empty"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:background="@drawable/bg_widget_card"
+            android:gravity="center"
+            android:padding="16dp"
+            android:text="点击新建快捷名片"
+            android:textColor="@color/widget_text_secondary"
+            android:textSize="16sp"
+            android:textStyle="bold" />
+    </FrameLayout>
+</LinearLayout>

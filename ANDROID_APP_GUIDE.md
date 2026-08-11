@@ -33,7 +33,7 @@ KIGTTS 安卓端是一款以**离线语音识别（ASR）+ 离线语音合成（
 ### 1.1 技术栈与核心依赖
 
 - UI：Kotlin + Jetpack Compose
-- ASR：`sherpa-onnx`（SenseVoice 路线，结合 Silero VAD / 标点模型）
+- ASR：`sherpa-onnx`（SenseVoice V6 路线，结合 Silero VAD 与模型内建标点）
 - TTS：系统 TTS（默认）+ Piper ONNX（可导入语音包）
 - 软件降噪：RNNoise / Speex
 - 说话人验证：sherpa-onnx 官方 speaker embedding 模型
@@ -450,11 +450,10 @@ flowchart TD
 
 ### 4.5 文件与资源
 
-- ASR 模型导入：`sosv.zip` / `sosv-int8.zip`
+- ASR 模型导入：兼容 `sosv.zip` / `sosv-int8.zip`，完整组件使用 KIGTTS V6 资源包
 - 语音包导入：`.zip` / `.kigvpk`
 - 默认朗读后端：系统 TTS
 - APK 内置资源：
-  - `sosv-int8.zip`（含 SenseVoice、Silero VAD、中文/英文标点模型）
   - `speaker_verify/3dspeaker_speech_campplus_sv_zh-cn_16k-common.onnx`
   - `espeak-ng-data.zip`
 - 内建文件管理器：

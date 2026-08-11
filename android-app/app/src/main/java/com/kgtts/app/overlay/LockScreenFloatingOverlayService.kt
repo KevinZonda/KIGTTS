@@ -1,6 +1,7 @@
 package com.lhtstudio.kigtts.app.overlay
 
 import android.content.Intent
+import android.graphics.Rect
 import android.os.Binder
 import android.os.Handler
 import android.os.IBinder
@@ -15,10 +16,14 @@ internal class LockScreenFloatingOverlayService : FloatingOverlayService() {
     private var hostToken: IBinder? = null
     private var hostUnlockRequester: (((() -> Unit) -> Unit))? = null
     private var hostMiniVisibilityListener: ((Boolean) -> Unit)? = null
+    private var hostListeningVisibilityListener: ((Boolean) -> Unit)? = null
+    private var hostListeningTopClearanceListener: ((Int?) -> Unit)? = null
     private var hostEntryRevealListener: (() -> Unit)? = null
     private var hostEntryRevealDispatched = false
     private var lastReportedPanelVisible = false
     private var lastReportedMiniVisible = false
+    private var lastReportedListeningVisible = false
+    private var lastReportedListeningTopClearancePx: Int? = null
     private val binder = LocalBinder()
 
     inner class LocalBinder : Binder() {
@@ -26,14 +31,20 @@ internal class LockScreenFloatingOverlayService : FloatingOverlayService() {
             token: IBinder,
             unlockRequester: ((() -> Unit) -> Unit),
             miniVisibilityListener: (Boolean) -> Unit,
+            listeningVisibilityListener: (Boolean) -> Unit,
+            listeningTopClearanceListener: (Int?) -> Unit,
             entryRevealListener: () -> Unit
         ) {
             hostToken = token
             hostUnlockRequester = unlockRequester
             hostMiniVisibilityListener = miniVisibilityListener
+            hostListeningVisibilityListener = listeningVisibilityListener
+            hostListeningTopClearanceListener = listeningTopClearanceListener
             hostEntryRevealListener = entryRevealListener
             hostEntryRevealDispatched = false
             miniVisibilityListener(lastReportedMiniVisible)
+            listeningVisibilityListener(lastReportedListeningVisible)
+            listeningTopClearanceListener(lastReportedListeningTopClearancePx)
             dispatchHostEntryRevealIfNeeded()
             if (!hostReady.isCompleted) hostReady.complete(Unit)
         }
@@ -42,10 +53,14 @@ internal class LockScreenFloatingOverlayService : FloatingOverlayService() {
             removeAttachedHostWindowsImmediately()
             hostUnlockRequester = null
             hostMiniVisibilityListener = null
+            hostListeningVisibilityListener = null
+            hostListeningTopClearanceListener = null
             hostEntryRevealListener = null
             hostEntryRevealDispatched = false
             lastReportedPanelVisible = false
             lastReportedMiniVisible = false
+            lastReportedListeningVisible = false
+            lastReportedListeningTopClearancePx = null
             hostToken = null
         }
     }
@@ -89,6 +104,18 @@ internal class LockScreenFloatingOverlayService : FloatingOverlayService() {
             hostMiniVisibilityListener?.invoke(miniVisible)
         }
         dispatchHostEntryRevealIfNeeded()
+    }
+
+    override fun onListeningOverlayVisibilityChanged(visible: Boolean) {
+        if (lastReportedListeningVisible == visible) return
+        lastReportedListeningVisible = visible
+        hostListeningVisibilityListener?.invoke(visible)
+    }
+
+    override fun onListeningOverlayTopClearanceChanged(clearancePx: Int?) {
+        if (lastReportedListeningTopClearancePx == clearancePx) return
+        lastReportedListeningTopClearancePx = clearancePx
+        hostListeningTopClearanceListener?.invoke(clearancePx)
     }
 
     private fun dispatchHostEntryRevealIfNeeded() {
@@ -158,6 +185,12 @@ internal class LockScreenFloatingOverlayService : FloatingOverlayService() {
                 verticalBiasPx = 0,
                 marginPx = (20f * metrics.density).toInt()
             )
+            LockScreenLayoutMode.LargeSquare -> LockScreenLayoutPolicy.centeredOverlayTopPx(
+                screenHeightPx = metrics.heightPixels,
+                contentHeightPx = contentHeight,
+                verticalBiasPx = 0,
+                marginPx = (20f * metrics.density).toInt()
+            )
             else -> base
         }
     }
@@ -169,7 +202,7 @@ internal class LockScreenFloatingOverlayService : FloatingOverlayService() {
             screenHeightPx = metrics.heightPixels,
             density = metrics.density
         )
-        if (!mode.isPortrait) {
+        if (!mode.isPortrait && mode != LockScreenLayoutMode.LargeSquare) {
             return super.miniOverlayContentTopPx(contentHeight)
         }
         return LockScreenLayoutPolicy.centeredOverlayTopPx(
@@ -182,5 +215,44 @@ internal class LockScreenFloatingOverlayService : FloatingOverlayService() {
 
     override fun onOverlayWindowsInitialized() {
         Handler(Looper.getMainLooper()).post(::requestExpandedPanel)
+    }
+
+    override fun usesVerticalListeningOverlayLayout(): Boolean {
+        val mode = currentLayoutMode()
+        return mode.isPortrait || mode == LockScreenLayoutMode.LargeSquare
+    }
+
+    override fun verticalListeningOverlayTopInsetPx(): Int {
+        val density = resources.displayMetrics.density
+        return when (currentLayoutMode()) {
+            LockScreenLayoutMode.PhonePortrait -> (94f * density).toInt()
+            LockScreenLayoutMode.LargeSquare -> (88f * density).toInt()
+            else -> (12f * density).toInt()
+        }
+    }
+
+    override fun verticalListeningOverlayBottomInsetPx(): Int {
+        val density = resources.displayMetrics.density
+        return when (currentLayoutMode()) {
+            LockScreenLayoutMode.PhonePortrait,
+            LockScreenLayoutMode.LargeSquare -> (68f * density).toInt()
+            else -> (12f * density).toInt()
+        }
+    }
+
+    override fun landscapeListeningOverlayCenterXPx(safeBounds: Rect): Int =
+        if (currentLayoutMode() == LockScreenLayoutMode.TabletLandscape) {
+            safeBounds.left + safeBounds.width() * 3 / 4
+        } else {
+            safeBounds.centerX()
+        }
+
+    private fun currentLayoutMode(): LockScreenLayoutMode {
+        val metrics = resources.displayMetrics
+        return LockScreenLayoutPolicy.mode(
+            screenWidthPx = metrics.widthPixels,
+            screenHeightPx = metrics.heightPixels,
+            density = metrics.density
+        )
     }
 }

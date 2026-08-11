@@ -8,4 +8,10 @@
     <string name="lock_screen_unlock_icon" translatable="false">keyboard_arrow_up</string>
     <string name="lock_screen_clock_unavailable">未找到可用的时钟应用</string>
     <string name="lock_screen_calendar_unavailable">未找到可用的日历应用</string>
+    <string name="widget_quick_entry_name">KIGTTS 快捷入口</string>
+    <string name="widget_quick_entry_description">快速打开便捷字幕、快捷名片、画板和音效板</string>
+    <string name="widget_quick_card_name">KIGTTS 快捷名片</string>
+    <string name="widget_quick_card_description">在桌面查看并切换快捷名片</string>
+    <string name="widget_quick_subtitle_name">KIGTTS 便捷字幕</string>
+    <string name="widget_quick_subtitle_description">在桌面使用当前分组的快捷文本</string>
 </resources>

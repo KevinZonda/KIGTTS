@@ -207,7 +207,16 @@ internal fun LedQuickSubtitlePreviewDialog(
                 .padding(14.dp)
         ) {
             Surface(
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .quickSubtitlePinchZoom(
+                        enabled = true,
+                        fontSizeSp = viewModel.quickSubtitleFontSizeSp,
+                        minFontSizeSp = 28f,
+                        maxFontSizeSp = if (state.quickSubtitleAllowLargeFont) 800f else 96f,
+                        onFontSizeChange = viewModel::updateQuickSubtitleFontSize,
+                        onFontSizeChangeFinished = viewModel::commitQuickSubtitleFontSize
+                    ),
                 shape = RectangleShape,
                 color = backgroundColor,
                 elevation = 12.dp

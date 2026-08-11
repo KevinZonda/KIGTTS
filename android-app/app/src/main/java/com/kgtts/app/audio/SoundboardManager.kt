@@ -31,6 +31,17 @@ data class SoundboardPlaybackState(
     val progress: Float = 0f
 )
 
+internal fun shouldSuppressTtsForSoundboardTrigger(
+    fromQuickText: Boolean,
+    keywordTriggerEnabled: Boolean,
+    allowQuickTextTrigger: Boolean,
+    suppressTtsOnKeyword: Boolean,
+    hasTriggerMatch: Boolean
+): Boolean {
+    val triggerAllowed = keywordTriggerEnabled && (!fromQuickText || allowQuickTextTrigger)
+    return triggerAllowed && suppressTtsOnKeyword && hasTriggerMatch
+}
+
 object SoundboardManager {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val stateMutex = Mutex()

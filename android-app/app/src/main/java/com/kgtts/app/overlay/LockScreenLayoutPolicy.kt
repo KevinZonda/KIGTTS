@@ -7,17 +7,60 @@ internal enum class LockScreenLayoutMode {
     PhonePortrait,
     PhoneLandscape,
     TabletPortrait,
-    TabletLandscape;
+    TabletLandscape,
+    LargeSquare;
 
     val isPortrait: Boolean
         get() = this == PhonePortrait || this == TabletPortrait
 }
 
+internal data class CompactClockFrame(
+    val leftPx: Int,
+    val widthPx: Int
+)
+
 internal object LockScreenLayoutPolicy {
     private const val TABLET_MIN_WIDTH_DP = 600f
+    private const val LARGE_SQUARE_MAX_ASPECT_RATIO = 1.28f
 
-    fun hideClock(mode: LockScreenLayoutMode, miniOverlayVisible: Boolean): Boolean =
-        mode == LockScreenLayoutMode.PhonePortrait && miniOverlayVisible
+    fun compactClockFrame(
+        mode: LockScreenLayoutMode,
+        screenWidthPx: Int,
+        density: Float,
+        sideMarginPx: Int,
+        overlayHorizontalPaddingPx: Int
+    ): CompactClockFrame {
+        val outerWidth = overlayWidthPx(mode, screenWidthPx, density, sideMarginPx)
+        val outerLeft = overlayLeftPx(mode, screenWidthPx, outerWidth, sideMarginPx)
+        return CompactClockFrame(
+            leftPx = outerLeft + overlayHorizontalPaddingPx,
+            widthPx = (outerWidth - overlayHorizontalPaddingPx * 2).coerceAtLeast(1)
+        )
+    }
+
+    fun hideClock(
+        mode: LockScreenLayoutMode,
+        miniOverlayVisible: Boolean
+    ): Boolean =
+        miniOverlayVisible &&
+            (mode == LockScreenLayoutMode.PhonePortrait || mode == LockScreenLayoutMode.LargeSquare)
+
+    fun useCompactClock(
+        mode: LockScreenLayoutMode,
+        miniOverlayVisible: Boolean,
+        listeningOverlayVisible: Boolean,
+        listeningTopClearancePx: Int?,
+        normalClockRequiredHeightPx: Int
+    ): Boolean {
+        if (miniOverlayVisible || !listeningOverlayVisible) return false
+        return when (mode) {
+            LockScreenLayoutMode.PhonePortrait -> true
+            LockScreenLayoutMode.LargeSquare ->
+                listeningTopClearancePx == null ||
+                    listeningTopClearancePx < normalClockRequiredHeightPx
+            else -> false
+        }
+    }
 
     fun mode(
         screenWidthPx: Int,
@@ -26,7 +69,12 @@ internal object LockScreenLayoutPolicy {
     ): LockScreenLayoutMode {
         val safeDensity = density.takeIf { it > 0f } ?: 1f
         val smallestWidthDp = minOf(screenWidthPx, screenHeightPx) / safeDensity
+        val shortSide = min(screenWidthPx, screenHeightPx).coerceAtLeast(1)
+        val aspectRatio = max(screenWidthPx, screenHeightPx).toFloat() / shortSide
         return when {
+            smallestWidthDp >= TABLET_MIN_WIDTH_DP &&
+                aspectRatio <= LARGE_SQUARE_MAX_ASPECT_RATIO ->
+                LockScreenLayoutMode.LargeSquare
             smallestWidthDp >= TABLET_MIN_WIDTH_DP && screenWidthPx > screenHeightPx ->
                 LockScreenLayoutMode.TabletLandscape
             smallestWidthDp >= TABLET_MIN_WIDTH_DP -> LockScreenLayoutMode.TabletPortrait
@@ -44,7 +92,8 @@ internal object LockScreenLayoutPolicy {
         val maxLeft = max(sideMarginPx, screenWidthPx - contentWidthPx - sideMarginPx)
         val requested = when (mode) {
             LockScreenLayoutMode.PhonePortrait,
-            LockScreenLayoutMode.TabletPortrait -> (screenWidthPx - contentWidthPx) / 2
+            LockScreenLayoutMode.TabletPortrait,
+            LockScreenLayoutMode.LargeSquare -> (screenWidthPx - contentWidthPx) / 2
             LockScreenLayoutMode.PhoneLandscape -> screenWidthPx - contentWidthPx - sideMarginPx
             LockScreenLayoutMode.TabletLandscape ->
                 screenWidthPx * 3 / 4 - contentWidthPx / 2
@@ -71,7 +120,8 @@ internal object LockScreenLayoutPolicy {
             LockScreenLayoutMode.PhonePortrait -> phoneWidth
             LockScreenLayoutMode.PhoneLandscape -> phoneLandscapeWidth
             LockScreenLayoutMode.TabletPortrait,
-            LockScreenLayoutMode.TabletLandscape -> tabletWidth
+            LockScreenLayoutMode.TabletLandscape,
+            LockScreenLayoutMode.LargeSquare -> tabletWidth
         }
         return min(availableWidth, requestedWidth).coerceAtLeast(minimumWidth)
     }

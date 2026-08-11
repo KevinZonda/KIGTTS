@@ -938,7 +938,16 @@ internal object QuickSubtitleRoutes {
 data class QuickSubtitleFloatingInputPreviewState(
     val text: AnnotatedString,
     val cursorIndex: Int,
-    val bottomPadding: Dp
+    val bottomPadding: Dp,
+    val cursorSwipeEnabled: Boolean = false,
+    val onCursorDelta: (Int) -> Unit = {},
+    val onClick: () -> Unit = {},
+    val onLongClick: () -> Unit = {},
+    val fontSizeSp: Float = 56f,
+    val minFontSizeSp: Float = 28f,
+    val maxFontSizeSp: Float = 96f,
+    val onFontSizeChange: (Float) -> Unit = {},
+    val onFontSizeChangeFinished: () -> Unit = {}
 )
 
 internal object SoundboardRoutes {
@@ -967,6 +976,7 @@ internal object QuickCardRoutes {
 internal object SettingsRoutes {
     const val Main = "settings/main"
     const val Fonts = "settings/fonts"
+    const val Listening = "settings/listening"
     const val Log = "settings/log"
     const val Licenses = "settings/licenses"
     const val Privacy = "settings/privacy"
