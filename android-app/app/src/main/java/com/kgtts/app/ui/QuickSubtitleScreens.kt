@@ -159,6 +159,7 @@ import androidx.compose.ui.input.pointer.PointerType
 import androidx.compose.ui.input.pointer.pointerInteropFilter
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.layout.ContentScale
@@ -743,14 +744,24 @@ internal fun QuickSubtitleListPopupTabs(
     showVerticalLabels: Boolean = false,
     layoutMode: QuickSubtitleListPopupLayout,
     onSelectGroup: (Int) -> Unit,
+    onGroupsReordered: (List<Long>) -> Unit,
+    onEditGroupRequested: (Long) -> Unit,
     onToggleLayout: () -> Unit,
     onGroupBoundsChanged: (Int, Rect) -> Unit = { _, _ -> },
     modifier: Modifier = Modifier
 ) {
+    val cardColor = md2CardContainerColor()
+    val elevatedCardColor = md2ElevatedCardContainerColor(UiTokens.CardElevation)
+    var canScrollForward by remember(vertical) { mutableStateOf(false) }
+    val endFadeAlpha by animateFloatAsState(
+        targetValue = if (canScrollForward) 1f else 0f,
+        animationSpec = tween(160, easing = FastOutSlowInEasing),
+        label = "quick_subtitle_group_end_fade"
+    )
     Card(
         modifier = modifier,
         shape = RoundedCornerShape(UiTokens.Radius),
-        backgroundColor = md2CardContainerColor(),
+        backgroundColor = cardColor,
         elevation = UiTokens.CardElevation
     ) {
         if (vertical) {
@@ -758,58 +769,41 @@ internal fun QuickSubtitleListPopupTabs(
                 modifier = Modifier.fillMaxSize(),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Column(
+                Box(
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxWidth()
-                        .verticalScroll(rememberScrollState())
-                        .padding(horizontal = 3.dp, vertical = 4.dp),
-                    verticalArrangement = Arrangement.spacedBy(2.dp)
+                        .clipToBounds()
                 ) {
-                    groups.forEachIndexed { index, group ->
-                        val selected = selectedIndex == index
-                        val title = group.title.ifBlank { "未命名分组" }
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(44.dp)
-                                .clip(RoundedCornerShape(UiTokens.Radius))
-                                .background(
-                                    if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.16f)
-                                    else Color.Transparent
+                    QuickSubtitleCandidateGroupRecycler(
+                        groups = groups,
+                        selectedGroupId = groups.getOrNull(selectedIndex)?.id,
+                        vertical = true,
+                        showLabels = showVerticalLabels,
+                        onSelectGroup = onSelectGroup,
+                        onGroupsReordered = onGroupsReordered,
+                        onEditRequested = onEditGroupRequested,
+                        onGroupBoundsChanged = onGroupBoundsChanged,
+                        onCanScrollForwardChanged = { canScrollForward = it },
+                        modifier = Modifier.fillMaxSize()
+                    )
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .zIndex(2f)
+                            .fillMaxWidth()
+                            .height(22.dp)
+                            .graphicsLayer { alpha = endFadeAlpha }
+                            .background(
+                                Brush.verticalGradient(
+                                    colors = listOf(Color.Transparent, elevatedCardColor)
                                 )
-                                .onGloballyPositioned {
-                                    onGroupBoundsChanged(index, it.boundsInWindow())
-                                }
-                                .clickable { onSelectGroup(index) },
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = if (showVerticalLabels) {
-                                Arrangement.spacedBy(8.dp)
-                            } else {
-                                Arrangement.Center
-                            }
-                        ) {
-                            if (showVerticalLabels) {
-                                Spacer(Modifier.width(8.dp))
-                            }
-                            MsIcon(
-                                name = group.icon,
-                                contentDescription = title
                             )
-                            if (showVerticalLabels) {
-                                Text(
-                                    text = title,
-                                    modifier = Modifier.weight(1f),
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                                Spacer(Modifier.width(4.dp))
-                            }
-                        }
-                    }
+                    )
                 }
                 Box(
                     modifier = Modifier
+                        .zIndex(3f)
                         .fillMaxWidth()
                         .height(1.dp)
                         .padding(horizontal = 8.dp)
@@ -818,8 +812,10 @@ internal fun QuickSubtitleListPopupTabs(
                 KigttsIconButton(
                     onClick = onToggleLayout,
                     modifier = Modifier
+                        .zIndex(3f)
                         .fillMaxWidth()
                         .height(48.dp)
+                        .background(elevatedCardColor)
                 ) {
                     MsIcon(
                         name = if (layoutMode == QuickSubtitleListPopupLayout.Grid) "grid_view" else "view_list",
@@ -834,38 +830,41 @@ internal fun QuickSubtitleListPopupTabs(
                     .height(52.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(
+                Box(
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxHeight()
-                        .horizontalScroll(rememberScrollState())
-                        .padding(start = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                        .clipToBounds()
                 ) {
-                    groups.forEachIndexed { index, group ->
-                        val selected = selectedIndex == index
-                        Row(
-                            modifier = Modifier
-                                .height(44.dp)
-                                .clip(RoundedCornerShape(UiTokens.Radius))
-                                .background(
-                                    if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.16f)
-                                    else Color.Transparent
+                    QuickSubtitleCandidateGroupRecycler(
+                        groups = groups,
+                        selectedGroupId = groups.getOrNull(selectedIndex)?.id,
+                        vertical = false,
+                        showLabels = true,
+                        onSelectGroup = onSelectGroup,
+                        onGroupsReordered = onGroupsReordered,
+                        onEditRequested = onEditGroupRequested,
+                        onGroupBoundsChanged = onGroupBoundsChanged,
+                        onCanScrollForwardChanged = { canScrollForward = it },
+                        modifier = Modifier.fillMaxSize()
+                    )
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.CenterEnd)
+                            .zIndex(2f)
+                            .width(22.dp)
+                            .fillMaxHeight()
+                            .graphicsLayer { alpha = endFadeAlpha }
+                            .background(
+                                Brush.horizontalGradient(
+                                    colors = listOf(Color.Transparent, elevatedCardColor)
                                 )
-                                .clickable { onSelectGroup(index) }
-                                .padding(horizontal = 10.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            val title = group.title.ifBlank { "未命名分组" }
-                            MsIcon(group.icon, contentDescription = title)
-                            Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        }
-                        Spacer(Modifier.width(2.dp))
-                    }
+                            )
+                    )
                 }
                 Box(
                     modifier = Modifier
+                        .zIndex(3f)
                         .width(1.dp)
                         .height(34.dp)
                         .background(MaterialTheme.colorScheme.outline.copy(alpha = 0.28f))
@@ -873,8 +872,10 @@ internal fun QuickSubtitleListPopupTabs(
                 KigttsIconButton(
                     onClick = onToggleLayout,
                     modifier = Modifier
+                        .zIndex(3f)
                         .width(52.dp)
                         .fillMaxHeight()
+                        .background(elevatedCardColor)
                 ) {
                     MsIcon(
                         name = if (layoutMode == QuickSubtitleListPopupLayout.Grid) "grid_view" else "view_list",
@@ -896,9 +897,12 @@ internal fun QuickSubtitleListDialog(
     frequencySortEnabled: Boolean,
     onLayoutModeChange: (QuickSubtitleListPopupLayout) -> Unit,
     onSelectGroup: (Int) -> Unit,
+    onGroupsReordered: (List<Long>) -> Unit,
+    onGroupChanged: (Long, String, String) -> Unit,
     onApplyCurrentOrder: () -> Unit,
     onItemsReordered: (Long, List<String>, List<Int?>) -> Unit,
     onItemChanged: (Long, Int, String, Int?) -> Unit,
+    onItemMoved: (Long, Int, Long) -> Unit,
     onItemDeleted: (Long, Int) -> Unit,
     onDismiss: () -> Unit,
     onSubmit: (Long, String) -> Unit
@@ -920,8 +924,29 @@ internal fun QuickSubtitleListDialog(
         mutableIntStateOf(initialGroupIndex.coerceIn(0, groups.lastIndex))
     }
     var editTarget by remember { mutableStateOf<QuickSubtitleCandidateEditTarget?>(null) }
+    var moveTarget by remember { mutableStateOf<QuickSubtitleCandidateMoveTarget?>(null) }
     var deleteTarget by remember { mutableStateOf<QuickSubtitleCandidateDeleteTarget?>(null) }
+    var groupEditTarget by remember { mutableStateOf<QuickSubtitleCandidateGroupEditTarget?>(null) }
     var showManualSortConfirm by remember { mutableStateOf(false) }
+    val handleGroupsReordered: (List<Long>) -> Unit = { reorderedIds ->
+        val selectedGroupId = groups.getOrNull(selectedGroupIndex)?.id
+        val nextSelectedIndex = reorderedIds.indexOf(selectedGroupId)
+            .takeIf { it >= 0 }
+            ?: selectedGroupIndex.coerceIn(0, reorderedIds.lastIndex)
+        popupGroupBounds.clear()
+        selectedGroupIndex = nextSelectedIndex
+        onGroupsReordered(reorderedIds)
+        onSelectGroup(nextSelectedIndex)
+    }
+    val handleGroupEditRequested: (Long) -> Unit = { groupId ->
+        groups.firstOrNull { it.id == groupId }?.let { group ->
+            groupEditTarget = QuickSubtitleCandidateGroupEditTarget(
+                groupId = group.id,
+                title = group.title,
+                icon = group.icon
+            )
+        }
+    }
     val content: @Composable (Modifier) -> Unit = { modifier ->
         Card(
             modifier = modifier,
@@ -929,28 +954,22 @@ internal fun QuickSubtitleListDialog(
             backgroundColor = md2CardContainerColor(),
             elevation = UiTokens.CardElevation
         ) {
-            AnimatedContent(
-                targetState = selectedGroupIndex to layoutMode,
-                transitionSpec = {
-                    if (initialState.first == targetState.first && initialState.second != targetState.second) {
-                        ContentTransform(
-                            targetContentEnter = fadeIn(animationSpec = tween(150)),
-                            initialContentExit = fadeOut(animationSpec = tween(120)),
-                            sizeTransform = null
-                        )
-                    } else {
-                        quickSubtitlePopupGroupSwitchTransform(
-                            initialIndex = initialState.first,
-                            targetIndex = targetState.first,
-                            isLandscape = isLandscape
-                        )
-                    }
-                },
-                label = "quick_subtitle_list_popup_group_switch"
-            ) { (targetGroupIndex, targetLayoutMode) ->
-                val targetGroup = groups.getOrNull(targetGroupIndex)
+            val targetGroup = groups.getOrNull(selectedGroupIndex)
                 val targetItems = targetGroup?.items.orEmpty()
-                val grid = targetLayoutMode == QuickSubtitleListPopupLayout.Grid
+            val grid = layoutMode == QuickSubtitleListPopupLayout.Grid
+            key(targetGroup?.id, grid) {
+                var pageVisible by remember { mutableStateOf(false) }
+                val pageAlpha by animateFloatAsState(
+                    targetValue = if (pageVisible) 1f else 0f,
+                    animationSpec = tween(120, easing = FastOutSlowInEasing),
+                    label = "quick_subtitle_candidate_page_alpha"
+                )
+                LaunchedEffect(Unit) { pageVisible = true }
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .graphicsLayer { alpha = pageAlpha }
+                ) {
                 if (targetItems.isEmpty()) {
                     Box(
                         modifier = Modifier
@@ -970,6 +989,7 @@ internal fun QuickSubtitleListDialog(
                         itemColors = targetGroup?.itemColors.orEmpty(),
                         grid = grid,
                         dragEnabled = !frequencySortEnabled,
+                        canMoveToGroup = groups.size > 1,
                         onItemClick = { _, text ->
                             performKeyHaptic()
                             targetGroup?.let { onSubmit(it.id, text) }
@@ -989,6 +1009,15 @@ internal fun QuickSubtitleListDialog(
                                 )
                             }
                         },
+                        onMoveRequested = { index, text ->
+                            targetGroup?.let {
+                                moveTarget = QuickSubtitleCandidateMoveTarget(
+                                    groupId = it.id,
+                                    displayIndex = index,
+                                    text = text
+                                )
+                            }
+                        },
                         onDeleteRequested = { index, text ->
                             targetGroup?.let {
                                 deleteTarget = QuickSubtitleCandidateDeleteTarget(
@@ -1000,6 +1029,7 @@ internal fun QuickSubtitleListDialog(
                         },
                         modifier = Modifier.fillMaxSize()
                     )
+                }
                 }
             }
         }
@@ -1064,6 +1094,8 @@ internal fun QuickSubtitleListDialog(
                                 selectedGroupIndex = it
                                 onSelectGroup(it)
                             },
+                            onGroupsReordered = handleGroupsReordered,
+                            onEditGroupRequested = handleGroupEditRequested,
                             onToggleLayout = {
                                 performKeyHaptic()
                                 onLayoutModeChange(
@@ -1116,6 +1148,8 @@ internal fun QuickSubtitleListDialog(
                                 selectedGroupIndex = it
                                 onSelectGroup(it)
                             },
+                            onGroupsReordered = handleGroupsReordered,
+                            onEditGroupRequested = handleGroupEditRequested,
                             onToggleLayout = {
                                 performKeyHaptic()
                                 onLayoutModeChange(
@@ -1138,6 +1172,29 @@ internal fun QuickSubtitleListDialog(
             onSave = { text, colorArgb ->
                 onItemChanged(target.groupId, target.displayIndex, text, colorArgb)
                 editTarget = null
+            }
+        )
+    }
+
+    moveTarget?.let { target ->
+        QuickSubtitleCandidateMoveDialog(
+            target = target,
+            groups = groups,
+            onDismissRequest = { moveTarget = null },
+            onMove = { targetGroupId ->
+                onItemMoved(target.groupId, target.displayIndex, targetGroupId)
+                moveTarget = null
+            }
+        )
+    }
+
+    groupEditTarget?.let { target ->
+        QuickSubtitleCandidateGroupEditDialog(
+            target = target,
+            onDismissRequest = { groupEditTarget = null },
+            onSave = { title, icon ->
+                onGroupChanged(target.groupId, title, icon)
+                groupEditTarget = null
             }
         )
     }
@@ -3802,6 +3859,16 @@ fun QuickSubtitleScreen(
                 frequencySortEnabled = state.quickSubtitleFrequencySortEnabled,
                 onLayoutModeChange = { viewModel.updateQuickSubtitleListPopupLayout(it) },
                 onSelectGroup = { viewModel.selectQuickSubtitleGroup(it) },
+                onGroupsReordered = { groupIds ->
+                    if (viewModel.setQuickSubtitleGroupOrder(groupIds)) {
+                        refreshQuickSubtitleListDialogGroups()
+                    }
+                },
+                onGroupChanged = { groupId, title, icon ->
+                    if (viewModel.updateQuickSubtitleGroupMetaById(groupId, title, icon)) {
+                        refreshQuickSubtitleListDialogGroups()
+                    }
+                },
                 onApplyCurrentOrder = {
                     viewModel.applyCurrentQuickSubtitleFrequencyOrder()
                     refreshQuickSubtitleListDialogGroups()
@@ -3818,6 +3885,17 @@ fun QuickSubtitleScreen(
                             displayIndex,
                             text,
                             colorArgb
+                        )
+                    ) {
+                        refreshQuickSubtitleListDialogGroups()
+                    }
+                },
+                onItemMoved = { groupId, displayIndex, targetGroupId ->
+                    if (
+                        viewModel.moveQuickSubtitleDisplayItemToGroup(
+                            groupId,
+                            displayIndex,
+                            targetGroupId
                         )
                     ) {
                         refreshQuickSubtitleListDialogGroups()

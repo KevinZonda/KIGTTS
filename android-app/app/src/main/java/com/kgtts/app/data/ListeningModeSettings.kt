@@ -13,7 +13,7 @@ data class ListeningModeSettings(
     val rotated180: Boolean = false,
     val portraitPanelsSwapped: Boolean = false,
     val landscapePanelsSwapped: Boolean = false,
-    val hideDuringTextInput: Boolean = false,
+    val hideDuringTextInput: Boolean = true,
     val recognitionLanguage: String = AsrRecognitionLanguage.DEFAULT,
     val preferredInputType: Int = AudioRoutePreference.INPUT_BUILTIN_MIC,
     val minVolumePercent: Int = 2,
@@ -93,7 +93,7 @@ data class ListeningModeSettings(
                     rotated180 = json.optBoolean("rotated180", false),
                     portraitPanelsSwapped = json.optBoolean("portraitPanelsSwapped", false),
                     landscapePanelsSwapped = json.optBoolean("landscapePanelsSwapped", false),
-                    hideDuringTextInput = json.optBoolean("hideDuringTextInput", false),
+                    hideDuringTextInput = json.optBoolean("hideDuringTextInput", true),
                     recognitionLanguage = json.optString(
                         "recognitionLanguage",
                         AsrRecognitionLanguage.DEFAULT

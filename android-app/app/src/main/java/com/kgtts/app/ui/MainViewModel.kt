@@ -1633,6 +1633,13 @@ class MainViewModel(
         saveQuickSubtitleConfig()
     }
 
+    fun updateQuickSubtitleGroupMetaById(groupId: Long, title: String, icon: String): Boolean {
+        val groupIndex = quickSubtitleGroups.indexOfFirst { it.id == groupId }
+        if (groupIndex < 0) return false
+        updateQuickSubtitleGroupMeta(groupIndex, title, icon)
+        return true
+    }
+
     fun addQuickSubtitleGroup() {
         val newId = quickSubtitleNextGroupId++
         quickSubtitleGroups = quickSubtitleGroups + QuickSubtitleGroup(
@@ -1665,6 +1672,19 @@ class MainViewModel(
         next.add(to, item)
         quickSubtitleGroups = next
         saveQuickSubtitleConfig()
+    }
+
+    fun setQuickSubtitleGroupOrder(groupIds: List<Long>): Boolean {
+        if (
+            groupIds.size != quickSubtitleGroups.size ||
+            groupIds.toSet().size != quickSubtitleGroups.size
+        ) return false
+        val groupsById = quickSubtitleGroups.associateBy { it.id }
+        val reordered = groupIds.map { groupsById[it] ?: return false }
+        if (reordered == quickSubtitleGroups) return true
+        quickSubtitleGroups = reordered
+        saveQuickSubtitleConfig()
+        return true
     }
 
     fun addQuickSubtitleItem(groupIndex: Int, value: String = "新快捷文本") {
@@ -1753,6 +1773,25 @@ class MainViewModel(
         quickSubtitleGroups = next
         saveQuickSubtitleConfig()
         return movedItems.size
+    }
+
+    fun moveQuickSubtitleDisplayItemToGroup(
+        fromGroupId: Long,
+        displayIndex: Int,
+        toGroupId: Long
+    ): Boolean {
+        val fromGroupIndex = quickSubtitleGroups.indexOfFirst { it.id == fromGroupId }
+        val toGroupIndex = quickSubtitleGroups.indexOfFirst { it.id == toGroupId }
+        if (fromGroupIndex < 0 || toGroupIndex < 0 || fromGroupIndex == toGroupIndex) return false
+        val sourceIndex = quickSubtitleDisplaySourceIndex(
+            quickSubtitleGroups[fromGroupIndex],
+            displayIndex
+        ) ?: return false
+        return moveQuickSubtitleItemsToGroup(
+            fromGroupIndex = fromGroupIndex,
+            itemIndexes = setOf(sourceIndex),
+            toGroupIndex = toGroupIndex
+        ) == 1
     }
 
     fun moveQuickSubtitleItem(groupIndex: Int, from: Int, to: Int) {

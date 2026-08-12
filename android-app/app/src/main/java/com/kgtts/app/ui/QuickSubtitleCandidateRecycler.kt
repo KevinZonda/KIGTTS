@@ -2,59 +2,25 @@ package com.lhtstudio.kigtts.app.ui
 
 import android.os.SystemClock
 import android.view.HapticFeedbackConstants
-import android.view.MotionEvent
 import android.view.View
 import android.view.ViewConfiguration
 import android.view.ViewGroup
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.animateDpAsState
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.Card
-import androidx.compose.material.IconButton
-import androidx.compose.material.MaterialTheme
-import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionContext
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCompositionContext
 import androidx.compose.runtime.rememberUpdatedState
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.scale
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.compositeOver
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
-import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.compose.ui.window.Popup
-import androidx.compose.ui.window.PopupProperties
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.ItemTouchHelper
 import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.DefaultItemAnimator
 import androidx.recyclerview.widget.RecyclerView
-import kotlinx.coroutines.delay
-import kotlin.math.hypot
 import kotlin.math.max
 
 @Composable
@@ -63,10 +29,12 @@ internal fun QuickSubtitleCandidateRecycler(
     itemColors: List<Int?>,
     grid: Boolean,
     dragEnabled: Boolean,
+    canMoveToGroup: Boolean,
     onItemClick: (Int, String) -> Unit,
     onItemsReordered: (List<String>, List<Int?>) -> Unit,
     onManualSortRequired: () -> Unit,
     onEditRequested: (Int, String, Int?) -> Unit,
+    onMoveRequested: (Int, String) -> Unit,
     onDeleteRequested: (Int, String) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -75,17 +43,19 @@ internal fun QuickSubtitleCandidateRecycler(
     val currentOnItemsReordered by rememberUpdatedState(onItemsReordered)
     val currentOnManualSortRequired by rememberUpdatedState(onManualSortRequired)
     val currentOnEditRequested by rememberUpdatedState(onEditRequested)
+    val currentOnMoveRequested by rememberUpdatedState(onMoveRequested)
     val currentOnDeleteRequested by rememberUpdatedState(onDeleteRequested)
 
-    AndroidView(
-        modifier = modifier,
-        factory = { context ->
+    BoxWithConstraints(modifier = modifier) {
+        val gridSpanCount = quickSubtitleCandidateGridSpanCount(maxWidth.value)
+        AndroidView(
+            modifier = Modifier.fillMaxSize(),
+            factory = { context ->
             val recycler = RecyclerView(context).apply {
                 clipToPadding = false
                 clipChildren = false
                 overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
-                val inset = (6f * resources.displayMetrics.density).toInt()
-                setPadding(inset, inset, inset, inset)
+                itemAnimator = null
             }
             lateinit var touchHelper: ItemTouchHelper
             val adapter = QuickSubtitleCandidateAdapter(
@@ -94,13 +64,23 @@ internal fun QuickSubtitleCandidateRecycler(
                 onEditRequested = { index, text, color ->
                     currentOnEditRequested(index, text, color)
                 },
-                onDeleteRequested = { index, text -> currentOnDeleteRequested(index, text) },
-                onStartDrag = { holder -> touchHelper.startDrag(holder) },
-                onManualSortRequired = { currentOnManualSortRequired() }
+                onMoveRequested = { index, text -> currentOnMoveRequested(index, text) },
+                onDeleteRequested = { index, text -> currentOnDeleteRequested(index, text) }
             )
             recycler.adapter = adapter
 
             var moved = false
+            var activeDragItemId: Long? = null
+            val disableDragAnimator = Runnable {
+                if (activeDragItemId == null) recycler.itemAnimator = null
+            }
+            val dragMoveAnimator = DefaultItemAnimator().apply {
+                supportsChangeAnimations = false
+                addDuration = 0L
+                removeDuration = 0L
+                changeDuration = 0L
+                moveDuration = CANDIDATE_DRAG_MOVE_DURATION_MS
+            }
             val callback = object : ItemTouchHelper.Callback() {
                 override fun isLongPressDragEnabled(): Boolean = false
 
@@ -144,7 +124,12 @@ internal fun QuickSubtitleCandidateRecycler(
                 ) {
                     super.onSelectedChanged(viewHolder, actionState)
                     if (actionState == ItemTouchHelper.ACTION_STATE_DRAG && viewHolder != null) {
+                        recycler.removeCallbacks(disableDragAnimator)
+                        recycler.itemAnimator = dragMoveAnimator
+                        moved = false
+                        activeDragItemId = viewHolder.itemId
                         adapter.setDraggingItem(viewHolder.itemId)
+                        viewHolder.itemView.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
                         viewHolder.itemView.translationZ = 20f * recycler.resources.displayMetrics.density
                     } else if (actionState == ItemTouchHelper.ACTION_STATE_IDLE) {
                         adapter.clearDraggingItem()
@@ -160,26 +145,133 @@ internal fun QuickSubtitleCandidateRecycler(
                     adapter.clearDraggingItem()
                     if (moved) {
                         currentOnItemsReordered(adapter.snapshotTexts(), adapter.snapshotColors())
-                        moved = false
+                    } else {
+                        activeDragItemId?.let { itemId ->
+                            recycler.post { adapter.openMenu(itemId) }
+                        }
                     }
+                    moved = false
+                    activeDragItemId = null
+                    recycler.postDelayed(
+                        disableDragAnimator,
+                        CANDIDATE_DRAG_MOVE_DURATION_MS + 24L
+                    )
                 }
             }
             touchHelper = ItemTouchHelper(callback).also { it.attachToRecyclerView(recycler) }
-            recycler.addOnLayoutChangeListener { view, _, _, _, _, _, _, _, _ ->
-                applyQuickSubtitleCandidateLayout(view as RecyclerView, adapter.grid)
+
+            val touchSlop = ViewConfiguration.get(context).scaledTouchSlop.toFloat()
+            var pendingHolder: RecyclerView.ViewHolder? = null
+            var pendingItemId: Long? = null
+            var downX = 0f
+            var downY = 0f
+            var longPressReady = false
+            var manualSortRequested = false
+            val armFrequencyLongPress = Runnable {
+                val holder = pendingHolder
+                if (holder != null && holder.bindingAdapterPosition != RecyclerView.NO_POSITION) {
+                    longPressReady = true
+                    adapter.blockClick(holder.itemId)
+                    if (adapter.dragEnabled) {
+                        touchHelper.startDrag(holder)
+                    } else {
+                        holder.itemView.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+                    }
+                }
             }
+            fun resetFrequencyLongPress() {
+                recycler.removeCallbacks(armFrequencyLongPress)
+                pendingHolder = null
+                pendingItemId = null
+                longPressReady = false
+                manualSortRequested = false
+            }
+            recycler.addOnItemTouchListener(object : RecyclerView.SimpleOnItemTouchListener() {
+                override fun onInterceptTouchEvent(rv: RecyclerView, event: android.view.MotionEvent): Boolean {
+                    when (event.actionMasked) {
+                        android.view.MotionEvent.ACTION_DOWN -> {
+                            resetFrequencyLongPress()
+                            downX = event.x
+                            downY = event.y
+                            pendingHolder = rv.findChildViewUnder(event.x, event.y)
+                                ?.let(rv::getChildViewHolder)
+                            pendingItemId = pendingHolder?.itemId
+                            if (pendingItemId != null) {
+                                recycler.postDelayed(
+                                    armFrequencyLongPress,
+                                    ViewConfiguration.getLongPressTimeout().toLong()
+                                )
+                            }
+                        }
+                        android.view.MotionEvent.ACTION_MOVE -> {
+                            val movedPastSlop = kotlin.math.hypot(
+                                event.x - downX,
+                                event.y - downY
+                            ) > touchSlop
+                            if (!longPressReady && movedPastSlop) {
+                                recycler.removeCallbacks(armFrequencyLongPress)
+                                pendingItemId = null
+                            } else if (
+                                !adapter.dragEnabled &&
+                                longPressReady &&
+                                movedPastSlop &&
+                                !manualSortRequested
+                            ) {
+                                manualSortRequested = true
+                                adapter.closeMenu()
+                                currentOnManualSortRequired()
+                            }
+                        }
+                        android.view.MotionEvent.ACTION_UP -> {
+                            recycler.removeCallbacks(armFrequencyLongPress)
+                            if (
+                                longPressReady &&
+                                !manualSortRequested &&
+                                (!adapter.dragEnabled || activeDragItemId == null)
+                            ) {
+                                pendingItemId?.let(adapter::openMenu)
+                            }
+                            resetFrequencyLongPress()
+                        }
+                        android.view.MotionEvent.ACTION_CANCEL -> resetFrequencyLongPress()
+                    }
+                    return false
+                }
+            })
             recycler
-        },
-        update = { recycler ->
-            val adapter = recycler.adapter as QuickSubtitleCandidateAdapter
-            adapter.updateInteractionMode(grid = grid, dragEnabled = dragEnabled)
-            adapter.submitFromState(items, itemColors)
-            applyQuickSubtitleCandidateLayout(recycler, grid)
-        }
-    )
+            },
+            update = { recycler ->
+                val adapter = recycler.adapter as QuickSubtitleCandidateAdapter
+                adapter.updateInteractionMode(
+                    grid = grid,
+                    dragEnabled = dragEnabled,
+                    canMoveToGroup = canMoveToGroup
+                )
+                adapter.submitFromState(items, itemColors)
+                applyQuickSubtitleCandidateLayout(recycler, grid, gridSpanCount)
+            }
+        )
+    }
 }
 
-private fun applyQuickSubtitleCandidateLayout(recycler: RecyclerView, grid: Boolean) {
+private const val CANDIDATE_DRAG_MOVE_DURATION_MS = 180L
+
+internal fun quickSubtitleCandidateGridSpanCount(containerWidthDp: Float): Int {
+    val contentWidth = (containerWidthDp - 20f).coerceAtLeast(0f)
+    return max(1, ((contentWidth + 8f) / (138f + 8f)).toInt())
+}
+
+private fun applyQuickSubtitleCandidateLayout(
+    recycler: RecyclerView,
+    grid: Boolean,
+    gridSpanCount: Int
+) {
+    val density = recycler.resources.displayMetrics.density
+    val insetDp = if (grid) 6f else 10f
+    val inset = (insetDp * density).toInt()
+    if (recycler.paddingLeft != inset || recycler.paddingTop != inset) {
+        recycler.setPadding(inset, inset, inset, inset)
+    }
     if (!grid) {
         if (recycler.layoutManager !is LinearLayoutManager ||
             recycler.layoutManager is GridLayoutManager
@@ -188,14 +280,11 @@ private fun applyQuickSubtitleCandidateLayout(recycler: RecyclerView, grid: Bool
         }
         return
     }
-    val availableWidth = (recycler.width - recycler.paddingLeft - recycler.paddingRight).coerceAtLeast(1)
-    val minimumCellWidth = (146f * recycler.resources.displayMetrics.density).toInt().coerceAtLeast(1)
-    val spanCount = max(1, availableWidth / minimumCellWidth)
     val current = recycler.layoutManager as? GridLayoutManager
     if (current == null) {
-        recycler.layoutManager = GridLayoutManager(recycler.context, spanCount)
-    } else if (current.spanCount != spanCount) {
-        current.spanCount = spanCount
+        recycler.layoutManager = GridLayoutManager(recycler.context, gridSpanCount)
+    } else if (current.spanCount != gridSpanCount) {
+        current.spanCount = gridSpanCount
     }
 }
 
@@ -209,9 +298,8 @@ private class QuickSubtitleCandidateAdapter(
     private val parentComposition: CompositionContext,
     private val onItemClick: (Int, String) -> Unit,
     private val onEditRequested: (Int, String, Int?) -> Unit,
-    private val onDeleteRequested: (Int, String) -> Unit,
-    private val onStartDrag: (RecyclerView.ViewHolder) -> Unit,
-    private val onManualSortRequired: () -> Unit
+    private val onMoveRequested: (Int, String) -> Unit,
+    private val onDeleteRequested: (Int, String) -> Unit
 ) : RecyclerView.Adapter<QuickSubtitleCandidateAdapter.CandidateViewHolder>() {
     private val items = mutableListOf<QuickSubtitleCandidateEntry>()
     private var nextId = 1L
@@ -223,6 +311,7 @@ private class QuickSubtitleCandidateAdapter(
         private set
     var dragEnabled: Boolean = true
         private set
+    private var canMoveToGroup: Boolean = false
 
     init {
         setHasStableIds(true)
@@ -246,22 +335,6 @@ private class QuickSubtitleCandidateAdapter(
 
     override fun onBindViewHolder(holder: CandidateViewHolder, position: Int) {
         val entry = items[position]
-        holder.bindGesture(
-            dragEnabled = dragEnabled,
-            onStartDrag = {
-                closeMenu()
-                blockNextClick(entry.id)
-                onStartDrag(holder)
-            },
-            onManualSortRequired = {
-                blockNextClick(entry.id)
-                onManualSortRequired()
-            },
-            onOpenMenu = {
-                blockNextClick(entry.id)
-                openMenu(entry.id)
-            }
-        )
         holder.composeView.setContent {
             KigttsFontScaleProvider {
                 QuickSubtitleCandidateItem(
@@ -271,6 +344,8 @@ private class QuickSubtitleCandidateAdapter(
                     dragged = draggingItemId == entry.id,
                     menuExpanded = menuItemId == entry.id,
                     canDelete = items.size > 1,
+                    canMoveToGroup = canMoveToGroup,
+                    showDivider = !grid && position < items.lastIndex,
                     onClick = {
                         if (consumeBlockedClick(entry.id)) return@QuickSubtitleCandidateItem
                         val index = holder.bindingAdapterPosition
@@ -285,6 +360,13 @@ private class QuickSubtitleCandidateAdapter(
                             onEditRequested(index, item.text, item.colorArgb)
                         }
                     },
+                    onMove = {
+                        val index = holder.bindingAdapterPosition
+                        closeMenu()
+                        if (index in items.indices && canMoveToGroup) {
+                            onMoveRequested(index, items[index].text)
+                        }
+                    },
                     onDelete = {
                         val index = holder.bindingAdapterPosition
                         closeMenu()
@@ -297,15 +379,17 @@ private class QuickSubtitleCandidateAdapter(
         }
     }
 
-    override fun onViewRecycled(holder: CandidateViewHolder) {
-        holder.cancelGesture()
-        super.onViewRecycled(holder)
-    }
-
-    fun updateInteractionMode(grid: Boolean, dragEnabled: Boolean) {
-        val changed = this.grid != grid || this.dragEnabled != dragEnabled
+    fun updateInteractionMode(
+        grid: Boolean,
+        dragEnabled: Boolean,
+        canMoveToGroup: Boolean
+    ) {
+        val changed = this.grid != grid ||
+            this.dragEnabled != dragEnabled ||
+            this.canMoveToGroup != canMoveToGroup
         this.grid = grid
         this.dragEnabled = dragEnabled
+        this.canMoveToGroup = canMoveToGroup
         if (changed) {
             closeMenu()
             notifyDataSetChanged()
@@ -314,6 +398,13 @@ private class QuickSubtitleCandidateAdapter(
 
     fun submitFromState(newItems: List<String>, newColors: List<Int?>) {
         if (draggingItemId != null) return
+        if (
+            items.size == newItems.size &&
+            items.indices.all { index ->
+                items[index].text == newItems[index] &&
+                    items[index].colorArgb == newColors.getOrNull(index)
+            }
+        ) return
         val oldItems = items.toList()
         val used = BooleanArray(oldItems.size)
         val mapped = ArrayList<QuickSubtitleCandidateEntry>(newItems.size)
@@ -343,6 +434,7 @@ private class QuickSubtitleCandidateAdapter(
         val moved = items.removeAt(from)
         items.add(to, moved)
         notifyItemMoved(from, to)
+        notifyItemRangeChanged(minOf(from, to), kotlin.math.abs(to - from) + 1)
         return true
     }
 
@@ -364,22 +456,23 @@ private class QuickSubtitleCandidateAdapter(
         notifyIdChanged(previous)
     }
 
-    private fun openMenu(itemId: Long) {
+    fun openMenu(itemId: Long) {
+        blockClick(itemId)
         val previous = menuItemId
         menuItemId = itemId
         notifyIdChanged(previous)
         notifyIdChanged(itemId)
     }
 
-    private fun closeMenu() {
+    fun closeMenu() {
         val previous = menuItemId ?: return
         menuItemId = null
         notifyIdChanged(previous)
     }
 
-    private fun blockNextClick(itemId: Long) {
+    fun blockClick(itemId: Long) {
         blockedClickItemId = itemId
-        blockedClickUntilMs = SystemClock.uptimeMillis() + 400L
+        blockedClickUntilMs = SystemClock.uptimeMillis() + 3_000L
     }
 
     private fun consumeBlockedClick(itemId: Long): Boolean {
@@ -395,216 +488,5 @@ private class QuickSubtitleCandidateAdapter(
         if (index >= 0) notifyItemChanged(index)
     }
 
-    class CandidateViewHolder(val composeView: ComposeView) : RecyclerView.ViewHolder(composeView) {
-        private var longPressRunnable: Runnable? = null
-
-        fun bindGesture(
-            dragEnabled: Boolean,
-            onStartDrag: () -> Unit,
-            onManualSortRequired: () -> Unit,
-            onOpenMenu: () -> Unit
-        ) {
-            cancelGesture()
-            val touchSlop = ViewConfiguration.get(composeView.context).scaledTouchSlop.toFloat()
-            var downX = 0f
-            var downY = 0f
-            var pointerActive = false
-            var longPressReady = false
-            var dragStarted = false
-            val armLongPress = Runnable {
-                if (pointerActive) {
-                    longPressReady = true
-                    itemView.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
-                }
-            }
-            longPressRunnable = armLongPress
-            composeView.setOnTouchListener { _, event ->
-                when (event.actionMasked) {
-                    MotionEvent.ACTION_DOWN -> {
-                        pointerActive = true
-                        longPressReady = false
-                        dragStarted = false
-                        downX = event.x
-                        downY = event.y
-                        composeView.postDelayed(armLongPress, ViewConfiguration.getLongPressTimeout().toLong())
-                    }
-                    MotionEvent.ACTION_MOVE -> {
-                        val distance = hypot(event.x - downX, event.y - downY)
-                        if (!longPressReady && distance > touchSlop) {
-                            composeView.removeCallbacks(armLongPress)
-                        } else if (longPressReady && !dragStarted && distance > touchSlop) {
-                            dragStarted = true
-                            if (dragEnabled) onStartDrag() else onManualSortRequired()
-                        }
-                    }
-                    MotionEvent.ACTION_UP -> {
-                        composeView.removeCallbacks(armLongPress)
-                        if (longPressReady && !dragStarted) onOpenMenu()
-                        pointerActive = false
-                        longPressReady = false
-                    }
-                    MotionEvent.ACTION_CANCEL -> {
-                        composeView.removeCallbacks(armLongPress)
-                        pointerActive = false
-                        longPressReady = false
-                        dragStarted = false
-                    }
-                }
-                false
-            }
-        }
-
-        fun cancelGesture() {
-            longPressRunnable?.let(composeView::removeCallbacks)
-            longPressRunnable = null
-            composeView.setOnTouchListener(null)
-        }
-    }
-}
-
-@Composable
-private fun QuickSubtitleCandidateItem(
-    text: String,
-    colorArgb: Int?,
-    grid: Boolean,
-    dragged: Boolean,
-    menuExpanded: Boolean,
-    canDelete: Boolean,
-    onClick: () -> Unit,
-    onDismissMenu: () -> Unit,
-    onEdit: () -> Unit,
-    onDelete: () -> Unit
-) {
-    val shape = RoundedCornerShape(UiTokens.Radius)
-    val cardElevation by animateDpAsState(
-        targetValue = if (dragged) 10.dp else 0.dp,
-        animationSpec = tween(150, easing = FastOutSlowInEasing),
-        label = "candidate_drag_elevation"
-    )
-    val cardScale by animateFloatAsState(
-        targetValue = if (dragged) 1.02f else 1f,
-        animationSpec = tween(150, easing = FastOutSlowInEasing),
-        label = "candidate_drag_scale"
-    )
-    val baseColor = md2CardContainerColor()
-    val gridColor = if (currentAppDarkTheme()) {
-        MaterialTheme.colorScheme.onSurface.copy(alpha = 0.10f).compositeOver(baseColor)
-    } else {
-        baseColor
-    }
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 4.dp, vertical = 4.dp)
-            .height(if (grid) 76.dp else 64.dp)
-            .scale(cardScale)
-    ) {
-        Card(
-            modifier = Modifier.fillMaxSize(),
-            shape = shape,
-            backgroundColor = if (grid) gridColor else baseColor,
-            elevation = cardElevation
-        ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .clip(shape)
-                    .then(
-                        if (grid) {
-                            Modifier.border(
-                                width = 1.dp,
-                                color = colorArgb?.let(::Color)
-                                    ?: MaterialTheme.colorScheme.outline.copy(alpha = 0.28f),
-                                shape = shape
-                            )
-                        } else {
-                            Modifier
-                        }
-                    )
-                    .quickSubtitleItemColorMarker(
-                        colorArgb = colorArgb,
-                        edge = if (grid) QuickSubtitleItemColorEdge.Bottom else QuickSubtitleItemColorEdge.Left,
-                        crossAxisInset = if (grid) 0.dp else 6.dp
-                    )
-                    .clickable(onClick = onClick)
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
-                contentAlignment = Alignment.CenterStart
-            ) {
-                Text(
-                    text = text,
-                    maxLines = if (grid) 2 else 1,
-                    overflow = TextOverflow.Ellipsis,
-                    style = MaterialTheme.typography.bodyLarge
-                )
-            }
-        }
-        QuickSubtitleCandidateActionMenu(
-            expanded = menuExpanded,
-            canDelete = canDelete,
-            onDismissRequest = onDismissMenu,
-            onEdit = onEdit,
-            onDelete = onDelete
-        )
-    }
-}
-
-@Composable
-private fun QuickSubtitleCandidateActionMenu(
-    expanded: Boolean,
-    canDelete: Boolean,
-    onDismissRequest: () -> Unit,
-    onEdit: () -> Unit,
-    onDelete: () -> Unit
-) {
-    var rendered by remember { mutableStateOf(expanded) }
-    val positionProvider = rememberTopEndDropdownPopupPositionProvider(verticalMargin = 2.dp)
-    val alpha by animateFloatAsState(
-        targetValue = if (expanded) 1f else 0f,
-        animationSpec = tween(150, easing = FastOutSlowInEasing),
-        label = "candidate_action_menu_alpha"
-    )
-    val scale by animateFloatAsState(
-        targetValue = if (expanded) 1f else 0.92f,
-        animationSpec = tween(150, easing = FastOutSlowInEasing),
-        label = "candidate_action_menu_scale"
-    )
-    LaunchedEffect(expanded) {
-        if (expanded) rendered = true else if (rendered) {
-            delay(150L)
-            rendered = false
-        }
-    }
-    if (!rendered) return
-    Popup(
-        popupPositionProvider = positionProvider,
-        onDismissRequest = onDismissRequest,
-        properties = PopupProperties(focusable = true)
-    ) {
-        Card(
-            modifier = Modifier
-                .padding(6.dp)
-                .width(104.dp)
-                .graphicsLayer {
-                    this.alpha = alpha
-                    scaleX = scale
-                    scaleY = scale
-                },
-            shape = RoundedCornerShape(4.dp),
-            backgroundColor = md2CardContainerColor(),
-            elevation = UiTokens.MenuElevation
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = onEdit, modifier = Modifier.size(52.dp)) {
-                    MsIcon("edit", contentDescription = "编辑快捷文本")
-                }
-                IconButton(
-                    onClick = onDelete,
-                    enabled = canDelete,
-                    modifier = Modifier.size(52.dp)
-                ) {
-                    MsIcon("delete", contentDescription = "删除快捷文本")
-                }
-            }
-        }
-    }
+    class CandidateViewHolder(val composeView: ComposeView) : RecyclerView.ViewHolder(composeView)
 }

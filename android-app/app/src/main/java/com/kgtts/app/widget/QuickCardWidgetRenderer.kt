@@ -53,7 +53,17 @@ internal object QuickCardWidgetRenderer {
         }
 
         val foreground = if (image != null) Color.WHITE else readableTextColor(themeColor)
-        if (image == null) drawWatermark(canvas, card.title, foreground, width, height, portrait)
+        if (image == null) {
+            drawWatermark(
+                canvas = canvas,
+                title = card.title,
+                foreground = foreground,
+                width = width,
+                height = height,
+                portrait = portrait,
+                renderScale = width.toFloat() / previewWidthDp
+            )
+        }
         canvas.restore()
         return bitmap
     }
@@ -139,7 +149,8 @@ internal object QuickCardWidgetRenderer {
         foreground: Int,
         width: Int,
         height: Int,
-        portrait: Boolean
+        portrait: Boolean,
+        renderScale: Float
     ) {
         val value = title.trim()
         if (value.isEmpty()) return
@@ -150,21 +161,49 @@ internal object QuickCardWidgetRenderer {
             isFakeBoldText = true
         }
         if (portrait) {
+            val layout = quickCardPortraitWatermarkLayout(
+                width = width,
+                height = height,
+                textAscent = paint.ascent(),
+                renderScale = renderScale
+            )
             canvas.save()
-            canvas.rotate(90f, width * 0.93f, height * 0.48f)
+            canvas.rotate(90f)
             drawSingleLine(
                 canvas,
                 value,
                 paint,
-                width * 0.58f,
-                height * 0.48f,
-                height * 0.68f
+                layout.drawX,
+                layout.drawBaseline,
+                layout.maxWidth
             )
             canvas.restore()
         } else {
             drawSingleLine(canvas, value, paint, width * 0.05f, height * 0.92f, width * 0.78f)
         }
     }
+
+    internal fun quickCardPortraitWatermarkLayout(
+        width: Int,
+        height: Int,
+        textAscent: Float,
+        renderScale: Float
+    ): PortraitWatermarkLayout {
+        val rightInset = 10f * renderScale
+        val topInset = 10f * renderScale
+        val transformedBaselineX = width - rightInset + textAscent
+        return PortraitWatermarkLayout(
+            drawX = topInset,
+            drawBaseline = -transformedBaselineX,
+            maxWidth = (height - 24f * renderScale).coerceAtLeast(height * 0.4f)
+        )
+    }
+
+    internal data class PortraitWatermarkLayout(
+        val drawX: Float,
+        val drawBaseline: Float,
+        val maxWidth: Float
+    )
 
     private fun drawSingleLine(
         canvas: Canvas,
