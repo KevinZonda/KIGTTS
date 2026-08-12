@@ -341,6 +341,8 @@ open class FloatingOverlayService : Service() {
     private var listeningOverlayHostedByPanel = false
     private var listeningOverlayCardTargetVisible = false
     private var listeningOverlayAutoFollow = true
+    private var listeningOverlayProgrammaticScroll = false
+    private var listeningOverlayScrollGeneration = 0L
     private var listeningOverlayUserTouching = false
     private var listeningOverlayUserScrolled = false
     private var listeningOverlayTouchDownY = 0f
@@ -2793,14 +2795,8 @@ open class FloatingOverlayService : Service() {
                 )
             )
             setOnScrollChangeListener { _, _, scrollY, _, _ ->
-                if (listeningOverlayUserTouching && listeningOverlayUserScrolled) {
-                    val childHeight = getChildAt(0)?.height ?: 0
-                    val halfLineThreshold =
-                        ((listeningOverlayTextView?.textSize ?: dp(28).toFloat()) * 0.6f)
-                            .roundToInt()
-                    val nearBottom =
-                        childHeight - (scrollY + height) <= halfLineThreshold
-                    listeningOverlayAutoFollow = nearBottom
+                if (listeningOverlayUserScrolled && !listeningOverlayProgrammaticScroll) {
+                    refreshListeningOverlayFollowFromScroll(this, scrollY)
                 }
                 refreshListeningOverlayFades()
             }
@@ -2824,6 +2820,8 @@ open class FloatingOverlayService : Service() {
             scaleDetector.onTouchEvent(event)
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
+                    listeningOverlayScrollGeneration++
+                    listeningOverlayProgrammaticScroll = false
                     listeningOverlayUserTouching = true
                     listeningOverlayUserScrolled = false
                     listeningOverlayTouchDownY = event.y
@@ -2842,10 +2840,12 @@ open class FloatingOverlayService : Service() {
                             !listeningOverlayUserScrolled &&
                             event.pointerCount == 1 &&
                             !scaleDetector.isInProgress
+                    if (listeningOverlayUserScrolled && !listeningOverlayProgrammaticScroll) {
+                        refreshListeningOverlayFollowFromScroll(scrollView, scrollView.scrollY)
+                    }
                     listeningOverlayUserTouching = false
                     if (listeningOverlayAutoFollow) {
-                        val childHeight = scrollView.getChildAt(0)?.height ?: 0
-                        scrollView.smoothScrollTo(0, childHeight)
+                        scrollListeningOverlayToBottom(smooth = true)
                     }
                     refreshListeningOverlayFades()
                     if (shouldOpenPreview) scrollView.performClick()
@@ -2880,6 +2880,15 @@ open class FloatingOverlayService : Service() {
                 )
             )
         }
+        textView.addOnLayoutChangeListener { _, _, _, _, bottom, _, _, _, oldBottom ->
+            if (
+                bottom != oldBottom &&
+                listeningOverlayAutoFollow &&
+                !listeningOverlayUserTouching
+            ) {
+                scrollListeningOverlayToBottom(smooth = true)
+            }
+        }
         val actionControls = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -2894,7 +2903,7 @@ open class FloatingOverlayService : Service() {
                 }.also { listeningOverlaySwapButtonView = it }
             )
             addView(listeningOverlayIconButton("vertical_align_bottom", "回到最新字幕") {
-                listeningOverlayAutoFollow = true
+                updateListeningOverlayAutoFollow(true)
                 scrollListeningOverlayToBottom(smooth = true)
             })
             addView(listeningOverlayIconButton("translate", "设置聆听语言") { anchor ->
@@ -3004,31 +3013,132 @@ open class FloatingOverlayService : Service() {
 
     private fun refreshListeningOverlayFades() {
         val scroll = listeningOverlayScrollView ?: return
-        val childHeight = scroll.getChildAt(0)?.height ?: 0
         listeningOverlayTopFadeView?.let { fade ->
             applyOverlayEdgeFadeAlpha(fade, if (scroll.scrollY > dp(2)) 1f else 0f, animate = true)
         }
         listeningOverlayBottomFadeView?.let { fade ->
-            val hasMoreBelow = childHeight - (scroll.scrollY + scroll.height) > dp(2)
+            val hasMoreBelow =
+                scroll.canScrollVertically(1) ||
+                    listeningOverlayMaximumScrollY(scroll) - scroll.scrollY > dp(2)
             applyOverlayEdgeFadeAlpha(fade, if (hasMoreBelow) 1f else 0f, animate = true)
         }
     }
 
+    private fun listeningOverlayMaximumScrollY(scroll: ScrollView): Int {
+        return OverlayListeningScrollPolicy.maximumScrollY(
+            childHeightPx = scroll.getChildAt(0)?.measuredHeight ?: 0,
+            viewportHeightPx = scroll.height,
+            paddingTopPx = scroll.paddingTop,
+            paddingBottomPx = scroll.paddingBottom
+        )
+    }
+
+    private fun refreshListeningOverlayFollowFromScroll(scroll: ScrollView, scrollY: Int) {
+        val halfLineThreshold =
+            ((listeningOverlayTextView?.textSize ?: dp(28).toFloat()) * 0.6f).roundToInt()
+        updateListeningOverlayAutoFollow(
+            OverlayListeningScrollPolicy.isNearBottom(
+                scrollYPx = scrollY,
+                maximumScrollYPx = listeningOverlayMaximumScrollY(scroll),
+                thresholdPx = halfLineThreshold,
+                canScrollForward = scroll.canScrollVertically(1)
+            )
+        )
+    }
+
+    private fun updateListeningOverlayAutoFollow(follow: Boolean) {
+        if (listeningOverlayAutoFollow == follow) return
+        listeningOverlayAutoFollow = follow
+        refreshListeningOverlayText()
+    }
+
     private fun scrollListeningOverlayToBottom(smooth: Boolean) {
         val scroll = listeningOverlayScrollView ?: return
+        val generation = ++listeningOverlayScrollGeneration
+        listeningOverlayProgrammaticScroll = true
         scroll.post {
-            val childHeight = scroll.getChildAt(0)?.measuredHeight ?: 0
-            val viewportHeight =
-                (scroll.height - scroll.paddingTop - scroll.paddingBottom).coerceAtLeast(0)
-            val targetY = (childHeight - viewportHeight).coerceAtLeast(0)
-            if (smooth) scroll.smoothScrollTo(0, targetY) else scroll.scrollTo(0, targetY)
+            if (generation != listeningOverlayScrollGeneration) return@post
+            val targetY = listeningOverlayMaximumScrollY(scroll)
+            if (smooth) {
+                scroll.smoothScrollTo(0, targetY)
+                settleListeningOverlayAtBottom(scroll, generation, attempt = 0)
+            } else {
+                scroll.scrollTo(0, targetY)
+                listeningOverlayProgrammaticScroll = false
+                refreshListeningOverlayFades()
+            }
         }
+    }
+
+    private fun settleListeningOverlayAtBottom(
+        scroll: ScrollView,
+        generation: Long,
+        attempt: Int
+    ) {
+        scroll.postDelayed({
+            if (generation != listeningOverlayScrollGeneration) return@postDelayed
+            if (!listeningOverlayAutoFollow || listeningOverlayUserTouching) {
+                listeningOverlayProgrammaticScroll = false
+                return@postDelayed
+            }
+            val targetY = listeningOverlayMaximumScrollY(scroll)
+            val remainingPx = targetY - scroll.scrollY
+            if (kotlin.math.abs(remainingPx) <= dp(1)) {
+                listeningOverlayProgrammaticScroll = false
+                refreshListeningOverlayFades()
+            } else if (attempt >= 6) {
+                scroll.scrollTo(0, targetY)
+                listeningOverlayProgrammaticScroll = false
+                refreshListeningOverlayFades()
+            } else {
+                scroll.smoothScrollTo(0, targetY)
+                settleListeningOverlayAtBottom(scroll, generation, attempt + 1)
+            }
+        }, 48L)
+    }
+
+    private fun currentListeningOverlayItems(): List<ListeningCaptionItem> {
+        val snapshot = realtimeHostState
+        return buildList {
+            addAll(snapshot.listeningItems)
+            snapshot.listeningStreamingText.trim().takeIf { it.isNotEmpty() }?.let { live ->
+                add(ListeningCaptionItem(Long.MAX_VALUE, live))
+            }
+        }
+    }
+
+    private fun refreshListeningOverlayText(
+        allItems: List<ListeningCaptionItem> = currentListeningOverlayItems()
+    ) {
+        val color = overlayOnSurfaceColor()
+        val builder = SpannableStringBuilder()
+        allItems.forEachIndexed { index, item ->
+            if (builder.isNotEmpty()) builder.append('\n')
+            val start = builder.length
+            builder.append(item.text)
+            val alpha = if (!listeningOverlayAutoFollow) {
+                255
+            } else {
+                when (allItems.lastIndex - index) {
+                    0 -> 255
+                    1 -> 128
+                    else -> 64
+                }
+            }
+            builder.setSpan(
+                ForegroundColorSpan(ColorUtils.setAlphaComponent(color, alpha)),
+                start,
+                builder.length,
+                Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
+            )
+        }
+        listeningOverlayTextView?.text =
+            if (builder.isEmpty()) "正在聆听周围的声音…" else builder
     }
 
     private fun refreshListeningOverlayUi() {
         val card = listeningOverlayCardView ?: return
         attachListeningOverlayCardToActiveRoot()
-        val snapshot = realtimeHostState
         val shouldHideForInput =
             settings.listeningModeSettings.hideDuringTextInput &&
                 overlayTextInputWindow?.isShowing == true
@@ -3087,36 +3197,9 @@ open class FloatingOverlayService : Service() {
         }
         listeningOverlaySwapButtonView?.visibility =
             if (usesVerticalListeningOverlayLayout()) View.GONE else View.VISIBLE
-        val allItems = buildList {
-            addAll(snapshot.listeningItems)
-            snapshot.listeningStreamingText.trim().takeIf { it.isNotEmpty() }?.let { live ->
-                add(ListeningCaptionItem(Long.MAX_VALUE, live))
-            }
-        }
-        val color = overlayOnSurfaceColor()
-        val builder = SpannableStringBuilder()
-        allItems.forEachIndexed { index, item ->
-            if (builder.isNotEmpty()) builder.append('\n')
-            val start = builder.length
-            builder.append(item.text)
-            val alpha = if (!listeningOverlayAutoFollow) {
-                255
-            } else {
-                when (allItems.lastIndex - index) {
-                    0 -> 255
-                    1 -> 128
-                    else -> 64
-                }
-            }
-            builder.setSpan(
-                ForegroundColorSpan(ColorUtils.setAlphaComponent(color, alpha)),
-                start,
-                builder.length,
-                Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
-            )
-        }
+        val allItems = currentListeningOverlayItems()
+        refreshListeningOverlayText(allItems)
         listeningOverlayTextView?.apply {
-            text = if (builder.isEmpty()) "正在聆听周围的声音…" else builder
             setTextSize(
                 TypedValue.COMPLEX_UNIT_SP,
                 settings.listeningModeSettings.fontSizeSp
@@ -5038,6 +5121,8 @@ open class FloatingOverlayService : Service() {
         listeningOverlayHostedByPanel = false
         listeningOverlayCardTargetVisible = false
         listeningOverlayAutoFollow = true
+        listeningOverlayProgrammaticScroll = false
+        listeningOverlayScrollGeneration = 0L
         listeningOverlayUserTouching = false
         listeningOverlayUserScrolled = false
         listeningOverlayTouchDownY = 0f

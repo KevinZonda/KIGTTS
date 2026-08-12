@@ -15,6 +15,7 @@ class ListeningModeSettingsTest {
         assertEquals(AudioRoutePreference.INPUT_BUILTIN_MIC, settings.preferredInputType)
         assertEquals(SpeechButtonActionMode.HOLD, settings.preferredSpeechButtonMode)
         assertEquals(ListeningModeSettings.MIN_FONT_SIZE_SP, settings.fontSizeSp)
+        assertTrue(settings.hideDuringTextInput)
     }
 
     @Test
@@ -46,5 +47,15 @@ class ListeningModeSettingsTest {
         assertEquals(SpeechButtonActionMode.HOLD, parsed.preferredSpeechButtonMode)
         assertEquals(ListeningModeSettings.MAX_FONT_SIZE_SP, parsed.fontSizeSp)
         assertEquals(AudioRoutePreference.INPUT_WIRED, parsed.preferredInputType)
+        assertTrue(parsed.hideDuringTextInput)
+    }
+
+    @Test
+    fun explicitInputVisibilityChoiceIsPreserved() {
+        val parsed = ListeningModeSettings.fromJson(
+            """{"hideDuringTextInput":false}"""
+        )
+
+        assertFalse(parsed.hideDuringTextInput)
     }
 }
