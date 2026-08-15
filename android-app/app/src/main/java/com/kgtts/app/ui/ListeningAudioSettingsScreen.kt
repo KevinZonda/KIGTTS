@@ -8,7 +8,9 @@ import androidx.compose.material.Slider
 import androidx.compose.material.Text
 import androidx.compose.material.DropdownMenuItem as M2DropdownMenuItem
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -30,11 +32,26 @@ internal fun ListeningAudioSettingsScreen(
     var denoiserExpanded by remember { mutableStateOf(false) }
     var enhancementExpanded by remember { mutableStateOf(false) }
     var vadExpanded by remember { mutableStateOf(false) }
+    var minVolumeDraft by remember { mutableFloatStateOf(settings.minVolumePercent.toFloat()) }
+    var minVolumeDragging by remember { mutableStateOf(false) }
+    var vadThresholdDraft by remember { mutableFloatStateOf(settings.sileroVadThreshold) }
+    var vadThresholdDragging by remember { mutableStateOf(false) }
     val vadMode = VadMode.fromFlags(
         settings.classicVadEnabled,
         settings.sileroVadEnabled
     )
     val update = viewModel::updateListeningModeSettings
+
+    LaunchedEffect(settings.minVolumePercent, minVolumeDragging) {
+        if (!minVolumeDragging) {
+            minVolumeDraft = settings.minVolumePercent.toFloat()
+        }
+    }
+    LaunchedEffect(settings.sileroVadThreshold, vadThresholdDragging) {
+        if (!vadThresholdDragging) {
+            vadThresholdDraft = settings.sileroVadThreshold
+        }
+    }
 
     Column(
         modifier = Modifier
@@ -166,22 +183,38 @@ internal fun ListeningAudioSettingsScreen(
                     ) { Text(label) }
                 }
             }
-            Text("最低收音音量：${settings.minVolumePercent}%")
+            Text("最低收音音量：${minVolumeDraft.toInt()}%")
             Slider(
-                value = settings.minVolumePercent.toFloat(),
+                value = minVolumeDraft,
                 onValueChange = { value ->
-                    update { it.copy(minVolumePercent = value.toInt()) }
+                    minVolumeDragging = true
+                    minVolumeDraft = value
+                    viewModel.previewListeningModeSettings {
+                        it.copy(minVolumePercent = value.toInt())
+                    }
+                },
+                onValueChangeFinished = {
+                    update { it.copy(minVolumePercent = minVolumeDraft.toInt()) }
+                    minVolumeDragging = false
                 },
                 valueRange = 0f..30f,
                 steps = 29,
                 modifier = Modifier.fillMaxWidth()
             )
             if (settings.sileroVadEnabled) {
-                Text("智能断句灵敏度：${(settings.sileroVadThreshold * 100).toInt()}%")
+                Text("智能断句灵敏度：${(vadThresholdDraft * 100).toInt()}%")
                 Slider(
-                    value = settings.sileroVadThreshold,
+                    value = vadThresholdDraft,
                     onValueChange = { value ->
-                        update { it.copy(sileroVadThreshold = value) }
+                        vadThresholdDragging = true
+                        vadThresholdDraft = value
+                        viewModel.previewListeningModeSettings {
+                            it.copy(sileroVadThreshold = value)
+                        }
+                    },
+                    onValueChangeFinished = {
+                        update { it.copy(sileroVadThreshold = vadThresholdDraft) }
+                        vadThresholdDragging = false
                     },
                     valueRange = 0.05f..0.95f,
                     modifier = Modifier.fillMaxWidth()

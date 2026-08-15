@@ -31,7 +31,8 @@ object AppConfigBackupIo {
     private const val ManifestEntry = "manifest.json"
     private const val PreferencesEntry = "preferences.json"
     private const val PackageType = "kigtts_config_backup"
-    private const val PackageVersion = 1
+    private const val LegacyPackageVersion = 1
+    private const val PackageVersion = 2
     private const val MaxMetadataBytes = 16L * 1024L * 1024L
     private const val MaxBackupBytes = 32L * 1024L * 1024L * 1024L
 
@@ -40,6 +41,7 @@ object AppConfigBackupIo {
     const val ComponentCurrentFont = "current_font"
     const val ComponentSoundboard = "soundboard"
     const val ComponentVoicePacks = "voice_packs"
+    const val ComponentLockScreenWallpaper = "lock_screen_wallpaper"
 
     suspend fun exportPackage(context: Context, options: AppConfigBackupOptions): File {
         val settings = UserPrefs.getSettings(context)
@@ -48,14 +50,20 @@ object AppConfigBackupIo {
             includeQuickSubtitlePresets = options.includeQuickSubtitlePresets,
             includeSoundboard = options.includeSoundboard
         )
+        val selectedFontIds = selectedFontIdsForBackup(settings, options.includeCurrentFont)
+        val lockScreenWallpaper = settings.lockScreenSettings.wallpaperPath
+            .takeIf { it.isNotBlank() }
+            ?.let(::File)
+            ?.takeIf { it.isFile }
         val components = buildSet {
             if (options.includeQuickSubtitlePresets) add(ComponentQuickSubtitle)
             if (options.includeQuickCardImages) add(ComponentQuickCardImages)
             if (options.includeSoundboard) add(ComponentSoundboard)
             if (options.includeVoicePacks) add(ComponentVoicePacks)
-            if (options.includeCurrentFont && settings.appFontId != AppFontDefaults.SystemFontId) {
+            if (selectedFontIds.isNotEmpty()) {
                 add(ComponentCurrentFont)
             }
+            if (lockScreenWallpaper != null) add(ComponentLockScreenWallpaper)
         }
         ResourceStorageCleaner.cleanupShareCache(context)
         val shareDir = File(context.cacheDir, "share").apply { mkdirs() }
@@ -66,7 +74,7 @@ object AppConfigBackupIo {
             .put("version", PackageVersion)
             .put("createdAt", System.currentTimeMillis())
             .put("components", JSONArray(components.toList().sorted()))
-            .put("fontId", settings.appFontId)
+            .put("fontIds", JSONArray(selectedFontIds.toList().sorted()))
 
         ZipOutputStream(output.outputStream().buffered()).use { zip ->
             writeTextEntry(zip, ManifestEntry, manifest.toString(2))
@@ -79,14 +87,20 @@ object AppConfigBackupIo {
             }
             if (ComponentVoicePacks in components) {
                 writeDirectory(zip, File(context.filesDir, "models/voice"), "resources/voice")
+                writeDirectory(zip, File(context.filesDir, "models/kokoro"), "resources/kokoro")
             }
             if (ComponentCurrentFont in components) {
-                val fontId = sanitizePathSegment(settings.appFontId)
-                writeDirectory(
-                    zip,
-                    File(File(context.filesDir, "fonts"), fontId),
-                    "resources/font/$fontId"
-                )
+                selectedFontIds.forEach { selectedFontId ->
+                    val fontId = sanitizePathSegment(selectedFontId)
+                    writeDirectory(
+                        zip,
+                        File(File(context.filesDir, "fonts"), fontId),
+                        "resources/font/$fontId"
+                    )
+                }
+            }
+            if (ComponentLockScreenWallpaper in components && lockScreenWallpaper != null) {
+                writeFileEntry(zip, lockScreenWallpaper, "resources/lock_screen/wallpaper")
             }
         }
         return output
@@ -133,7 +147,10 @@ object AppConfigBackupIo {
             val manifest = manifestBytes?.toString(Charsets.UTF_8)?.let(::JSONObject)
                 ?: error("配置备份缺少 manifest.json")
             require(manifest.optString("type") == PackageType) { "不是 KIGTTS 配置备份" }
-            require(manifest.optInt("version", 0) == PackageVersion) { "不支持的配置备份版本" }
+            val packageVersion = manifest.optInt("version", 0)
+            require(isSupportedPackageVersion(packageVersion)) {
+                "不支持的配置备份版本"
+            }
             val preferences = preferencesBytes?.toString(Charsets.UTF_8)?.let(::JSONObject)
                 ?: error("配置备份缺少 preferences.json")
             val components = manifest.optJSONArray("components").toStringSet()
@@ -146,11 +163,24 @@ object AppConfigBackupIo {
             }
             if (ComponentVoicePacks in components) {
                 restoreDirectory(staging, "resources/voice", File(context.filesDir, "models/voice"))
+                restoreDirectory(staging, "resources/kokoro", File(context.filesDir, "models/kokoro"))
             }
             if (ComponentCurrentFont in components) {
                 restoreDirectory(staging, "resources/font", File(context.filesDir, "fonts"))
             }
-            val preferenceCount = UserPrefs.importPreferencesFromBackup(context, preferences)
+            if (ComponentLockScreenWallpaper in components) {
+                restoreDirectory(staging, "resources/lock_screen", File(context.filesDir, "lock_screen"))
+            }
+            val preferenceCount = UserPrefs.importPreferencesFromBackup(
+                context = context,
+                payload = preferences,
+                replaceExisting = usesFullSettingsSnapshot(packageVersion),
+                preserveQuickSubtitlePresets =
+                    usesFullSettingsSnapshot(packageVersion) && ComponentQuickSubtitle !in components,
+                preserveSoundboard =
+                    usesFullSettingsSnapshot(packageVersion) && ComponentSoundboard !in components
+            )
+            normalizeRestoredResourceReferences(context, components)
             AppFontChangeBus.notifyChanged()
             return AppConfigRestoreResult(
                 restoredPreferenceCount = preferenceCount,
@@ -165,6 +195,12 @@ object AppConfigBackupIo {
     private fun writeTextEntry(zip: ZipOutputStream, name: String, value: String) {
         zip.putNextEntry(ZipEntry(name))
         zip.write(value.toByteArray(Charsets.UTF_8))
+        zip.closeEntry()
+    }
+
+    private fun writeFileEntry(zip: ZipOutputStream, file: File, name: String) {
+        zip.putNextEntry(ZipEntry(name))
+        file.inputStream().buffered().use { input -> input.copyTo(zip) }
         zip.closeEntry()
     }
 
@@ -247,6 +283,69 @@ object AppConfigBackupIo {
     private fun sanitizePathSegment(raw: String): String {
         require(Regex("^[A-Za-z0-9._-]{1,96}$").matches(raw)) { "当前字体标识无效" }
         return raw
+    }
+
+    internal fun selectedFontIdsForBackup(
+        settings: UserPrefs.AppSettings,
+        includeCurrentFont: Boolean
+    ): Set<String> {
+        if (!includeCurrentFont) return emptySet()
+        return buildSet {
+            settings.appFontId
+                .takeUnless { it == AppFontDefaults.SystemFontId }
+                ?.let(::add)
+            settings.lockScreenSettings
+                .takeIf { it.useSeparateClockFont }
+                ?.clockFontId
+                ?.takeUnless { it == AppFontDefaults.SystemFontId }
+                ?.let(::add)
+        }
+    }
+
+    internal fun isSupportedPackageVersion(version: Int): Boolean =
+        version in LegacyPackageVersion..PackageVersion
+
+    internal fun usesFullSettingsSnapshot(version: Int): Boolean = version >= PackageVersion
+
+    private suspend fun normalizeRestoredResourceReferences(
+        context: Context,
+        components: Set<String>
+    ) {
+        var settings = UserPrefs.getSettings(context)
+        if (
+            settings.appFontId != AppFontDefaults.SystemFontId &&
+            AppFontRepository.resolveFontFamilySource(context, settings.appFontId) == null
+        ) {
+            UserPrefs.setAppFont(
+                context,
+                AppFontDefaults.SystemFontId,
+                AppFontDefaults.DefaultWeight
+            )
+            settings = settings.copy(
+                appFontId = AppFontDefaults.SystemFontId,
+                appFontWeight = AppFontDefaults.DefaultWeight
+            )
+        }
+
+        val restoredWallpaper = File(context.filesDir, "lock_screen/wallpaper")
+            .takeIf { ComponentLockScreenWallpaper in components && it.isFile }
+        val originalLockSettings = settings.lockScreenSettings
+        var lockSettings = originalLockSettings.copy(
+            wallpaperPath = restoredWallpaper?.absolutePath
+                ?: originalLockSettings.wallpaperPath.takeIf { File(it).isFile }.orEmpty()
+        )
+        if (
+            lockSettings.clockFontId != AppFontDefaults.SystemFontId &&
+            AppFontRepository.resolveFontFamilySource(context, lockSettings.clockFontId) == null
+        ) {
+            lockSettings = lockSettings.copy(
+                clockFontId = AppFontDefaults.SystemFontId,
+                clockFontWeight = AppFontDefaults.DefaultWeight
+            )
+        }
+        if (lockSettings != originalLockSettings) {
+            UserPrefs.setLockScreenSettings(context, lockSettings)
+        }
     }
 
     private fun JSONArray?.toStringSet(): Set<String> {

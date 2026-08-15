@@ -31,6 +31,16 @@ internal fun resolveQuickSubtitleFirstRunGuideCompleted(
     onboardingCompleted: Boolean
 ): Boolean = stored ?: onboardingCompleted
 
+internal fun resolveQuickSubtitleAllowLargeFont(
+    stored: Boolean?,
+    smallestScreenWidthDp: Int
+): Boolean = stored ?: (smallestScreenWidthDp >= 600)
+
+internal fun resolveForceFullWidthTabs(
+    stored: Boolean?,
+    smallestScreenWidthDp: Int
+): Boolean = stored ?: (smallestScreenWidthDp >= 600)
+
 internal fun resolveQuickSubtitleStartupText(
     savedText: String?,
     clearedPlaceholderText: String?,
@@ -44,6 +54,8 @@ internal fun resolveQuickSubtitleStartupText(
 object UserPrefs {
     const val DEFAULT_QUICK_SUBTITLE_CLEARED_PLACEHOLDER =
         "我不太方便说话，请等我一下……"
+    const val DEFAULT_SOUNDBOARD_SUPPRESS_TTS_ON_KEYWORD = true
+    const val DEFAULT_ALLOW_QUICK_TEXT_TRIGGER_SOUNDBOARD = true
     const val QUICK_SUBTITLE_CLEARED_PLACEHOLDER_MAX_LENGTH = 200
     const val DRAWER_MODE_HIDDEN = 0
     const val DRAWER_MODE_PERMANENT = 1
@@ -235,6 +247,8 @@ object UserPrefs {
     private val KEY_SOUNDBOARD_CONFIG = stringPreferencesKey("soundboard_config")
     private val KEY_QUICK_CARD_CONFIG = stringPreferencesKey("quick_card_config")
     private val KEY_TTS_DISABLED = booleanPreferencesKey("tts_disabled")
+    private val KEY_SOUNDBOARD_INTERRUPT_ON_NEW_PLAYBACK =
+        booleanPreferencesKey("soundboard_interrupt_on_new_playback")
     private val KEY_SOUNDBOARD_KEYWORD_TRIGGER_ENABLED = booleanPreferencesKey("soundboard_keyword_trigger_enabled")
     private val KEY_SOUNDBOARD_SUPPRESS_TTS_ON_KEYWORD = booleanPreferencesKey("soundboard_suppress_tts_on_keyword")
     private val KEY_ALLOW_QUICK_TEXT_TRIGGER_SOUNDBOARD = booleanPreferencesKey("allow_quick_text_trigger_soundboard")
@@ -379,9 +393,10 @@ object UserPrefs {
         val volumeHotkeyDownUpAction: VolumeHotkeyActionSpec =
             VolumeHotkeyActions.defaultFor(VolumeHotkeySequence.DownUp),
         val ttsDisabled: Boolean = false,
+        val soundboardInterruptOnNewPlayback: Boolean = true,
         val soundboardKeywordTriggerEnabled: Boolean = false,
-        val soundboardSuppressTtsOnKeyword: Boolean = false,
-        val allowQuickTextTriggerSoundboard: Boolean = false,
+        val soundboardSuppressTtsOnKeyword: Boolean = DEFAULT_SOUNDBOARD_SUPPRESS_TTS_ON_KEYWORD,
+        val allowQuickTextTriggerSoundboard: Boolean = DEFAULT_ALLOW_QUICK_TEXT_TRIGGER_SOUNDBOARD,
         val quickSubtitleInterruptQueue: Boolean = true,
         val quickSubtitleAutoFit: Boolean = true,
         val quickSubtitleAllowLargeFont: Boolean = false,
@@ -564,7 +579,7 @@ object UserPrefs {
 
     suspend fun getSettings(context: Context): AppSettings {
         val prefs = context.dataStore.data.first()
-        return prefs.toAppSettings()
+        return prefs.toAppSettings(context.resources.configuration.smallestScreenWidthDp)
     }
 
     suspend fun exportPreferencesForBackup(
@@ -604,15 +619,38 @@ object UserPrefs {
             .put("entries", entries)
     }
 
-    suspend fun importPreferencesFromBackup(context: Context, payload: JSONObject): Int {
+    suspend fun importPreferencesFromBackup(
+        context: Context,
+        payload: JSONObject,
+        replaceExisting: Boolean = false,
+        preserveQuickSubtitlePresets: Boolean = false,
+        preserveSoundboard: Boolean = false
+    ): Int {
         require(payload.optInt("version", 0) == 1) { "不支持的配置数据版本" }
         val entries = payload.optJSONArray("entries") ?: error("配置备份缺少设置数据")
         var restored = 0
         context.dataStore.edit { prefs ->
+            val preservedQuickSubtitleConfig = if (preserveQuickSubtitlePresets) {
+                prefs[KEY_QUICK_SUBTITLE_CONFIG]
+            } else {
+                null
+            }
+            val preservedSoundboardConfig = if (preserveSoundboard) {
+                prefs[KEY_SOUNDBOARD_CONFIG]
+            } else {
+                null
+            }
+            if (replaceExisting) {
+                prefs.clear()
+                preservedQuickSubtitleConfig?.let { prefs[KEY_QUICK_SUBTITLE_CONFIG] = it }
+                preservedSoundboardConfig?.let { prefs[KEY_SOUNDBOARD_CONFIG] = it }
+            }
             for (index in 0 until entries.length()) {
                 val item = entries.optJSONObject(index) ?: continue
                 val name = item.optString("name").trim()
                 if (name.isEmpty() || name.length > 160) continue
+                if (preserveQuickSubtitlePresets && name == KEY_QUICK_SUBTITLE_CONFIG.name) continue
+                if (preserveSoundboard && name == KEY_SOUNDBOARD_CONFIG.name) continue
                 when (item.optString("type")) {
                     "boolean" -> prefs[booleanPreferencesKey(name)] = item.optBoolean("value")
                     "int" -> prefs[intPreferencesKey(name)] = item.optInt("value")
@@ -637,10 +675,13 @@ object UserPrefs {
     }
 
     fun observeSettings(context: Context): Flow<AppSettings> {
-        return context.dataStore.data.map { prefs -> prefs.toAppSettings() }
+        val smallestScreenWidthDp = context.resources.configuration.smallestScreenWidthDp
+        return context.dataStore.data.map { prefs ->
+            prefs.toAppSettings(smallestScreenWidthDp)
+        }
     }
 
-    private fun Preferences.toAppSettings(): AppSettings {
+    private fun Preferences.toAppSettings(smallestScreenWidthDp: Int): AppSettings {
         val legacyPreferUsb = this[KEY_PREFER_USB_MIC] ?: false
         val legacySpeaker = this[KEY_COMMUNICATION_SPEAKER] ?: false
         var classicVadEnabled = this[KEY_CLASSIC_VAD_ENABLED] ?: false
@@ -754,7 +795,10 @@ object UserPrefs {
             ),
             hapticFeedbackEnabled = this[KEY_HAPTIC_FEEDBACK_ENABLED] ?: true,
             onboardingCompleted = this[KEY_ONBOARDING_COMPLETED] ?: false,
-            forceFullWidthTabsOnPhone = this[KEY_FORCE_FULL_WIDTH_TABS_ON_PHONE] ?: false,
+            forceFullWidthTabsOnPhone = resolveForceFullWidthTabs(
+                stored = this[KEY_FORCE_FULL_WIDTH_TABS_ON_PHONE],
+                smallestScreenWidthDp = smallestScreenWidthDp
+            ),
             soundboardGridFullWidth = this[KEY_SOUNDBOARD_GRID_FULL_WIDTH] ?: false,
             internalWebViewEnabled = true,
             drawingSaveRelativePath = (this[KEY_DRAWING_SAVE_RELATIVE_PATH]
@@ -798,12 +842,21 @@ object UserPrefs {
                 fallback = VolumeHotkeyActions.defaultFor(VolumeHotkeySequence.DownUp)
             ),
             ttsDisabled = this[KEY_TTS_DISABLED] ?: false,
+            soundboardInterruptOnNewPlayback =
+                this[KEY_SOUNDBOARD_INTERRUPT_ON_NEW_PLAYBACK] ?: true,
             soundboardKeywordTriggerEnabled = this[KEY_SOUNDBOARD_KEYWORD_TRIGGER_ENABLED] ?: false,
-            soundboardSuppressTtsOnKeyword = this[KEY_SOUNDBOARD_SUPPRESS_TTS_ON_KEYWORD] ?: false,
-            allowQuickTextTriggerSoundboard = this[KEY_ALLOW_QUICK_TEXT_TRIGGER_SOUNDBOARD] ?: false,
+            soundboardSuppressTtsOnKeyword =
+                this[KEY_SOUNDBOARD_SUPPRESS_TTS_ON_KEYWORD]
+                    ?: DEFAULT_SOUNDBOARD_SUPPRESS_TTS_ON_KEYWORD,
+            allowQuickTextTriggerSoundboard =
+                this[KEY_ALLOW_QUICK_TEXT_TRIGGER_SOUNDBOARD]
+                    ?: DEFAULT_ALLOW_QUICK_TEXT_TRIGGER_SOUNDBOARD,
             quickSubtitleInterruptQueue = this[KEY_QUICK_SUBTITLE_INTERRUPT_QUEUE] ?: true,
             quickSubtitleAutoFit = this[KEY_QUICK_SUBTITLE_AUTO_FIT] ?: true,
-            quickSubtitleAllowLargeFont = this[KEY_QUICK_SUBTITLE_ALLOW_LARGE_FONT] ?: false,
+            quickSubtitleAllowLargeFont = resolveQuickSubtitleAllowLargeFont(
+                stored = this[KEY_QUICK_SUBTITLE_ALLOW_LARGE_FONT],
+                smallestScreenWidthDp = smallestScreenWidthDp
+            ),
             quickSubtitleCompactControls = this[KEY_QUICK_SUBTITLE_COMPACT_CONTROLS] ?: false,
             quickSubtitleFrequencySortEnabled =
                 this[KEY_QUICK_SUBTITLE_FREQUENCY_SORT_ENABLED] ?: false,
@@ -1082,6 +1135,8 @@ object UserPrefs {
         val defaults = AppSettings()
         context.dataStore.edit { prefs ->
             prefs[KEY_TTS_DISABLED] = defaults.ttsDisabled
+            prefs[KEY_SOUNDBOARD_INTERRUPT_ON_NEW_PLAYBACK] =
+                defaults.soundboardInterruptOnNewPlayback
             prefs[KEY_PLAYBACK_GAIN_PERCENT] = defaults.playbackGainPercent
             prefs[KEY_AUDIO_FOCUS_AVOIDANCE_MODE] = defaults.audioFocusAvoidanceMode
             prefs[KEY_PIPER_NOISE_SCALE] = defaults.piperNoiseScale
@@ -1403,6 +1458,12 @@ object UserPrefs {
     suspend fun setTtsDisabled(context: Context, enabled: Boolean) {
         context.dataStore.edit { prefs ->
             prefs[KEY_TTS_DISABLED] = enabled
+        }
+    }
+
+    suspend fun setSoundboardInterruptOnNewPlayback(context: Context, enabled: Boolean) {
+        context.dataStore.edit { prefs ->
+            prefs[KEY_SOUNDBOARD_INTERRUPT_ON_NEW_PLAYBACK] = enabled
         }
     }
 

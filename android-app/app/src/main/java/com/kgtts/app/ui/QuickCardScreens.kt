@@ -276,6 +276,8 @@ import com.lhtstudio.kigtts.app.util.ExternalShortcutChoice
 import com.lhtstudio.kigtts.app.util.LauncherMenuShortcuts
 import com.lhtstudio.kigtts.app.util.LiveSubtitleNotificationBridge
 import com.lhtstudio.kigtts.app.util.QqScannerSupport
+import com.lhtstudio.kigtts.app.util.QrAppLinkClassifier
+import com.lhtstudio.kigtts.app.util.QrAppTarget
 import com.lhtstudio.kigtts.app.util.QuickCardRenderCache
 import com.lhtstudio.kigtts.app.util.QUICK_CARD_CROP_LONG_EDGE_PX
 import com.lhtstudio.kigtts.app.util.QUICK_CARD_CROP_SHORT_EDGE_PX
@@ -343,6 +345,11 @@ import kotlin.math.sin
 import kotlin.math.roundToInt
 
 
+private data class PendingQrAppChoice(
+    val decoded: String,
+    val popRoute: String
+)
+
 @Composable
 internal fun QuickCardNavHost(
     navController: NavHostController,
@@ -353,88 +360,151 @@ internal fun QuickCardNavHost(
     ultraSmallAdaptiveWindow: Boolean = false
 ) {
     val context = LocalContext.current
+    var pendingQrAppChoice by remember { mutableStateOf<PendingQrAppChoice?>(null) }
     DisposableEffect(Unit) {
         onDispose { onTopBarActionsChange(null) }
     }
-    val navigateDecodedQrResult: (String, String) -> Unit = { decoded, popRoute ->
-        if (isWeChatQrContent(decoded)) {
-            if (isPackageInstalled(context, WECHAT_PACKAGE_NAME)) {
-                toast(context, "该二维码为微信二维码，需要使用微信进行扫描")
-                if (!launchWeChatScanner(context)) {
-                    toast(context, "打开微信失败，请手动打开微信扫一扫")
-                }
-            } else {
-                toast(context, "该二维码为微信二维码，需要安装微信")
-                val browserTarget = normalizeQrTextToWebUrl(decoded) ?: WECHAT_BROWSER_FALLBACK_URL
-                if (!openExternalBrowser(context, browserTarget)) {
-                    toast(context, "无法打开系统浏览器")
-                }
+
+    val openDecodedQrResult: (String, String) -> Unit = { decoded, popRoute ->
+        val url = normalizeQrTextToWebUrl(decoded)
+        if (url.isNullOrEmpty()) {
+            navController.navigate(QuickCardRoutes.scanText(decoded)) {
+                popUpTo(popRoute) { inclusive = true }
+                launchSingleTop = true
             }
-            navController.popBackStack(popRoute, inclusive = true)
-        } else if (QqScannerSupport.isQqQrContent(decoded)) {
-            if (isPackageInstalled(context, QqScannerSupport.QQ_PACKAGE_NAME)) {
-                val qqAccessibilityEnabled = VolumeHotkeyAccessibilityService.isEnabled(context)
-                if (qqAccessibilityEnabled) {
-                    if (
-                        VolumeHotkeyAccessibilityService.requestOpenQqScanner(context) ||
-                        QqScannerSupport.launchQq(context)
-                    ) {
-                        toast(context, "该二维码为QQ二维码，请使用QQ进行扫描")
-                    } else {
-                        toast(context, "打开QQ失败，请手动打开QQ扫一扫")
-                    }
-                } else {
-                    if (QqScannerSupport.launchQq(context)) {
-                        toast(context, "该二维码为QQ二维码，已跳转至QQ。直达QQ扫一扫需要开启无障碍权限")
-                    } else {
-                        toast(context, "打开QQ失败，请手动打开QQ扫一扫")
-                    }
-                }
-            } else {
-                toast(context, "该二维码为QQ二维码，需要安装QQ")
-                val browserTarget = normalizeQrTextToWebUrl(decoded) ?: QqScannerSupport.QQ_BROWSER_FALLBACK_URL
-                if (!openExternalBrowser(context, browserTarget)) {
-                    toast(context, "无法打开系统浏览器")
-                }
-            }
-            navController.popBackStack(popRoute, inclusive = true)
-        } else if (AlipayScannerSupport.isAlipayQrContent(decoded)) {
-            if (isPackageInstalled(context, AlipayScannerSupport.ALIPAY_PACKAGE_NAME)) {
-                toast(context, "该二维码为支付宝二维码，需要使用支付宝进行扫描")
-                if (!AlipayScannerSupport.launchScanner(context)) {
-                    toast(context, "打开支付宝失败，请手动打开支付宝扫一扫")
-                }
-            } else {
-                toast(context, "该二维码为支付宝二维码，需要安装支付宝")
-                val browserTarget = normalizeQrTextToWebUrl(decoded)
-                    ?: AlipayScannerSupport.ALIPAY_BROWSER_FALLBACK_URL
-                if (!openExternalBrowser(context, browserTarget)) {
-                    toast(context, "无法打开系统浏览器")
-                }
-            }
+        } else if (openChromeCustomTab(context, url)) {
             navController.popBackStack(popRoute, inclusive = true)
         } else {
-            val url = normalizeQrTextToWebUrl(decoded)
-            if (url.isNullOrEmpty()) {
-                navController.navigate(QuickCardRoutes.scanText(decoded)) {
-                    popUpTo(popRoute) { inclusive = true }
-                    launchSingleTop = true
-                }
-            } else {
-                if (openChromeCustomTab(context, url)) {
-                    navController.popBackStack(popRoute, inclusive = true)
+            navController.navigate(QuickCardRoutes.web(url)) {
+                popUpTo(popRoute) { inclusive = true }
+                launchSingleTop = true
+            }
+        }
+    }
+
+    val launchWeChatQr: (String, String) -> Unit = { decoded, popRoute ->
+        if (isPackageInstalled(context, WECHAT_PACKAGE_NAME)) {
+            toast(context, "该二维码需要使用微信扫描")
+            if (!launchWeChatScanner(context)) {
+                toast(context, "打开微信失败，请手动打开微信扫一扫")
+            }
+        } else {
+            toast(context, "需要安装微信才能扫描此二维码")
+            val browserTarget = normalizeQrTextToWebUrl(decoded) ?: WECHAT_BROWSER_FALLBACK_URL
+            if (!openExternalBrowser(context, browserTarget)) {
+                toast(context, "无法打开系统浏览器")
+            }
+        }
+        navController.popBackStack(popRoute, inclusive = true)
+    }
+
+    val launchAlipayQr: (String, String) -> Unit = { decoded, popRoute ->
+        if (isPackageInstalled(context, AlipayScannerSupport.ALIPAY_PACKAGE_NAME)) {
+            toast(context, "该二维码需要使用支付宝扫描")
+            if (!AlipayScannerSupport.launchScanner(context)) {
+                toast(context, "打开支付宝失败，请手动打开支付宝扫一扫")
+            }
+        } else {
+            toast(context, "需要安装支付宝才能扫描此二维码")
+            val browserTarget = normalizeQrTextToWebUrl(decoded)
+                ?: AlipayScannerSupport.ALIPAY_BROWSER_FALLBACK_URL
+            if (!openExternalBrowser(context, browserTarget)) {
+                toast(context, "无法打开系统浏览器")
+            }
+        }
+        navController.popBackStack(popRoute, inclusive = true)
+    }
+
+    val navigateDecodedQrResult: (String, String) -> Unit = { decoded, popRoute ->
+        val classification = QrAppLinkClassifier.classify(decoded)
+        when {
+            classification.requiresAppChoice -> {
+                pendingQrAppChoice = PendingQrAppChoice(decoded, popRoute)
+            }
+            classification.target == QrAppTarget.WECHAT -> {
+                launchWeChatQr(decoded, popRoute)
+            }
+            QqScannerSupport.isQqQrContent(decoded) -> {
+                if (isPackageInstalled(context, QqScannerSupport.QQ_PACKAGE_NAME)) {
+                    val qqAccessibilityEnabled = VolumeHotkeyAccessibilityService.isEnabled(context)
+                    if (qqAccessibilityEnabled) {
+                        if (
+                            VolumeHotkeyAccessibilityService.requestOpenQqScanner(context) ||
+                            QqScannerSupport.launchQq(context)
+                        ) {
+                            toast(context, "该二维码为QQ二维码，请使用QQ进行扫描")
+                        } else {
+                            toast(context, "打开QQ失败，请手动打开QQ扫一扫")
+                        }
+                    } else {
+                        if (QqScannerSupport.launchQq(context)) {
+                            toast(context, "该二维码为QQ二维码，已跳转至QQ。直达QQ扫一扫需要开启无障碍权限")
+                        } else {
+                            toast(context, "打开QQ失败，请手动打开QQ扫一扫")
+                        }
+                    }
                 } else {
-                    navController.navigate(QuickCardRoutes.web(url)) {
-                        popUpTo(popRoute) { inclusive = true }
-                        launchSingleTop = true
+                    toast(context, "该二维码为QQ二维码，需要安装QQ")
+                    val browserTarget = normalizeQrTextToWebUrl(decoded)
+                        ?: QqScannerSupport.QQ_BROWSER_FALLBACK_URL
+                    if (!openExternalBrowser(context, browserTarget)) {
+                        toast(context, "无法打开系统浏览器")
                     }
                 }
+                navController.popBackStack(popRoute, inclusive = true)
+            }
+            classification.target == QrAppTarget.ALIPAY -> {
+                launchAlipayQr(decoded, popRoute)
+            }
+            else -> {
+                openDecodedQrResult(decoded, popRoute)
             }
         }
     }
     val handleDecodedQrResult: (String) -> Unit = { decoded ->
         navigateDecodedQrResult(decoded, QuickCardRoutes.Scanner)
     }
+
+    pendingQrAppChoice?.let { pending ->
+        KigttsAlertDialog(
+            onDismissRequest = { pendingQrAppChoice = null },
+            title = { Text("选择扫码应用") },
+            text = {
+                Text("检测到聚合收款二维码。请选择微信或支付宝，并在付款前核对收款方和金额。")
+            },
+            confirmButton = {
+                Row {
+                    Md2TextButton(
+                        onClick = {
+                            pendingQrAppChoice = null
+                            launchWeChatQr(pending.decoded, pending.popRoute)
+                        }
+                    ) {
+                        Text("微信")
+                    }
+                    Md2TextButton(
+                        onClick = {
+                            pendingQrAppChoice = null
+                            launchAlipayQr(pending.decoded, pending.popRoute)
+                        }
+                    ) {
+                        Text("支付宝")
+                    }
+                }
+            },
+            dismissButton = {
+                Md2TextButton(
+                    onClick = {
+                        pendingQrAppChoice = null
+                        openDecodedQrResult(pending.decoded, pending.popRoute)
+                    }
+                ) {
+                    Text("打开链接")
+                }
+            }
+        )
+    }
+
     NavHost(
         navController = navController,
         startDestination = QuickCardRoutes.Main,

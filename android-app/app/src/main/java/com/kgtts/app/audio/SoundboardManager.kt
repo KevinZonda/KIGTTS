@@ -55,6 +55,8 @@ object SoundboardManager {
     @Volatile
     private var playbackGainPercent = 100
     @Volatile
+    private var interruptOnNewPlayback = true
+    @Volatile
     private var audioFocusController: PlaybackAudioFocusController? = null
 
     private data class ActivePlayback(
@@ -103,6 +105,15 @@ object SoundboardManager {
         }
     }
 
+    fun setInterruptOnNewPlayback(enabled: Boolean) {
+        interruptOnNewPlayback = enabled
+    }
+
+    fun interruptForTtsPlayback() {
+        if (!interruptOnNewPlayback) return
+        scope.launch { stopAll() }
+    }
+
     fun setAudioFocusAvoidanceMode(context: Context, mode: Int) {
         val controller = audioFocusController
             ?: PlaybackAudioFocusController(
@@ -122,9 +133,7 @@ object SoundboardManager {
 
     suspend fun stopAll() {
         stateMutex.withLock {
-            players.keys.toList().forEach { itemId ->
-                releasePlaybackLocked(itemId)
-            }
+            releaseAllPlaybacksLocked()
         }
     }
 
@@ -134,7 +143,11 @@ object SoundboardManager {
         val targetFile = File(path)
         if (!targetFile.exists()) return false
         stateMutex.withLock {
-            releasePlaybackLocked(item.id)
+            if (interruptOnNewPlayback) {
+                releaseAllPlaybacksLocked()
+            } else {
+                releasePlaybackLocked(item.id)
+            }
             val mediaPlayer = MediaPlayer()
             val audioAttrs = AudioAttributes.Builder()
                 .setUsage(AudioAttributes.USAGE_MEDIA)
@@ -318,6 +331,10 @@ object SoundboardManager {
         }
         runCatching { existing.player.release() }
         setPlaybackStateLocked(itemId, SoundboardPlaybackState(playing = false, progress = 0f))
+    }
+
+    private fun releaseAllPlaybacksLocked() {
+        players.keys.toList().forEach(::releasePlaybackLocked)
     }
 
     private fun createLoudnessEnhancer(player: MediaPlayer): LoudnessEnhancer? {

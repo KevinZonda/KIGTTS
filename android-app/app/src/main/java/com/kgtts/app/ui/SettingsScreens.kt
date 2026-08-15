@@ -573,6 +573,10 @@ fun SettingsScreen(
     var recognitionLanguageExpanded by remember { mutableStateOf(false) }
     val performRecognitionLanguageHaptic = rememberKigttsKeyHaptic()
     var vadModeExpanded by remember { mutableStateOf(false) }
+    var sileroVadThresholdDraft by remember { mutableFloatStateOf(state.sileroVadThreshold) }
+    var sileroVadThresholdDragging by remember { mutableStateOf(false) }
+    var sileroVadPreRollDraft by remember { mutableIntStateOf(state.sileroVadPreRollMs) }
+    var sileroVadPreRollDragging by remember { mutableStateOf(false) }
     var showSpeakerEnrollDialog by remember { mutableStateOf(false) }
     var speakerEnrollStep by remember { mutableIntStateOf(0) } // 0准备 1句1 2句2 3句3 4结果
     var speakerEnrollCountingDown by remember { mutableStateOf(false) }
@@ -714,6 +718,17 @@ fun SettingsScreen(
 
     LaunchedEffect(selectedCategory) {
         scroll.animateScrollTo(0)
+    }
+
+    LaunchedEffect(state.sileroVadThreshold, sileroVadThresholdDragging) {
+        if (!sileroVadThresholdDragging) {
+            sileroVadThresholdDraft = state.sileroVadThreshold
+        }
+    }
+    LaunchedEffect(state.sileroVadPreRollMs, sileroVadPreRollDragging) {
+        if (!sileroVadPreRollDragging) {
+            sileroVadPreRollDraft = state.sileroVadPreRollMs
+        }
     }
 
     if (themeColorPickerVisible) {
@@ -1370,15 +1385,27 @@ fun SettingsScreen(
                     }
                     val sileroVadControlsEnabled = state.sileroVadEnabled
                     Text(
-                        "说话触发门槛：${String.format("%.2f", state.sileroVadThreshold)}",
+                        "说话触发门槛：${String.format("%.2f", sileroVadThresholdDraft)}",
                         style = MaterialTheme.typography.bodySmall,
                         color = LocalContentColor.current.copy(
                             alpha = if (sileroVadControlsEnabled) 1f else 0.38f
                         )
                     )
                     Slider(
-                        value = state.sileroVadThreshold,
-                        onValueChange = { viewModel.setSileroVadThreshold(it) },
+                        value = sileroVadThresholdDraft,
+                        onValueChange = { value ->
+                            sileroVadThresholdDragging = true
+                            val normalized = ((value / 0.05f).roundToInt() * 0.05f).coerceIn(
+                                UserPrefs.SILERO_VAD_MIN_THRESHOLD,
+                                UserPrefs.SILERO_VAD_MAX_THRESHOLD
+                            )
+                            sileroVadThresholdDraft = normalized
+                            viewModel.previewSileroVadThreshold(normalized)
+                        },
+                        onValueChangeFinished = {
+                            viewModel.setSileroVadThreshold(sileroVadThresholdDraft)
+                            sileroVadThresholdDragging = false
+                        },
                         valueRange = UserPrefs.SILERO_VAD_MIN_THRESHOLD..UserPrefs.SILERO_VAD_MAX_THRESHOLD,
                         steps = 17,
                         enabled = sileroVadControlsEnabled,
@@ -1395,15 +1422,27 @@ fun SettingsScreen(
                         )
                     )
                     Text(
-                        "保留触发前声音：${state.sileroVadPreRollMs} 毫秒",
+                        "保留触发前声音：$sileroVadPreRollDraft 毫秒",
                         style = MaterialTheme.typography.bodySmall,
                         color = LocalContentColor.current.copy(
                             alpha = if (sileroVadControlsEnabled) 1f else 0.38f
                         )
                     )
                     Slider(
-                        value = state.sileroVadPreRollMs.toFloat(),
-                        onValueChange = { viewModel.setSileroVadPreRollMs(it.roundToInt()) },
+                        value = sileroVadPreRollDraft.toFloat(),
+                        onValueChange = { value ->
+                            sileroVadPreRollDragging = true
+                            val normalized = ((value / 50f).roundToInt() * 50).coerceIn(
+                                UserPrefs.SILERO_VAD_MIN_PRE_ROLL_MS,
+                                UserPrefs.SILERO_VAD_MAX_PRE_ROLL_MS
+                            )
+                            sileroVadPreRollDraft = normalized
+                            viewModel.previewSileroVadPreRollMs(normalized)
+                        },
+                        onValueChangeFinished = {
+                            viewModel.setSileroVadPreRollMs(sileroVadPreRollDraft)
+                            sileroVadPreRollDragging = false
+                        },
                         valueRange = UserPrefs.SILERO_VAD_MIN_PRE_ROLL_MS.toFloat()..
                             UserPrefs.SILERO_VAD_MAX_PRE_ROLL_MS.toFloat(),
                         steps = 15,
@@ -1761,6 +1800,12 @@ fun SettingsScreen(
                         checked = state.ttsDisabled,
                         onCheckedChange = { viewModel.setTtsDisabled(it) },
                         supportingText = "开启后只显示字幕，不再朗读；音效板仍可使用。"
+                    )
+                    Md2SettingSwitchRow(
+                        title = "新播放打断当前音效",
+                        checked = state.soundboardInterruptOnNewPlayback,
+                        onCheckedChange = viewModel::setSoundboardInterruptOnNewPlayback,
+                        supportingText = "播放新的音效或开始朗读时，停止正在播放的音效。"
                     )
                     Text("朗读与音效音量：${state.playbackGainPercent}%", style = MaterialTheme.typography.bodySmall)
                     Slider(

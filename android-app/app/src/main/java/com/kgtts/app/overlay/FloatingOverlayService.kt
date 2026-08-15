@@ -94,6 +94,7 @@ import com.lhtstudio.kigtts.app.data.AppFontChangeBus
 import com.lhtstudio.kigtts.app.data.AppFontDefaults
 import com.lhtstudio.kigtts.app.data.AsrRecognitionLanguage
 import com.lhtstudio.kigtts.app.data.ListeningModeSettings
+import com.lhtstudio.kigtts.app.data.QuickTextGestures
 import com.lhtstudio.kigtts.app.data.RecognitionResourceRepository
 import com.lhtstudio.kigtts.app.data.SoundboardConfig
 import com.lhtstudio.kigtts.app.data.SoundboardGroup
@@ -325,6 +326,8 @@ open class FloatingOverlayService : Service() {
     private var miniBottomBarView: FrameLayout? = null
     private var miniLandscapeRailView: LinearLayout? = null
     private var miniSubtitleTextView: TextView? = null
+    private var miniSubtitleGestureHostView: FrameLayout? = null
+    private var miniSubtitleGestureView: OverlayQuickTextGestureView? = null
     private var listeningOverlayCardView: LinearLayout? = null
     private var listeningOverlayTextView: TextView? = null
     private var listeningOverlayScrollView: ScrollView? = null
@@ -3999,6 +4002,46 @@ open class FloatingOverlayService : Service() {
             maxLines = 5,
             centerVerticallyWhenCentered = true
         )
+        miniSubtitleGestureView = OverlayQuickTextGestureView(this).apply {
+            gestureSettings = settings.quickTextGestureSettings
+            traceColor = overlayPrimaryColor()
+            onTap = { openMiniSubtitlePreview() }
+            onLongPress = { launchQuickSubtitlePage() }
+            onGesture = { binding ->
+                if (binding.text.isNotBlank()) {
+                    performOverlayKeyHaptic(this)
+                    submitQuickSubtitleText(binding.text)
+                    val gestureName = QuickTextGestures.template(binding.gestureId)?.title ?: "手势"
+                    Toast.makeText(
+                        this@FloatingOverlayService,
+                        "已触发：$gestureName",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+            }
+            onScale = { scaleFactor ->
+                updateFloatingQuickSubtitleFontSize(quickSubtitleFontSizeSp * scaleFactor)
+            }
+            onScaleFinished = ::saveFloatingOverlayQuickSubtitleFontSize
+        }
+        miniSubtitleGestureHostView = FrameLayout(this).apply {
+            clipChildren = false
+            clipToPadding = false
+            addView(
+                miniSubtitleTextView,
+                FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT
+                )
+            )
+            addView(
+                miniSubtitleGestureView,
+                FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT
+                )
+            )
+        }
         miniSubtitleSeekBar = SeekBar(this).apply {
             max = 68
             progress = (quickSubtitleFontSizeSp - 28f).roundToInt().coerceIn(0, 68)
@@ -4027,7 +4070,7 @@ open class FloatingOverlayService : Service() {
             setPadding(dp(16), dp(16), dp(16), dp(16))
             isClickable = true
             addView(
-                miniSubtitleTextView,
+                miniSubtitleGestureHostView,
                 LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     dp(180)
@@ -4069,7 +4112,6 @@ open class FloatingOverlayService : Service() {
                 true
             }
         }
-        installFloatingQuickSubtitlePinchZoom(subtitleCard)
         miniSubtitleCardView = subtitleCard
 
         miniQuickItemsAdapter = MiniQuickTextAdapter()
@@ -5144,6 +5186,8 @@ open class FloatingOverlayService : Service() {
         miniLandscapeRailView = null
         miniSubtitleCardView = null
         miniSubtitleTextView = null
+        miniSubtitleGestureHostView = null
+        miniSubtitleGestureView = null
         miniSubtitleSeekBar = null
         miniQuickItemsContainer = null
         miniQuickItemsLeftFadeView = null
@@ -7153,7 +7197,7 @@ open class FloatingOverlayService : Service() {
     }
 
     private fun refreshMiniSubtitleLayoutMetrics() {
-        val subtitleText = miniSubtitleTextView ?: return
+        val subtitleSurface = miniSubtitleGestureHostView ?: return
         val landscapePhone = isPhoneLandscapeUi()
         miniQuickItemsScrollerView?.apply {
             gesturesEnabled = settings.quickSubtitlePanelGesturesEnabled
@@ -7181,10 +7225,10 @@ open class FloatingOverlayService : Service() {
             else -> dp(180)
         }
         val landscapeQuickColumnHeight = subtitleHeight + dp(72)
-        (subtitleText.layoutParams as? LinearLayout.LayoutParams)?.let { lp ->
+        (subtitleSurface.layoutParams as? LinearLayout.LayoutParams)?.let { lp ->
             if (lp.height != subtitleHeight) {
                 lp.height = subtitleHeight
-                subtitleText.layoutParams = lp
+                subtitleSurface.layoutParams = lp
             }
         }
         subtitleBody?.orientation = if (landscapePhone) LinearLayout.HORIZONTAL else LinearLayout.VERTICAL
@@ -8226,7 +8270,11 @@ open class FloatingOverlayService : Service() {
     private fun refreshQuickSubtitleUi() {
         val group = cachedMiniQuickSubtitleGroup(selectedQuickSubtitleGroup())
         val landscapePhone = isPhoneLandscapeUi()
-        miniSubtitleTextView?.apply {
+        miniSubtitleGestureView?.apply {
+            gestureSettings = settings.quickTextGestureSettings
+            traceColor = overlayPrimaryColor()
+        }
+        miniSubtitleGestureHostView?.apply {
             layoutParams = (layoutParams as? LinearLayout.LayoutParams)?.apply {
                 height = when {
                     landscapePhone -> landscapeOverlayContentHeight()
@@ -8235,6 +8283,8 @@ open class FloatingOverlayService : Service() {
                 }
             }
             requestLayout()
+        }
+        miniSubtitleTextView?.apply {
             updateMiniSubtitleTextWithAnimation(
                 this,
                 quickSubtitleCurrentText.ifBlank { quickSubtitlePlaceholderText() }

@@ -66,7 +66,12 @@ internal fun AppConfigBackupSettingsCard(
     }
     if (backupDialogVisible) {
         AppConfigBackupOptionsDialog(
-            currentFontAvailable = state.appFontId != AppFontDefaults.SystemFontId,
+            currentFontAvailable =
+                state.appFontId != AppFontDefaults.SystemFontId ||
+                    (
+                        state.lockScreenSettings.useSeparateClockFont &&
+                            state.lockScreenSettings.clockFontId != AppFontDefaults.SystemFontId
+                        ),
             onDismiss = { backupDialogVisible = false },
             onConfirm = { options ->
                 backupDialogVisible = false
@@ -79,7 +84,7 @@ internal fun AppConfigBackupSettingsCard(
             onDismissRequest = { pendingRestoreUri = null },
             title = { Text("恢复应用数据") },
             text = {
-                Text("恢复后，同名设置和资源会被备份内容替换，其他本机数据不会删除。部分功能可能需要重新打开应用后生效。")
+                Text("恢复后，应用设置会切换为备份时的状态。未包含在备份中的快捷文本、音效板和其他本机资源不会删除，部分功能可能需要重新打开应用后生效。")
             },
             confirmButton = {
                 Md2TextButton(
@@ -103,7 +108,7 @@ internal fun AppConfigBackupSettingsCard(
         AppConfigCommandRow(
             iconName = "backup",
             title = "备份应用数据",
-            supportingText = "保存应用设置和快捷名片，可按需包含快捷文本、字体、音效与语音包。",
+            supportingText = "保存应用设置、快捷名片和锁屏壁纸，可按需包含快捷文本、字体、音效与语音包。",
             enabled = !viewModel.appConfigBackupBusy,
             onClick = { backupDialogVisible = true }
         )
@@ -134,13 +139,17 @@ private fun AppConfigBackupOptionsDialog(
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(
-                    "应用设置和快捷名片信息会自动备份。以下内容可能明显增加文件大小，请按需选择：",
+                    "应用设置、快捷名片信息和锁屏壁纸会自动备份。以下内容可能明显增加文件大小，请按需选择：",
                     style = MaterialTheme.typography.body2
                 )
                 BackupOptionRow("快捷文本预设", quickSubtitle) { quickSubtitle = it }
                 BackupOptionRow("快捷名片图片", quickCardImages) { quickCardImages = it }
                 BackupOptionRow(
-                    label = if (currentFontAvailable) "当前使用的字体文件" else "当前使用系统字体（无需备份）",
+                    label = if (currentFontAvailable) {
+                        "当前使用的字体文件（含时钟字体）"
+                    } else {
+                        "当前使用系统字体（无需备份）"
+                    },
                     checked = currentFont,
                     enabled = currentFontAvailable,
                     onCheckedChange = { currentFont = it }

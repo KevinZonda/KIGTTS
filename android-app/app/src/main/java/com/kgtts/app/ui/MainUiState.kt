@@ -451,9 +451,12 @@ data class UiState(
     val volumeHotkeyDownUpAction: VolumeHotkeyActionSpec =
         VolumeHotkeyActions.defaultFor(VolumeHotkeySequence.DownUp),
     val ttsDisabled: Boolean = false,
+    val soundboardInterruptOnNewPlayback: Boolean = true,
     val soundboardKeywordTriggerEnabled: Boolean = false,
-    val soundboardSuppressTtsOnKeyword: Boolean = false,
-    val allowQuickTextTriggerSoundboard: Boolean = false,
+    val soundboardSuppressTtsOnKeyword: Boolean =
+        UserPrefs.DEFAULT_SOUNDBOARD_SUPPRESS_TTS_ON_KEYWORD,
+    val allowQuickTextTriggerSoundboard: Boolean =
+        UserPrefs.DEFAULT_ALLOW_QUICK_TEXT_TRIGGER_SOUNDBOARD,
     val quickSubtitleInterruptQueue: Boolean = true,
     val quickSubtitleAutoFit: Boolean = true,
     val quickSubtitleAllowLargeFont: Boolean = false,

@@ -1131,6 +1131,7 @@ class RealtimeHostService : Service(), RealtimeRuntimeBridge.AppDelegate, LanCas
                 }
                 SoundboardManager.setPlaybackGainPercent(next.playbackGainPercent)
                 SoundboardManager.setAudioFocusAvoidanceMode(applicationContext, next.audioFocusAvoidanceMode)
+                SoundboardManager.setInterruptOnNewPlayback(next.soundboardInterruptOnNewPlayback)
                 BluetoothMediaTitleBridge.setEnabled(
                     applicationContext,
                     next.bluetoothMediaTitleSubtitle,
@@ -1562,6 +1563,7 @@ class RealtimeHostService : Service(), RealtimeRuntimeBridge.AppDelegate, LanCas
         controller?.setMinVolumePercent(settings.minVolumePercent)
         controller?.setPlaybackGainPercent(settings.playbackGainPercent)
         SoundboardManager.setPlaybackGainPercent(settings.playbackGainPercent)
+        SoundboardManager.setInterruptOnNewPlayback(settings.soundboardInterruptOnNewPlayback)
         controller?.setAudioFocusAvoidanceMode(settings.audioFocusAvoidanceMode)
         SoundboardManager.setAudioFocusAvoidanceMode(applicationContext, settings.audioFocusAvoidanceMode)
         controller?.setPiperNoiseScale(settings.piperNoiseScale)
