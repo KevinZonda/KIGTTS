@@ -15,6 +15,8 @@
   var audioEnabled = false;
   var audioRequested = !remotePage;
   var audioActivationRevision = 0;
+  var audioActivationPending = false;
+  var lastAudioGestureAttempt = 0;
   var nextAudioTime = 0;
   var fileSources = {};
   var currentState = {
@@ -251,6 +253,7 @@
     var revision = ++audioActivationRevision;
     if (window.KigttsLedDisplay) window.KigttsLedDisplay.setAudioEnabled(enabled);
     if (!enabled) {
+      audioActivationPending = false;
       audioEnabled = false;
       Object.keys(fileSources).forEach(stopAudioFile);
       if (audioContext && audioContext.state === "running") audioContext.suspend();
@@ -270,8 +273,10 @@
     var resumeRequest;
     try {
       if (!audioContext || audioContext.state === "closed") audioContext = new AudioCtor();
+      audioActivationPending = true;
       resumeRequest = audioContext.resume();
     } catch (_) {
+      audioActivationPending = false;
       audioEnabled = false;
       audioRequested = false;
       if (window.KigttsLedDisplay) window.KigttsLedDisplay.setAudioEnabled(false);
@@ -280,6 +285,7 @@
     }
     Promise.resolve(resumeRequest).then(function () {
       if (revision !== audioActivationRevision) return;
+      audioActivationPending = false;
       if (audioContext.state !== "running") throw new Error("AudioContext is not running");
       audioEnabled = true;
       nextAudioTime = audioContext.currentTime + 0.08;
@@ -289,6 +295,7 @@
       if (!automatic) showSnackbar("投屏端音频已开启");
     }).catch(function () {
       if (revision !== audioActivationRevision) return;
+      audioActivationPending = false;
       audioEnabled = false;
       sendRaw({ type: "audioReady", enabled: false });
       if (window.KigttsLedDisplay) {
@@ -299,9 +306,32 @@
     });
   }
 
+  function markAudioActivationRequired() {
+    if (remotePage || !audioRequested) return;
+    audioEnabled = false;
+    sendRaw({ type: "audioReady", enabled: false });
+    if (window.KigttsLedDisplay) {
+      window.KigttsLedDisplay.setAudioEnabled(true);
+      window.KigttsLedDisplay.setAudioActivationRequired(true);
+    }
+  }
+
+  function activateRequestedAudioFromGesture(event) {
+    if (remotePage || !audioRequested) return;
+    if (event && event.type === "keydown" && event.repeat) return;
+    if (audioEnabled && audioContext && audioContext.state === "running") return;
+    var now = Date.now();
+    if (audioActivationPending && now - lastAudioGestureAttempt < 180) return;
+    lastAudioGestureAttempt = now;
+    setAudioEnabled(true, true);
+  }
+
   function handlePcm(arrayBuffer) {
     if (!audioEnabled || !audioContext || !arrayBuffer || arrayBuffer.byteLength < 16) return;
-    if (audioContext.state === "suspended") Promise.resolve(audioContext.resume()).catch(function () {});
+    if (audioContext.state !== "running") {
+      markAudioActivationRequired();
+      return;
+    }
     var view = new DataView(arrayBuffer);
     if (view.getUint8(0) !== 75 || view.getUint8(1) !== 73 || view.getUint8(2) !== 71 || view.getUint8(3) !== 65) return;
     var sampleRate = view.getInt32(8, true);
@@ -321,7 +351,10 @@
 
   function playAudioFile(message) {
     if (!audioEnabled || !audioContext) return;
-    if (audioContext.state === "suspended") Promise.resolve(audioContext.resume()).catch(function () {});
+    if (audioContext.state !== "running") {
+      markAudioActivationRequired();
+      return;
+    }
     fetch(message.url).then(function (response) { return response.arrayBuffer(); }).then(function (data) {
       audioContext.decodeAudioData(data, function (buffer) {
         var source = audioContext.createBufferSource();
@@ -378,14 +411,17 @@
   }
 
   document.addEventListener("pointerdown", function (event) {
+    activateRequestedAudioFromGesture(event);
     var button = event.target.closest ? event.target.closest("button") : null;
     if (button) createRipple(button, event.clientX, event.clientY);
   });
   document.addEventListener("keydown", function (event) {
+    activateRequestedAudioFromGesture(event);
     if ((event.key === "Enter" || event.key === " ") && event.target.tagName === "BUTTON" && !event.repeat) {
       createRipple(event.target, null, null);
     }
   });
+  document.addEventListener("touchend", activateRequestedAudioFromGesture, { passive: true });
 
   window.addEventListener("online", function () {
     reconnectDelay = 250;

@@ -844,6 +844,7 @@ class MainViewModel(
         )
         SoundboardManager.setPlaybackGainPercent(settings.playbackGainPercent)
         SoundboardManager.setAudioFocusAvoidanceMode(appContext, settings.audioFocusAvoidanceMode)
+        SoundboardManager.setInterruptOnNewPlayback(settings.soundboardInterruptOnNewPlayback)
         BluetoothMediaTitleBridge.setEnabled(
             appContext,
             settings.bluetoothMediaTitleSubtitle,
@@ -958,6 +959,7 @@ class MainViewModel(
             volumeHotkeyUpDownAction = settings.volumeHotkeyUpDownAction,
             volumeHotkeyDownUpAction = settings.volumeHotkeyDownUpAction,
             ttsDisabled = settings.ttsDisabled,
+            soundboardInterruptOnNewPlayback = settings.soundboardInterruptOnNewPlayback,
             soundboardKeywordTriggerEnabled = settings.soundboardKeywordTriggerEnabled,
             soundboardSuppressTtsOnKeyword = settings.soundboardSuppressTtsOnKeyword,
             allowQuickTextTriggerSoundboard = settings.allowQuickTextTriggerSoundboard,
@@ -2104,6 +2106,16 @@ class MainViewModel(
         saveSoundboardConfig()
     }
 
+    fun reorderSoundboardGroupsByIds(groupIds: List<Long>) {
+        if (groupIds.size != soundboardGroups.size || groupIds.toSet().size != groupIds.size) return
+        val byId = soundboardGroups.associateBy { it.id }
+        if (groupIds.any { it !in byId }) return
+        val reordered = groupIds.mapNotNull(byId::get)
+        if (reordered == soundboardGroups) return
+        soundboardGroups = reordered
+        saveSoundboardConfig()
+    }
+
     fun addSoundboardItem(groupIndex: Int, title: String = "新音效") {
         if (groupIndex !in soundboardGroups.indices) return
         val safeTitle = title.trim().ifEmpty { "新音效" }
@@ -2210,6 +2222,12 @@ class MainViewModel(
     fun stopSoundboardItem(itemId: Long) {
         viewModelScope.launch {
             SoundboardManager.stop(itemId)
+        }
+    }
+
+    fun stopAllSoundboardItems() {
+        viewModelScope.launch {
+            SoundboardManager.stopAll()
         }
     }
 
@@ -3867,7 +3885,7 @@ class MainViewModel(
         persistVadFlags(classicEnabled, sileroEnabled)
     }
 
-    fun setSileroVadThreshold(threshold: Float) {
+    private fun applySileroVadThreshold(threshold: Float): Float {
         val clamped = threshold.coerceIn(
             UserPrefs.SILERO_VAD_MIN_THRESHOLD,
             UserPrefs.SILERO_VAD_MAX_THRESHOLD
@@ -3879,18 +3897,36 @@ class MainViewModel(
         )
         uiState = uiState.copy(sileroVadThreshold = normalized)
         realtimeHost?.setSileroVadThreshold(normalized)
+        return normalized
+    }
+
+    fun previewSileroVadThreshold(threshold: Float) {
+        applySileroVadThreshold(threshold)
+    }
+
+    fun setSileroVadThreshold(threshold: Float) {
+        val normalized = applySileroVadThreshold(threshold)
         viewModelScope.launch {
             UserPrefs.setSileroVadThreshold(appContext, normalized)
         }
     }
 
-    fun setSileroVadPreRollMs(preRollMs: Int) {
+    private fun applySileroVadPreRollMs(preRollMs: Int): Int {
         val normalized = ((preRollMs / 50f).roundToInt() * 50).coerceIn(
             UserPrefs.SILERO_VAD_MIN_PRE_ROLL_MS,
             UserPrefs.SILERO_VAD_MAX_PRE_ROLL_MS
         )
         uiState = uiState.copy(sileroVadPreRollMs = normalized)
         realtimeHost?.setSileroVadPreRollMs(normalized)
+        return normalized
+    }
+
+    fun previewSileroVadPreRollMs(preRollMs: Int) {
+        applySileroVadPreRollMs(preRollMs)
+    }
+
+    fun setSileroVadPreRollMs(preRollMs: Int) {
+        val normalized = applySileroVadPreRollMs(preRollMs)
         viewModelScope.launch {
             UserPrefs.setSileroVadPreRollMs(appContext, normalized)
         }
@@ -3965,6 +4001,7 @@ class MainViewModel(
         val defaults = UserPrefs.AppSettings()
         uiState = uiState.copy(
             ttsDisabled = defaults.ttsDisabled,
+            soundboardInterruptOnNewPlayback = defaults.soundboardInterruptOnNewPlayback,
             playbackGainPercent = defaults.playbackGainPercent,
             audioFocusAvoidanceMode = defaults.audioFocusAvoidanceMode,
             piperNoiseScale = defaults.piperNoiseScale,
@@ -3974,6 +4011,7 @@ class MainViewModel(
         )
         SoundboardManager.setPlaybackGainPercent(defaults.playbackGainPercent)
         SoundboardManager.setAudioFocusAvoidanceMode(appContext, defaults.audioFocusAvoidanceMode)
+        SoundboardManager.setInterruptOnNewPlayback(defaults.soundboardInterruptOnNewPlayback)
         realtimeHost?.apply {
             setTtsDisabled(defaults.ttsDisabled)
             setPlaybackGainPercent(defaults.playbackGainPercent)
@@ -4051,10 +4089,25 @@ class MainViewModel(
     fun updateListeningModeSettings(
         transform: (ListeningModeSettings) -> ListeningModeSettings
     ) {
+        applyListeningModeSettings(transform, persist = true)
+    }
+
+    fun previewListeningModeSettings(
+        transform: (ListeningModeSettings) -> ListeningModeSettings
+    ) {
+        applyListeningModeSettings(transform, persist = false)
+    }
+
+    private fun applyListeningModeSettings(
+        transform: (ListeningModeSettings) -> ListeningModeSettings,
+        persist: Boolean
+    ) {
         val next = transform(uiState.listeningModeSettings).normalized()
-        if (next == uiState.listeningModeSettings) return
-        uiState = uiState.copy(listeningModeSettings = next)
-        realtimeHost?.updateListeningModeSettings(next)
+        if (next != uiState.listeningModeSettings) {
+            uiState = uiState.copy(listeningModeSettings = next)
+            realtimeHost?.updateListeningModeSettings(next)
+        }
+        if (!persist) return
         listeningModeSettingsSaveJob?.cancel()
         listeningModeSettingsSaveJob = viewModelScope.launch {
             UserPrefs.setListeningModeSettings(appContext, next)
@@ -4257,6 +4310,14 @@ class MainViewModel(
         )
         viewModelScope.launch {
             UserPrefs.setTtsDisabled(appContext, enabled)
+        }
+    }
+
+    fun setSoundboardInterruptOnNewPlayback(enabled: Boolean) {
+        uiState = uiState.copy(soundboardInterruptOnNewPlayback = enabled)
+        SoundboardManager.setInterruptOnNewPlayback(enabled)
+        viewModelScope.launch {
+            UserPrefs.setSoundboardInterruptOnNewPlayback(appContext, enabled)
         }
     }
 

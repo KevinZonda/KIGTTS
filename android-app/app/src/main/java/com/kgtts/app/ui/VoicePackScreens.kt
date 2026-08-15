@@ -568,7 +568,14 @@ fun VoicePackScreen(viewModel: MainViewModel, state: UiState) {
                     Md2IconButton(
                         icon = if (detailEditing) "check" else "edit",
                         contentDescription = if (detailEditing) "完成编辑" else "编辑",
-                        onClick = { detailEditing = !detailEditing }
+                        onClick = {
+                            if (detailEditing) {
+                                viewModel.updateVoiceMeta(detailPack, detailName, detailRemark)
+                                detailEditing = false
+                            } else {
+                                detailEditing = true
+                            }
+                        }
                     )
                 }
             },

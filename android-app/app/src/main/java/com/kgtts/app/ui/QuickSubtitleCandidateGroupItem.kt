@@ -91,8 +91,8 @@ internal fun QuickSubtitleCandidateGroupItem(
                 .scale(scale),
             shape = shape,
             backgroundColor = when {
-                selected -> selectedColor
                 dragged -> cardColor
+                selected -> selectedColor
                 else -> Color.Transparent
             },
             elevation = elevation

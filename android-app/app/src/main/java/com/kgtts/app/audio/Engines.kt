@@ -3113,6 +3113,7 @@ class RealtimeController(
     }
 
     private fun enqueueTts(text: String): Long {
+        SoundboardManager.interruptForTtsPlayback()
         val id = nextUtteranceId++
         synchronized(queueLock) {
             ttsQueue.addLast(QueuedTts(id, text))

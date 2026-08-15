@@ -272,6 +272,7 @@ import com.lhtstudio.kigtts.app.service.VolumeHotkeyAccessibilityGuideService
 import com.lhtstudio.kigtts.app.service.VolumeHotkeyAccessibilityService
 import com.lhtstudio.kigtts.app.service.VolumeHotkeyService
 import com.lhtstudio.kigtts.app.util.AlipayScannerSupport
+import com.lhtstudio.kigtts.app.util.QrAppLinkClassifier
 import com.lhtstudio.kigtts.app.util.AppLogger
 import com.lhtstudio.kigtts.app.util.BluetoothMediaTitleBridge
 import com.lhtstudio.kigtts.app.util.ExternalShortcutCatalog
@@ -440,23 +441,7 @@ internal fun normalizeQrTextToWebUrl(raw: String): String? {
 }
 
 internal fun isWeChatQrContent(raw: String): Boolean {
-    val text = raw.trim()
-    if (text.isEmpty()) return false
-    val parsed = runCatching { Uri.parse(text) }.getOrNull()
-    val scheme = parsed?.scheme?.lowercase(Locale.US).orEmpty()
-    val host = parsed?.host?.lowercase(Locale.US).orEmpty()
-    if (scheme == "weixin" || scheme == "wxp" || scheme == "wxpay") return true
-    if (host == "weixin.qq.com" || host.endsWith(".weixin.qq.com")) return true
-    if (host == "u.wechat.com" || host.endsWith(".u.wechat.com")) return true
-    if (host == "wx.tenpay.com" || host.endsWith(".wx.tenpay.com")) return true
-    if (host == "payapp.weixin.qq.com" || host.endsWith(".payapp.weixin.qq.com")) return true
-    val lower = text.lowercase(Locale.US)
-    return lower.startsWith("https://u.wechat.com/") ||
-        lower.startsWith("http://u.wechat.com/") ||
-        lower.startsWith("https://weixin.qq.com/") ||
-        lower.startsWith("http://weixin.qq.com/") ||
-        lower.startsWith("https://wx.tenpay.com/") ||
-        lower.startsWith("http://wx.tenpay.com/")
+    return QrAppLinkClassifier.isWeChat(raw)
 }
 
 internal fun isPackageInstalled(context: Context, packageName: String): Boolean {

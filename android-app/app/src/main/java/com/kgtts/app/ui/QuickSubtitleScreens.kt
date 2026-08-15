@@ -1477,6 +1477,57 @@ private fun QuickSubtitleActionButtons(
 }
 
 @Composable
+private fun SoundboardStopFloatingCard(
+    visible: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    AnimatedVisibility(
+        visible = visible,
+        modifier = modifier,
+        enter = fadeIn(animationSpec = tween(160)) +
+            scaleIn(
+                initialScale = 0.9f,
+                transformOrigin = TransformOrigin(1f, 1f),
+                animationSpec = tween(180, easing = FastOutSlowInEasing)
+            ),
+        exit = fadeOut(animationSpec = tween(140)) +
+            scaleOut(
+                targetScale = 0.92f,
+                transformOrigin = TransformOrigin(1f, 1f),
+                animationSpec = tween(160, easing = FastOutSlowInEasing)
+            )
+    ) {
+        Card(
+            modifier = Modifier
+                .heightIn(min = 40.dp)
+                .clickable(onClick = onClick),
+            shape = RoundedCornerShape(UiTokens.Radius),
+            backgroundColor = md2ElevatedCardContainerColor(UiTokens.MenuElevation),
+            elevation = UiTokens.MenuElevation
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                MsIcon(
+                    "stop_circle",
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    text = "停止当前音效",
+                    color = MaterialTheme.colorScheme.onSurface,
+                    style = MaterialTheme.typography.button,
+                    maxLines = 1
+                )
+            }
+        }
+    }
+}
+
+@Composable
 private fun QuickSubtitleDisplayContent(
     preview: Boolean,
     displayText: AnnotatedString,
@@ -1656,6 +1707,11 @@ fun QuickSubtitleScreen(
             "more_horiz"
         }
     val performKeyHaptic = rememberKigttsKeyHaptic()
+    val soundboardPlaying = viewModel.soundboardPlaybackStates.values.any { it.playing }
+    val stopCurrentSoundboardAudio = {
+        performKeyHaptic()
+        viewModel.stopAllSoundboardItems()
+    }
     val inputFocusRequester = remember { FocusRequester() }
     val inputFocusScope = rememberCoroutineScope()
     val copyTextToClipboard: (String) -> Unit = { value ->
@@ -2154,6 +2210,13 @@ fun QuickSubtitleScreen(
                                             clearedPlaceholderText =
                                                 state.quickSubtitleClearedPlaceholderText,
                                             modifier = Modifier.fillMaxSize()
+                                        )
+                                        SoundboardStopFloatingCard(
+                                            visible = soundboardPlaying,
+                                            onClick = stopCurrentSoundboardAudio,
+                                            modifier = Modifier
+                                                .align(Alignment.BottomEnd)
+                                                .padding(8.dp)
                                         )
                                     }
                                 }
@@ -2791,6 +2854,13 @@ fun QuickSubtitleScreen(
                                         clearedPlaceholderText =
                                             state.quickSubtitleClearedPlaceholderText,
                                         modifier = Modifier.fillMaxSize()
+                                    )
+                                    SoundboardStopFloatingCard(
+                                        visible = soundboardPlaying,
+                                        onClick = stopCurrentSoundboardAudio,
+                                        modifier = Modifier
+                                            .align(Alignment.BottomEnd)
+                                            .padding(8.dp)
                                     )
                                 }
                             }

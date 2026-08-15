@@ -208,7 +208,8 @@ internal fun QuickSubtitleCandidateMoveDialog(
 internal fun QuickSubtitleCandidateGroupEditDialog(
     target: QuickSubtitleCandidateGroupEditTarget,
     onDismissRequest: () -> Unit,
-    onSave: (String, String) -> Unit
+    onSave: (String, String) -> Unit,
+    iconChoices: List<String> = QuickSubtitleGroupIconChoices
 ) {
     var title by remember(target) { mutableStateOf(target.title) }
     var icon by remember(target) { mutableStateOf(target.icon) }
@@ -253,7 +254,7 @@ internal fun QuickSubtitleCandidateGroupEditDialog(
                     )
                     GroupIconPickerRow(
                         selectedIcon = icon,
-                        iconChoices = QuickSubtitleGroupIconChoices,
+                        iconChoices = iconChoices,
                         onIconSelected = { icon = it }
                     )
                     Spacer(Modifier.height(16.dp))
