@@ -2173,24 +2173,24 @@ fun QuickSubtitleScreen(
                                     .padding(12.dp),
                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                QuickSubtitleGestureSurface(
-                                    settings = state.quickTextGestureSettings,
-                                    onClick = openCurrentSubtitlePreview,
-                                    onLongClick = copyCurrentPreviewText,
-                                    onGesture = triggerQuickTextGesture,
-                                    cursorSwipeEnabled = inlineInputPreviewActive,
-                                    onCursorDelta = moveInputPreviewCursor,
-                                    fontZoomEnabled = true,
-                                    fontSizeSp = subtitleSize,
-                                    minFontSizeSp = 28f,
-                                    maxFontSizeSp = subtitleFontSizeMax,
-                                    onFontSizeChange = viewModel::updateQuickSubtitleFontSize,
-                                    onFontSizeChangeFinished = viewModel::commitQuickSubtitleFontSize,
+                                Box(
                                     modifier = Modifier
                                         .weight(1f)
                                         .fillMaxHeight()
                                 ) {
-                                    Box(
+                                    QuickSubtitleGestureSurface(
+                                        settings = state.quickTextGestureSettings,
+                                        onClick = openCurrentSubtitlePreview,
+                                        onLongClick = copyCurrentPreviewText,
+                                        onGesture = triggerQuickTextGesture,
+                                        cursorSwipeEnabled = inlineInputPreviewActive,
+                                        onCursorDelta = moveInputPreviewCursor,
+                                        fontZoomEnabled = true,
+                                        fontSizeSp = subtitleSize,
+                                        minFontSizeSp = 28f,
+                                        maxFontSizeSp = subtitleFontSizeMax,
+                                        onFontSizeChange = viewModel::updateQuickSubtitleFontSize,
+                                        onFontSizeChangeFinished = viewModel::commitQuickSubtitleFontSize,
                                         modifier = Modifier.fillMaxSize()
                                     ) {
                                         QuickSubtitleDisplayContent(
@@ -2211,14 +2211,14 @@ fun QuickSubtitleScreen(
                                                 state.quickSubtitleClearedPlaceholderText,
                                             modifier = Modifier.fillMaxSize()
                                         )
-                                        SoundboardStopFloatingCard(
-                                            visible = soundboardPlaying,
-                                            onClick = stopCurrentSoundboardAudio,
-                                            modifier = Modifier
-                                                .align(Alignment.BottomEnd)
-                                                .padding(8.dp)
-                                        )
                                     }
+                                    SoundboardStopFloatingCard(
+                                        visible = soundboardPlaying,
+                                        onClick = stopCurrentSoundboardAudio,
+                                        modifier = Modifier
+                                            .align(Alignment.BottomEnd)
+                                            .padding(8.dp)
+                                    )
                                 }
                                 AnimatedVisibility(
                                     visible = subtitleControlsVisible,
@@ -2817,24 +2817,24 @@ fun QuickSubtitleScreen(
                                 .fillMaxSize()
                                 .padding(12.dp)
                         ) {
-                            QuickSubtitleGestureSurface(
-                                settings = state.quickTextGestureSettings,
-                                onClick = openCurrentSubtitlePreview,
-                                onLongClick = copyCurrentPreviewText,
-                                onGesture = triggerQuickTextGesture,
-                                cursorSwipeEnabled = inlineInputPreviewActive,
-                                onCursorDelta = moveInputPreviewCursor,
-                                fontZoomEnabled = true,
-                                fontSizeSp = subtitleSize,
-                                minFontSizeSp = 28f,
-                                maxFontSizeSp = subtitleFontSizeMax,
-                                onFontSizeChange = viewModel::updateQuickSubtitleFontSize,
-                                onFontSizeChangeFinished = viewModel::commitQuickSubtitleFontSize,
+                            Box(
                                 modifier = Modifier
                                     .weight(1f)
                                     .fillMaxWidth()
                             ) {
-                                Box(
+                                QuickSubtitleGestureSurface(
+                                    settings = state.quickTextGestureSettings,
+                                    onClick = openCurrentSubtitlePreview,
+                                    onLongClick = copyCurrentPreviewText,
+                                    onGesture = triggerQuickTextGesture,
+                                    cursorSwipeEnabled = inlineInputPreviewActive,
+                                    onCursorDelta = moveInputPreviewCursor,
+                                    fontZoomEnabled = true,
+                                    fontSizeSp = subtitleSize,
+                                    minFontSizeSp = 28f,
+                                    maxFontSizeSp = subtitleFontSizeMax,
+                                    onFontSizeChange = viewModel::updateQuickSubtitleFontSize,
+                                    onFontSizeChangeFinished = viewModel::commitQuickSubtitleFontSize,
                                     modifier = Modifier.fillMaxSize()
                                 ) {
                                     QuickSubtitleDisplayContent(
@@ -2855,14 +2855,14 @@ fun QuickSubtitleScreen(
                                             state.quickSubtitleClearedPlaceholderText,
                                         modifier = Modifier.fillMaxSize()
                                     )
-                                    SoundboardStopFloatingCard(
-                                        visible = soundboardPlaying,
-                                        onClick = stopCurrentSoundboardAudio,
-                                        modifier = Modifier
-                                            .align(Alignment.BottomEnd)
-                                            .padding(8.dp)
-                                    )
                                 }
+                                SoundboardStopFloatingCard(
+                                    visible = soundboardPlaying,
+                                    onClick = stopCurrentSoundboardAudio,
+                                    modifier = Modifier
+                                        .align(Alignment.BottomEnd)
+                                        .padding(8.dp)
+                                )
                             }
                             AnimatedVisibility(
                                 visible = subtitleControlsVisible,

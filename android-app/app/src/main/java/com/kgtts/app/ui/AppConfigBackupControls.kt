@@ -84,7 +84,7 @@ internal fun AppConfigBackupSettingsCard(
             onDismissRequest = { pendingRestoreUri = null },
             title = { Text("恢复应用数据") },
             text = {
-                Text("恢复后，应用设置会切换为备份时的状态。未包含在备份中的快捷文本、音效板和其他本机资源不会删除，部分功能可能需要重新打开应用后生效。")
+                Text("恢复后，应用会回到备份时的设置。备份中未包含的快捷文本、音效板和其它本地内容会保留。部分功能需要重新打开应用后生效。")
             },
             confirmButton = {
                 Md2TextButton(

@@ -15,6 +15,8 @@ import com.lhtstudio.kigtts.app.audio.AudioDenoiserMode
 import com.lhtstudio.kigtts.app.audio.AudioRoutePreference
 import com.lhtstudio.kigtts.app.audio.SpeechEnhancementMode
 import com.lhtstudio.kigtts.app.audio.SpeakerVerificationTolerance
+import com.lhtstudio.kigtts.app.util.KeyboardHotkeyEntry
+import com.lhtstudio.kigtts.app.util.KeyboardHotkeys
 import com.lhtstudio.kigtts.app.util.VolumeHotkeyActionSpec
 import com.lhtstudio.kigtts.app.util.VolumeHotkeyActions
 import com.lhtstudio.kigtts.app.util.VolumeHotkeySequence
@@ -236,6 +238,8 @@ object UserPrefs {
         booleanPreferencesKey("volume_hotkey_accessibility_enabled")
     private val KEY_VOLUME_HOTKEY_ENABLE_WARNING_DISMISSED =
         booleanPreferencesKey("volume_hotkey_enable_warning_dismissed")
+    private val KEY_KEYBOARD_HOTKEYS_ENABLED = booleanPreferencesKey("keyboard_hotkeys_enabled")
+    private val KEY_KEYBOARD_HOTKEYS = stringPreferencesKey("keyboard_hotkeys")
     private val KEY_FLOATING_OVERLAY_SHORTCUTS = stringPreferencesKey("floating_overlay_shortcuts")
     private val KEY_FLOATING_OVERLAY_DEFAULT_SHORTCUTS_SEEDED =
         booleanPreferencesKey("floating_overlay_default_shortcuts_seeded")
@@ -392,6 +396,8 @@ object UserPrefs {
             VolumeHotkeyActions.defaultFor(VolumeHotkeySequence.UpDown),
         val volumeHotkeyDownUpAction: VolumeHotkeyActionSpec =
             VolumeHotkeyActions.defaultFor(VolumeHotkeySequence.DownUp),
+        val keyboardHotkeysEnabled: Boolean = true,
+        val keyboardHotkeys: List<KeyboardHotkeyEntry> = emptyList(),
         val ttsDisabled: Boolean = false,
         val soundboardInterruptOnNewPlayback: Boolean = true,
         val soundboardKeywordTriggerEnabled: Boolean = false,
@@ -841,6 +847,8 @@ object UserPrefs {
                 this[KEY_VOLUME_HOTKEY_DOWN_UP_ACTION],
                 fallback = VolumeHotkeyActions.defaultFor(VolumeHotkeySequence.DownUp)
             ),
+            keyboardHotkeysEnabled = this[KEY_KEYBOARD_HOTKEYS_ENABLED] ?: true,
+            keyboardHotkeys = KeyboardHotkeys.decode(this[KEY_KEYBOARD_HOTKEYS]),
             ttsDisabled = this[KEY_TTS_DISABLED] ?: false,
             soundboardInterruptOnNewPlayback =
                 this[KEY_SOUNDBOARD_INTERRUPT_ON_NEW_PLAYBACK] ?: true,
@@ -1440,6 +1448,18 @@ object UserPrefs {
                 VOLUME_HOTKEY_MIN_WINDOW_MS,
                 VOLUME_HOTKEY_MAX_WINDOW_MS
             )
+        }
+    }
+
+    suspend fun setKeyboardHotkeys(context: Context, entries: List<KeyboardHotkeyEntry>) {
+        context.dataStore.edit { prefs ->
+            prefs[KEY_KEYBOARD_HOTKEYS] = KeyboardHotkeys.encode(entries)
+        }
+    }
+
+    suspend fun setKeyboardHotkeysMasterEnabled(context: Context, enabled: Boolean) {
+        context.dataStore.edit { prefs ->
+            prefs[KEY_KEYBOARD_HOTKEYS_ENABLED] = enabled
         }
     }
 

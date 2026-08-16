@@ -24,6 +24,17 @@ class OverlayListeningCardLayoutPolicyTest {
     }
 
     @Test
+    fun `landscape listening width can keep design ratio before group scaling`() {
+        val layout = resolve(
+            vertical = false,
+            mainOuterWidthPx = 650,
+            constrainLandscapeListeningWidthToAvailable = false
+        )
+
+        assertEquals(220, layout.listeningWidthPx)
+    }
+
+    @Test
     fun `vertical layout reserves host clock and unlock areas`() {
         val layout = resolve(
             vertical = true,
@@ -36,17 +47,37 @@ class OverlayListeningCardLayoutPolicyTest {
         assertEquals(78, 800 - (layout.mainTopPx + 10 + 460))
     }
 
+    @Test
+    fun `phone lock host keeps normal listening height and protects unlock area`() {
+        val layout = resolve(
+            vertical = true,
+            verticalTopInsetPx = 40,
+            verticalBottomInsetPx = 96,
+            requestedPortraitListeningHeightPx = 176,
+            constrainPortraitListeningHeightToAvailable = true
+        )
+
+        assertEquals(176, layout.listeningHeightPx)
+        assertEquals(40, layout.listeningTopPx)
+        assertEquals(228, layout.mainTopPx + 10)
+        assertEquals(112, 800 - (layout.mainTopPx + 10 + 460))
+    }
+
     private fun resolve(
         vertical: Boolean,
         verticalTopInsetPx: Int = 10,
-        verticalBottomInsetPx: Int = 10
+        verticalBottomInsetPx: Int = 10,
+        requestedPortraitListeningHeightPx: Int = 160,
+        mainOuterWidthPx: Int = 360,
+        constrainPortraitListeningHeightToAvailable: Boolean = true,
+        constrainLandscapeListeningWidthToAvailable: Boolean = true
     ): OverlayListeningCardLayout = OverlayListeningCardLayoutPolicy.resolve(
         vertical = vertical,
         safeLeftPx = 0,
         safeTopPx = 0,
         safeRightPx = 800,
         safeBottomPx = 800,
-        mainOuterWidthPx = 360,
+        mainOuterWidthPx = mainOuterWidthPx,
         mainOuterHeightPx = 480,
         mainPaddingLeftPx = 10,
         mainPaddingTopPx = 10,
@@ -54,7 +85,7 @@ class OverlayListeningCardLayoutPolicyTest {
         mainPaddingBottomPx = 10,
         preferredMainLeftPx = 100,
         preferredMainTopPx = 200,
-        requestedPortraitListeningHeightPx = 160,
+        requestedPortraitListeningHeightPx = requestedPortraitListeningHeightPx,
         requestedLandscapeListeningWidthPx = 220,
         minimumListeningExtentPx = 96,
         gapPx = 12,
@@ -62,6 +93,8 @@ class OverlayListeningCardLayoutPolicyTest {
         verticalTopInsetPx = verticalTopInsetPx,
         verticalBottomInsetPx = verticalBottomInsetPx,
         landscapeCenterXPx = 400,
-        listeningOnRight = false
+        listeningOnRight = false,
+        constrainPortraitListeningHeightToAvailable = constrainPortraitListeningHeightToAvailable,
+        constrainLandscapeListeningWidthToAvailable = constrainLandscapeListeningWidthToAvailable
     )
 }

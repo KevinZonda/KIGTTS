@@ -378,6 +378,7 @@ fun AppScaffold(viewModel: MainViewModel) {
     var quickSubtitleEditorBatchTopBarActions by remember { mutableStateOf<EditorBatchTopBarActions?>(null) }
     var soundboardEditorBatchTopBarActions by remember { mutableStateOf<EditorBatchTopBarActions?>(null) }
     var drawingPaletteTopBarActions by remember { mutableStateOf<DrawingPaletteTopBarActions?>(null) }
+    var keyboardHotkeyTopBarActions by remember { mutableStateOf<KeyboardHotkeyTopBarActions?>(null) }
     var quickSubtitlePresetExportDialog by remember { mutableStateOf(false) }
     var soundboardPresetExportDialog by remember { mutableStateOf(false) }
     var quickCardPackageExportDialog by remember { mutableStateOf(false) }
@@ -733,6 +734,11 @@ fun AppScaffold(viewModel: MainViewModel) {
             soundboardNavController.popBackStack(SoundboardRoutes.Main, inclusive = false)
         }
     }
+    LaunchedEffect(basePage, overlaySettingsPage) {
+        if (basePage != pageOverlay || overlaySettingsPage != OverlaySettingsPage.KeyboardHotkeys) {
+            keyboardHotkeyTopBarActions = null
+        }
+    }
     LaunchedEffect(basePage, quickCardRoute) {
         if (basePage != pageQuickCard && quickCardRoute != QuickCardRoutes.Main) {
             quickCardNavController.popBackStack(QuickCardRoutes.Main, inclusive = false)
@@ -990,6 +996,11 @@ fun AppScaffold(viewModel: MainViewModel) {
                 val handledByEditor = drawingPaletteTopBarActions?.onBackRequest != null
                 drawingPaletteTopBarActions?.onBackRequest?.invoke()
                 if (!handledByEditor) drawingPaletteEditorOpen = false
+            }
+            overlaySubPageOpen &&
+                overlaySettingsPage == OverlaySettingsPage.KeyboardHotkeys &&
+                keyboardHotkeyTopBarActions?.selectionMode == true -> {
+                keyboardHotkeyTopBarActions?.onClose?.invoke()
             }
             overlaySubPageOpen -> {
                 overlaySettingsPage = when (overlaySettingsPage) {
@@ -1606,8 +1617,9 @@ fun AppScaffold(viewModel: MainViewModel) {
     val topBar: @Composable ((() -> Unit)) -> Unit = { onNavClick ->
         val currentTitle = if (overlaySubPageOpen) {
             when (overlaySettingsPage) {
-                OverlaySettingsPage.QuickTextGestures -> "手势触发快捷文本"
-                OverlaySettingsPage.LockScreen -> "锁屏设置"
+                OverlaySettingsPage.QuickTextGestures -> "快捷文本手势"
+                OverlaySettingsPage.KeyboardHotkeys -> "键盘热键"
+                OverlaySettingsPage.LockScreen -> "自定义锁屏"
                 OverlaySettingsPage.ClockFont -> "选择时钟字体"
                 OverlaySettingsPage.Main -> "悬浮窗与热键"
             }
@@ -1807,6 +1819,11 @@ fun AppScaffold(viewModel: MainViewModel) {
                             (basePage == pageOverlay &&
                                 overlaySettingsPage == OverlaySettingsPage.ClockFont)
                     val showSettingsLogActions = basePage == pageSettings && settingsLogOpen
+                    val keyboardHotkeyActions = keyboardHotkeyTopBarActions
+                    val showKeyboardHotkeyActions =
+                        basePage == pageOverlay &&
+                            overlaySettingsPage == OverlaySettingsPage.KeyboardHotkeys &&
+                            keyboardHotkeyActions != null
                     val settingsActions = logTopBarActions
                     val fontActions = fontTopBarActions
 
@@ -1880,6 +1897,11 @@ fun AppScaffold(viewModel: MainViewModel) {
                         animationSpec = tween(130, easing = FastOutSlowInEasing),
                         label = "topbar_settings_font_actions_alpha"
                     )
+                    val keyboardHotkeyAlpha by animateFloatAsState(
+                        targetValue = if (showKeyboardHotkeyActions) 1f else 0f,
+                        animationSpec = tween(130, easing = FastOutSlowInEasing),
+                        label = "topbar_keyboard_hotkey_actions_alpha"
+                    )
                     val actionsWidthTarget = when {
                         showSettingsLogActions -> 144.dp
                         showSettingsFontActions -> 96.dp
@@ -1893,6 +1915,8 @@ fun AppScaffold(viewModel: MainViewModel) {
                         showDrawingActions -> 144.dp
                         showDrawingPaletteActions -> 96.dp
                         showQuickSubtitleActions -> 48.dp
+                        showKeyboardHotkeyActions ->
+                            if (keyboardHotkeyActions?.selectionMode == true) 96.dp else 48.dp
                         showSoundboardActions ||
                             showVoicePackActions ||
                             showSettingsEntryActions -> 48.dp
@@ -2380,6 +2404,39 @@ fun AppScaffold(viewModel: MainViewModel) {
                             }
                         }
 
+                        key("topbar_keyboard_hotkey_actions_layer") {
+                            Row(
+                                modifier = Modifier
+                                    .align(Alignment.CenterEnd)
+                                    .graphicsLayer { alpha = keyboardHotkeyAlpha }
+                                    .zIndex(if (showKeyboardHotkeyActions) 2f else 0f),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.End
+                            ) {
+                                if (keyboardHotkeyActions?.selectionMode == true) {
+                                    KigttsIconButton(
+                                        onClick = keyboardHotkeyActions.onDelete,
+                                        enabled = showKeyboardHotkeyActions && keyboardHotkeyActions.canDelete
+                                    ) {
+                                        MsIcon("delete", contentDescription = "删除所选键盘热键")
+                                    }
+                                    KigttsIconButton(
+                                        onClick = keyboardHotkeyActions.onClose,
+                                        enabled = showKeyboardHotkeyActions
+                                    ) {
+                                        MsIcon("close", contentDescription = "退出选择")
+                                    }
+                                } else {
+                                    KigttsIconButton(
+                                        onClick = { keyboardHotkeyActions?.onAdd?.invoke() },
+                                        enabled = showKeyboardHotkeyActions
+                                    ) {
+                                        MsIcon("add", contentDescription = "添加键盘热键")
+                                    }
+                                }
+                            }
+                        }
+
                         key("topbar_settings_log_actions_layer") {
                             Row(
                                 modifier = Modifier
@@ -2487,6 +2544,12 @@ fun AppScaffold(viewModel: MainViewModel) {
                         when (overlayPage) {
                             OverlaySettingsPage.QuickTextGestures ->
                                 QuickTextGestureSettingsScreen(viewModel = viewModel, state = state)
+                            OverlaySettingsPage.KeyboardHotkeys ->
+                                KeyboardHotkeySettingsScreen(
+                                    viewModel = viewModel,
+                                    state = state,
+                                    onTopBarActionsChange = { keyboardHotkeyTopBarActions = it }
+                                )
                             OverlaySettingsPage.LockScreen ->
                                 LockScreenSettingsScreen(
                                     viewModel = viewModel,
@@ -2521,6 +2584,9 @@ fun AppScaffold(viewModel: MainViewModel) {
                                 },
                                 onOpenQuickTextGestureSettings = {
                                     overlaySettingsPage = OverlaySettingsPage.QuickTextGestures
+                                },
+                                onOpenKeyboardHotkeySettings = {
+                                    overlaySettingsPage = OverlaySettingsPage.KeyboardHotkeys
                                 },
                                 onOpenLockScreenSettings = {
                                     overlaySettingsPage = OverlaySettingsPage.LockScreen

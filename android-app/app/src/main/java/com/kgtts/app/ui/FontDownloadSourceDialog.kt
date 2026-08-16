@@ -77,7 +77,7 @@ internal fun FontDownloadSourceDialog(
             )
             if (!valuesValid) {
                 Text(
-                    "下载源需要是有效的 HTTP 或 HTTPS 仓库根地址，且不能包含查询参数。",
+                    "请输入以 http:// 或 https:// 开头的仓库地址，不要附带“?”后的额外内容。",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colors.error
                 )

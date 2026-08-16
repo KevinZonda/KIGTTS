@@ -68,9 +68,9 @@ internal fun QuickTextGestureEntryCard(
                     tint = MaterialTheme.colorScheme.accentText
                 )
                 Column(modifier = Modifier.weight(1f)) {
-                    Text("手势触发快捷文本", style = MaterialTheme.typography.bodyLarge)
+                    Text("快捷文本手势", style = MaterialTheme.typography.bodyLarge)
                     Text(
-                        text = if (activeCount == 0) "尚未启用手势" else "已启用 $activeCount 个手势",
+                        text = if (activeCount == 0) "尚未设置" else "已启用 $activeCount 个手势",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -83,14 +83,14 @@ internal fun QuickTextGestureEntryCard(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                Text("启用手势触发", modifier = Modifier.weight(1f))
+                Text("使用快捷文本手势", modifier = Modifier.weight(1f))
                 Md2Switch(
                     checked = settings.enabled,
                     onCheckedChange = onMasterEnabledChange
                 )
             }
             Text(
-                "在便捷字幕的大字幕区域一笔画出已启用的手势，即可上屏对应快捷文本。",
+                "在大字幕区域画出已设置的手势，即可快速发送对应内容。",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -120,15 +120,15 @@ internal fun QuickTextGestureSettingsScreen(
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             item(key = "gesture-master") {
-                Md2SettingsCard(title = "手势触发") {
+                Md2SettingsCard(title = "手势设置") {
                     Md2SettingSwitchRow(
-                        title = "启用手势触发快捷文本",
+                        title = "启用快捷文本手势",
                         checked = settings.enabled,
                         onCheckedChange = viewModel::setQuickTextGestureMasterEnabled,
-                        supportingText = "开启后，大字幕区域只识别完整的一笔画手势；普通点按预览和长按复制仍可使用。"
+                        supportingText = "在大字幕区域画出手势，即可发送对应的快捷文本。点按预览和长按复制不受影响。"
                     )
                     Text(
-                        "为减少误触，手势必须覆盖足够宽高并包含明显折线；抬手后才会识别和触发。",
+                        "每个手势均需一笔完成；画得太小可能无法识别。",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -196,7 +196,7 @@ private fun QuickTextGestureListItem(
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                 Text(template.title, style = MaterialTheme.typography.bodyLarge)
                 Text(
-                    text = binding.text.ifBlank { "点按设置触发文本" },
+                    text = binding.text.ifBlank { "点按设置内容" },
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                     style = MaterialTheme.typography.bodySmall,
@@ -220,13 +220,13 @@ private fun QuickTextGestureEditDialog(
     var validationMessage by remember { mutableStateOf<String?>(null) }
     Md2ScrollableDialog(
         onDismissRequest = onDismiss,
-        title = { Text("编辑${template.title}手势") },
+        title = { Text("设置${template.title}手势") },
         dismissButton = { Md2TextButton(onClick = onDismiss) { Text("取消") } },
         confirmButton = {
             Md2TextButton(
                 onClick = {
                     if (enabled && text.isBlank()) {
-                        validationMessage = "启用前需要填写触发文本"
+                        validationMessage = "请先填写要发送的内容"
                     } else {
                         onConfirm(enabled, text)
                     }
@@ -244,7 +244,7 @@ private fun QuickTextGestureEditDialog(
         )
         Text(template.description, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Md2SettingSwitchRow(
-            title = "启用这个手势",
+            title = "使用这个手势",
             checked = enabled,
             onCheckedChange = { enabled = it }
         )
@@ -254,7 +254,7 @@ private fun QuickTextGestureEditDialog(
                 text = it.take(QuickTextGestureSettings.MAX_TEXT_LENGTH)
                 validationMessage = null
             },
-            label = "触发文本",
+            label = "发送内容",
             singleLine = false,
             maxLines = 5,
             topPadding = 0.dp,

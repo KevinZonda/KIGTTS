@@ -9,6 +9,7 @@ import android.os.Looper
 import android.view.WindowManager
 import com.lhtstudio.kigtts.app.util.AppLogger
 import kotlinx.coroutines.CompletableDeferred
+import kotlin.math.roundToInt
 
 /** A complete second overlay instance attached to the transparent lock-screen Activity. */
 internal class LockScreenFloatingOverlayService : FloatingOverlayService() {
@@ -135,29 +136,29 @@ internal class LockScreenFloatingOverlayService : FloatingOverlayService() {
 
     override fun overlayContentWidthPx(phoneMaxDp: Int, tabletMaxDp: Int): Int {
         val metrics = resources.displayMetrics
+        val bounds = displayBounds()
         val mode = LockScreenLayoutPolicy.mode(
-            screenWidthPx = metrics.widthPixels,
-            screenHeightPx = metrics.heightPixels,
+            screenWidthPx = bounds.width(),
+            screenHeightPx = bounds.height(),
             density = metrics.density
         )
-        return LockScreenLayoutPolicy.overlayWidthPx(
+        return LockScreenLayoutPolicy.overlayDesignWidthPx(
             mode = mode,
-            screenWidthPx = metrics.widthPixels,
-            density = metrics.density,
-            sideMarginPx = (16f * metrics.density).toInt()
+            density = metrics.density
         )
     }
 
     override fun overlayContentLeftPx(contentWidth: Int): Int {
         val metrics = resources.displayMetrics
+        val bounds = displayBounds()
         val mode = LockScreenLayoutPolicy.mode(
-            screenWidthPx = metrics.widthPixels,
-            screenHeightPx = metrics.heightPixels,
+            screenWidthPx = bounds.width(),
+            screenHeightPx = bounds.height(),
             density = metrics.density
         )
         return LockScreenLayoutPolicy.overlayLeftPx(
             mode = mode,
-            screenWidthPx = metrics.widthPixels,
+            screenWidthPx = bounds.width(),
             contentWidthPx = contentWidth,
             sideMarginPx = (16f * metrics.density).toInt()
         )
@@ -166,27 +167,34 @@ internal class LockScreenFloatingOverlayService : FloatingOverlayService() {
     override fun overlayContentTopPx(contentHeight: Int): Int {
         val base = super.overlayContentTopPx(contentHeight)
         val metrics = resources.displayMetrics
+        val bounds = displayBounds()
         val mode = LockScreenLayoutPolicy.mode(
-            screenWidthPx = metrics.widthPixels,
-            screenHeightPx = metrics.heightPixels,
+            screenWidthPx = bounds.width(),
+            screenHeightPx = bounds.height(),
             density = metrics.density
         )
         return when (mode) {
+            LockScreenLayoutMode.PhoneLandscape -> LockScreenLayoutPolicy.phoneLandscapeOverlayTopPx(
+                baseTopPx = base,
+                density = metrics.density
+            )
             LockScreenLayoutMode.PhonePortrait -> LockScreenLayoutPolicy.portraitOverlayTopPx(
-                screenHeightPx = metrics.heightPixels,
+                screenHeightPx = bounds.height(),
                 contentHeightPx = contentHeight,
-                preferredTopPx = (220f * metrics.density).toInt(),
+                preferredTopPx = (
+                    if (isLargePhonePortrait()) 260f else 220f
+                ).times(metrics.density).toInt(),
                 bottomReservePx = (64f * metrics.density).toInt(),
                 marginPx = (20f * metrics.density).toInt()
             )
             LockScreenLayoutMode.TabletPortrait -> LockScreenLayoutPolicy.centeredOverlayTopPx(
-                screenHeightPx = metrics.heightPixels,
+                screenHeightPx = bounds.height(),
                 contentHeightPx = contentHeight,
                 verticalBiasPx = 0,
                 marginPx = (20f * metrics.density).toInt()
             )
             LockScreenLayoutMode.LargeSquare -> LockScreenLayoutPolicy.centeredOverlayTopPx(
-                screenHeightPx = metrics.heightPixels,
+                screenHeightPx = bounds.height(),
                 contentHeightPx = contentHeight,
                 verticalBiasPx = 0,
                 marginPx = (20f * metrics.density).toInt()
@@ -197,16 +205,25 @@ internal class LockScreenFloatingOverlayService : FloatingOverlayService() {
 
     override fun miniOverlayContentTopPx(contentHeight: Int): Int {
         val metrics = resources.displayMetrics
+        val bounds = displayBounds()
         val mode = LockScreenLayoutPolicy.mode(
-            screenWidthPx = metrics.widthPixels,
-            screenHeightPx = metrics.heightPixels,
+            screenWidthPx = bounds.width(),
+            screenHeightPx = bounds.height(),
             density = metrics.density
         )
         if (!mode.isPortrait && mode != LockScreenLayoutMode.LargeSquare) {
-            return super.miniOverlayContentTopPx(contentHeight)
+            val base = super.miniOverlayContentTopPx(contentHeight)
+            return if (mode == LockScreenLayoutMode.PhoneLandscape) {
+                LockScreenLayoutPolicy.phoneLandscapeOverlayTopPx(
+                    baseTopPx = base,
+                    density = metrics.density
+                )
+            } else {
+                base
+            }
         }
         return LockScreenLayoutPolicy.centeredOverlayTopPx(
-            screenHeightPx = metrics.heightPixels,
+            screenHeightPx = bounds.height(),
             contentHeightPx = contentHeight,
             verticalBiasPx = (16f * metrics.density).toInt(),
             marginPx = (20f * metrics.density).toInt()
@@ -222,20 +239,104 @@ internal class LockScreenFloatingOverlayService : FloatingOverlayService() {
         return mode.isPortrait || mode == LockScreenLayoutMode.LargeSquare
     }
 
+    override fun listeningOverlaySafeBounds(safeBounds: Rect): Rect {
+        if (currentLayoutMode() != LockScreenLayoutMode.PhoneLandscape) {
+            return super.listeningOverlaySafeBounds(safeBounds)
+        }
+        return Rect(safeBounds).apply {
+            left = LockScreenLayoutPolicy.phoneLandscapeListeningSafeLeftPx(
+                safeLeftPx = safeBounds.left,
+                safeRightPx = safeBounds.right,
+                density = resources.displayMetrics.density
+            )
+        }
+    }
+
+    override fun landscapeListeningOverlayMinimumWidthPx(): Int =
+        if (currentLayoutMode() == LockScreenLayoutMode.PhoneLandscape) {
+            (196f * resources.displayMetrics.density).toInt()
+        } else {
+            super.landscapeListeningOverlayMinimumWidthPx()
+        }
+
+    override fun portraitListeningOverlayMinimumHeightPx(): Int =
+        if (currentLayoutMode() == LockScreenLayoutMode.PhonePortrait) {
+            (144f * resources.displayMetrics.density).toInt()
+        } else {
+            super.portraitListeningOverlayMinimumHeightPx()
+        }
+
+    override fun listeningOverlayGroupVerticalOffsetPx(): Int {
+        val density = resources.displayMetrics.density
+        return when (currentLayoutMode()) {
+            LockScreenLayoutMode.PhonePortrait -> {
+                val offsetDp = LockScreenLayoutPolicy.phonePortraitListeningGroupOffsetDp(
+                    largePhone = isLargePhonePortrait(),
+                    launcherVisible = isExpandedLauncherOverlayVisible()
+                )
+                (offsetDp * density).toInt()
+            }
+            LockScreenLayoutMode.PhoneLandscape -> (-24f * density).toInt()
+            else -> 0
+        }
+    }
+
+    override fun listeningOverlayGroupTopPx(
+        currentTopPx: Int,
+        groupHeightPx: Int,
+        safeBounds: Rect,
+        minimumTopPx: Int,
+        maximumTopPx: Int
+    ): Int {
+        if (
+            currentLayoutMode() == LockScreenLayoutMode.PhonePortrait &&
+            isLargePhonePortrait() &&
+            isExpandedLauncherOverlayVisible()
+        ) {
+            val density = resources.displayMetrics.density
+            return LockScreenLayoutPolicy.centeredPortraitLauncherGroupTopPx(
+                currentTopPx = currentTopPx,
+                groupHeightPx = groupHeightPx,
+                safeTopPx = safeBounds.top,
+                safeBottomPx = safeBounds.bottom,
+                topReservePx = (72f * density).roundToInt(),
+                bottomReservePx = (96f * density).roundToInt(),
+                minimumTopPx = minimumTopPx,
+                maximumTopPx = maximumTopPx
+            )
+        }
+        return super.listeningOverlayGroupTopPx(
+            currentTopPx = currentTopPx,
+            groupHeightPx = groupHeightPx,
+            safeBounds = safeBounds,
+            minimumTopPx = minimumTopPx,
+            maximumTopPx = maximumTopPx
+        )
+    }
+
     override fun verticalListeningOverlayTopInsetPx(): Int {
         val density = resources.displayMetrics.density
         return when (currentLayoutMode()) {
-            LockScreenLayoutMode.PhonePortrait -> (94f * density).toInt()
+            LockScreenLayoutMode.PhonePortrait -> {
+                val insetDp = if (isExpandedLauncherOverlayVisible()) 20f else 4f
+                (insetDp * density).toInt()
+            }
             LockScreenLayoutMode.LargeSquare -> (88f * density).toInt()
             else -> (12f * density).toInt()
         }
     }
 
+    override fun portraitListeningOverlayHeightPx(safeBounds: Rect): Int {
+        return super.portraitListeningOverlayHeightPx(safeBounds)
+    }
+
+    override fun preservePortraitListeningOverlayHeight(): Boolean = false
+
     override fun verticalListeningOverlayBottomInsetPx(): Int {
         val density = resources.displayMetrics.density
         return when (currentLayoutMode()) {
             LockScreenLayoutMode.PhonePortrait,
-            LockScreenLayoutMode.LargeSquare -> (68f * density).toInt()
+            LockScreenLayoutMode.LargeSquare -> (96f * density).toInt()
             else -> (12f * density).toInt()
         }
     }
@@ -249,9 +350,20 @@ internal class LockScreenFloatingOverlayService : FloatingOverlayService() {
 
     private fun currentLayoutMode(): LockScreenLayoutMode {
         val metrics = resources.displayMetrics
+        val bounds = displayBounds()
         return LockScreenLayoutPolicy.mode(
-            screenWidthPx = metrics.widthPixels,
-            screenHeightPx = metrics.heightPixels,
+            screenWidthPx = bounds.width(),
+            screenHeightPx = bounds.height(),
+            density = metrics.density
+        )
+    }
+
+    private fun isLargePhonePortrait(): Boolean {
+        val metrics = resources.displayMetrics
+        val bounds = displayBounds()
+        return LockScreenLayoutPolicy.isLargePhonePortrait(
+            screenWidthPx = bounds.width(),
+            screenHeightPx = bounds.height(),
             density = metrics.density
         )
     }

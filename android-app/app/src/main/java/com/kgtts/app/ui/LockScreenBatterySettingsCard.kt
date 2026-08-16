@@ -38,7 +38,7 @@ internal fun LockScreenBatterySettingsCard(
             }
         )
         Text(
-            "开启后显示在日期和时间下方。",
+            "电量会显示在时间和日期下方。",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
@@ -82,7 +82,7 @@ internal fun LockScreenBatterySettingsCard(
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Md2SettingSwitchRow(
-                title = "仅在充电或低电量时显示",
+                title = "仅在需要时显示",
                 checked = settings.batteryOnlyWhenChargingOrLow,
                 onCheckedChange = { enabled ->
                     onSettingsChange(
@@ -96,7 +96,7 @@ internal fun LockScreenBatterySettingsCard(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text("低电量阈值", fontWeight = FontWeight.SemiBold)
+                    Text("低电量提醒值", fontWeight = FontWeight.SemiBold)
                     Text(
                         "${settings.lowBatteryThreshold}%",
                         color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -114,7 +114,7 @@ internal fun LockScreenBatterySettingsCard(
                     steps = MAX_LOW_BATTERY_THRESHOLD - MIN_LOW_BATTERY_THRESHOLD - 1
                 )
                 Text(
-                    "正在充电，或电量低于 ${settings.lowBatteryThreshold}% 时显示。",
+                    "充电时，或电量低于 ${settings.lowBatteryThreshold}% 时显示。",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )

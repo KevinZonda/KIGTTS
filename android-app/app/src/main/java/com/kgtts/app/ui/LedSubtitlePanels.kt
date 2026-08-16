@@ -1,5 +1,6 @@
 package com.lhtstudio.kigtts.app.ui
 
+import android.content.res.Configuration
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.ContentTransform
 import androidx.compose.animation.animateColorAsState
@@ -48,6 +49,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.ImeAction
@@ -78,6 +80,10 @@ internal fun LedSubtitleInputPanel(
 ) {
     val focusRequester = remember { FocusRequester() }
     val keyboardController = LocalSoftwareKeyboardController.current
+    val configuration = LocalConfiguration.current
+    val portraitPhone =
+        configuration.orientation == Configuration.ORIENTATION_PORTRAIT &&
+            minOf(configuration.screenWidthDp, configuration.screenHeightDp) < 600
     LaunchedEffect(Unit) {
         delay(90)
         focusRequester.requestFocus()
@@ -92,76 +98,151 @@ internal fun LedSubtitleInputPanel(
         contentColor = LedPanelContent,
         elevation = 12.dp
     ) {
-        Row(
-            modifier = Modifier
-                .onSizeChanged { onContentHeightChanged(it.height) }
-                .padding(horizontal = 10.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(4.dp)
-        ) {
-            LedPanelIconButton(
-                icon = "arrow_back",
-                description = "光标左移",
-                onClick = {
-                    val current = value.selection.start.coerceIn(0, value.text.length)
-                    onValueChange(value.copy(selection = TextRange((current - 1).coerceAtLeast(0))))
-                }
-            )
-            LedPanelIconButton(
-                icon = "arrow_forward",
-                description = "光标右移",
-                onClick = {
-                    val current = value.selection.end.coerceIn(0, value.text.length)
-                    onValueChange(value.copy(selection = TextRange((current + 1).coerceAtMost(value.text.length))))
-                }
-            )
-            LedPanelIconButton(
-                icon = if (playOnSend) "volume_up" else "volume_off",
-                description = if (playOnSend) "发送时播放语音：开" else "发送时播放语音：关",
-                onClick = onTogglePlayOnSend
-            )
-            OutlinedTextField(
-                value = value,
-                onValueChange = onValueChange,
+        if (portraitPhone) {
+            Column(
                 modifier = Modifier
-                    .weight(1f)
-                    .focusRequester(focusRequester)
-                    .kigttsTextToolbarAnchor(),
-                singleLine = true,
-                placeholder = { Text("请输入文本", color = LedPanelSecondary) },
-                keyboardOptions = KeyboardOptions(
-                    capitalization = KeyboardCapitalization.Sentences,
-                    autoCorrect = true,
-                    keyboardType = KeyboardType.Text,
-                    imeAction = ImeAction.Send
-                ),
-                keyboardActions = KeyboardActions(onSend = { onSubmit() }, onDone = { onSubmit() }),
-                trailingIcon = {
-                    if (value.text.isNotEmpty()) {
-                        LedPanelIconButton(
-                            icon = "close",
-                            description = "清空输入",
-                            onClick = { onValueChange(TextFieldValue("")) }
-                        )
-                    }
-                },
-                shape = RoundedCornerShape(UiTokens.Radius),
-                colors = TextFieldDefaults.outlinedTextFieldColors(
-                    textColor = LedPanelContent,
-                    focusedBorderColor = accentColor,
-                    unfocusedBorderColor = LedPanelOutline,
-                    cursorColor = accentColor,
-                    trailingIconColor = LedPanelContent
+                    .fillMaxWidth()
+                    .onSizeChanged { onContentHeightChanged(it.height) }
+                    .padding(horizontal = 10.dp, vertical = 8.dp)
+            ) {
+                LedInputControlButtons(
+                    value = value,
+                    playOnSend = playOnSend,
+                    onValueChange = onValueChange,
+                    onTogglePlayOnSend = onTogglePlayOnSend
                 )
-            )
-            LedPanelIconButton(
-                icon = "send",
-                description = "发送到朗读队列",
-                enabled = value.text.trim().isNotEmpty(),
-                onClick = onSubmit
-            )
+                Spacer(Modifier.height(2.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    LedSubtitleTextField(
+                        value = value,
+                        accentColor = accentColor,
+                        focusRequester = focusRequester,
+                        onValueChange = onValueChange,
+                        onSubmit = onSubmit,
+                        modifier = Modifier.weight(1f)
+                    )
+                    LedPanelIconButton(
+                        icon = "send",
+                        description = "发送到朗读队列",
+                        enabled = value.text.trim().isNotEmpty(),
+                        onClick = onSubmit
+                    )
+                }
+            }
+        } else {
+            Row(
+                modifier = Modifier
+                    .onSizeChanged { onContentHeightChanged(it.height) }
+                    .padding(horizontal = 10.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                LedInputControlButtons(
+                    value = value,
+                    playOnSend = playOnSend,
+                    onValueChange = onValueChange,
+                    onTogglePlayOnSend = onTogglePlayOnSend
+                )
+                LedSubtitleTextField(
+                    value = value,
+                    accentColor = accentColor,
+                    focusRequester = focusRequester,
+                    onValueChange = onValueChange,
+                    onSubmit = onSubmit,
+                    modifier = Modifier.weight(1f)
+                )
+                LedPanelIconButton(
+                    icon = "send",
+                    description = "发送到朗读队列",
+                    enabled = value.text.trim().isNotEmpty(),
+                    onClick = onSubmit
+                )
+            }
         }
     }
+}
+
+@Composable
+private fun LedInputControlButtons(
+    value: TextFieldValue,
+    playOnSend: Boolean,
+    onValueChange: (TextFieldValue) -> Unit,
+    onTogglePlayOnSend: () -> Unit
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        LedPanelIconButton(
+            icon = "arrow_back",
+            description = "光标左移",
+            onClick = {
+                val current = value.selection.start.coerceIn(0, value.text.length)
+                onValueChange(value.copy(selection = TextRange((current - 1).coerceAtLeast(0))))
+            }
+        )
+        LedPanelIconButton(
+            icon = "arrow_forward",
+            description = "光标右移",
+            onClick = {
+                val current = value.selection.end.coerceIn(0, value.text.length)
+                onValueChange(value.copy(selection = TextRange((current + 1).coerceAtMost(value.text.length))))
+            }
+        )
+        LedPanelIconButton(
+            icon = if (playOnSend) "volume_up" else "volume_off",
+            description = if (playOnSend) "发送时播放语音：开" else "发送时播放语音：关",
+            onClick = onTogglePlayOnSend
+        )
+    }
+}
+
+@Composable
+private fun LedSubtitleTextField(
+    value: TextFieldValue,
+    accentColor: Color,
+    focusRequester: FocusRequester,
+    onValueChange: (TextFieldValue) -> Unit,
+    onSubmit: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    OutlinedTextField(
+        value = value,
+        onValueChange = onValueChange,
+        modifier = modifier
+            .focusRequester(focusRequester)
+            .kigttsTextToolbarAnchor(),
+        singleLine = true,
+        placeholder = { Text("请输入文本", color = LedPanelSecondary) },
+        keyboardOptions = KeyboardOptions(
+            capitalization = KeyboardCapitalization.Sentences,
+            autoCorrect = true,
+            keyboardType = KeyboardType.Text,
+            imeAction = ImeAction.Send
+        ),
+        keyboardActions = KeyboardActions(onSend = { onSubmit() }, onDone = { onSubmit() }),
+        trailingIcon = {
+            if (value.text.isNotEmpty()) {
+                LedPanelIconButton(
+                    icon = "close",
+                    description = "清空输入",
+                    onClick = { onValueChange(TextFieldValue("")) }
+                )
+            }
+        },
+        shape = RoundedCornerShape(UiTokens.Radius),
+        colors = TextFieldDefaults.outlinedTextFieldColors(
+            textColor = LedPanelContent,
+            focusedBorderColor = accentColor,
+            unfocusedBorderColor = LedPanelOutline,
+            cursorColor = accentColor,
+            trailingIconColor = LedPanelContent
+        )
+    )
 }
 
 @Composable

@@ -135,6 +135,17 @@ class RealtimeHostService : Service(), RealtimeRuntimeBridge.AppDelegate, LanCas
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
+            ACTION_SUBMIT_QUICK_SUBTITLE -> {
+                val target = intent.getStringExtra(EXTRA_QUICK_SUBTITLE_TARGET)
+                    ?: OverlayBridge.TARGET_SUBTITLE
+                val text = intent.getStringExtra(EXTRA_QUICK_SUBTITLE_TEXT).orEmpty()
+                if (text.isNotBlank()) {
+                    serviceScope.launch {
+                        initializationJob?.join()
+                        submitQuickSubtitle(target, text)
+                    }
+                }
+            }
             LiveSubtitleNotificationBridge.ACTION_PLAY_TEXT -> {
                 val text = intent.getStringExtra(LiveSubtitleNotificationBridge.EXTRA_TEXT)
                     ?.trim()
@@ -337,6 +348,14 @@ class RealtimeHostService : Service(), RealtimeRuntimeBridge.AppDelegate, LanCas
         return withContext(Dispatchers.IO) {
             activeController.enqueueSpeakText(message, interruptCurrent = interruptCurrent)
         }
+    }
+
+    fun recordRecognizedHistory(
+        text: String,
+        id: Long? = null,
+        fromQuickText: Boolean = false
+    ) {
+        appendRecognizedHistory(text, id, fromQuickText)
     }
 
     suspend fun enrollSpeaker(
@@ -1768,12 +1787,35 @@ class RealtimeHostService : Service(), RealtimeRuntimeBridge.AppDelegate, LanCas
         private const val LEVEL_UPDATE_DELTA = 0.02f
         private const val PROGRESS_UPDATE_INTERVAL_MS = 48L
         private const val PROGRESS_UPDATE_DELTA = 0.02f
+        private const val ACTION_SUBMIT_QUICK_SUBTITLE =
+            "com.lhtstudio.kigtts.app.action.SUBMIT_QUICK_SUBTITLE"
+        private const val EXTRA_QUICK_SUBTITLE_TARGET = "quick_subtitle_target"
+        private const val EXTRA_QUICK_SUBTITLE_TEXT = "quick_subtitle_text"
 
         fun ensureStarted(context: Context) {
             runCatching {
                 context.startService(Intent(context, RealtimeHostService::class.java))
             }.onFailure {
                 AppLogger.e("RealtimeHostService.ensureStarted failed", it)
+            }
+        }
+
+        fun submitQuickSubtitle(
+            context: Context,
+            target: String,
+            text: String
+        ) {
+            val normalized = text.trim()
+            if (normalized.isEmpty()) return
+            val intent = Intent(context, RealtimeHostService::class.java).apply {
+                action = ACTION_SUBMIT_QUICK_SUBTITLE
+                putExtra(EXTRA_QUICK_SUBTITLE_TARGET, target)
+                putExtra(EXTRA_QUICK_SUBTITLE_TEXT, normalized)
+            }
+            runCatching {
+                context.startService(intent)
+            }.onFailure {
+                AppLogger.e("RealtimeHostService.submitQuickSubtitle failed", it)
             }
         }
     }

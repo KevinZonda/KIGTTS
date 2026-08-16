@@ -168,6 +168,23 @@ internal fun LedSubtitleScreenContent(
 
     val previewAllowed = inputFieldValue.text.isNotEmpty() &&
         inputPreviewBlockedRevision != viewModel.quickSubtitleContentRevision
+    val moveInputPreviewCursor: (Int) -> Unit = { delta ->
+        val currentIndex = inputFieldValue.selection.start.coerceIn(
+            0,
+            inputFieldValue.text.length
+        )
+        val targetIndex = resolveCursorIndexAfterSwipe(
+            currentIndex = currentIndex,
+            textLength = inputFieldValue.text.length,
+            delta = delta
+        )
+        if (
+            targetIndex != currentIndex ||
+            inputFieldValue.selection.start != inputFieldValue.selection.end
+        ) {
+            inputFieldValue = inputFieldValue.copy(selection = TextRange(targetIndex))
+        }
+    }
     val editingInputPreviewActive = previewAllowed && activePanel == LedSubtitlePanel.Input
     val persistentInputPreviewActive = previewAllowed &&
         activePanel != LedSubtitlePanel.Input &&
@@ -283,6 +300,7 @@ internal fun LedSubtitleScreenContent(
             rotated180 = viewModel.quickSubtitleRotated180,
             onFontSizeChange = viewModel::updateQuickSubtitleFontSize,
             onFontSizeChangeFinished = viewModel::commitQuickSubtitleFontSize,
+            onCursorDelta = moveInputPreviewCursor,
             modifier = Modifier
                 .fillMaxSize()
                 .zIndex(2.5f)

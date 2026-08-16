@@ -384,6 +384,7 @@ fun FloatingOverlayScreen(
     state: UiState,
     onOpenMainSettings: () -> Unit,
     onOpenQuickTextGestureSettings: () -> Unit,
+    onOpenKeyboardHotkeySettings: () -> Unit,
     onOpenLockScreenSettings: () -> Unit
 ) {
     val context = LocalContext.current
@@ -396,6 +397,10 @@ fun FloatingOverlayScreen(
     var pendingOverlayPermissionEnable by remember { mutableStateOf(false) }
     var overlayPermissionPurposeOpen by remember { mutableStateOf(false) }
     var hotkeyActionPickerSequence by remember { mutableStateOf<VolumeHotkeySequence?>(null) }
+    var pendingHotkeyTextAction by remember {
+        mutableStateOf<Pair<VolumeHotkeySequence, VolumeHotkeyActionSpec>?>(null)
+    }
+    var hotkeyTextDraft by remember { mutableStateOf("") }
     var externalShortcutPickerSequence by remember { mutableStateOf<VolumeHotkeySequence?>(null) }
     var externalShortcutSearchQuery by remember { mutableStateOf("") }
     var externalShortcutChoices by remember { mutableStateOf<List<ExternalShortcutChoice>>(emptyList()) }
@@ -542,6 +547,24 @@ fun FloatingOverlayScreen(
         }
     }
 
+    fun chooseVolumeHotkeyAction(
+        sequence: VolumeHotkeySequence,
+        action: VolumeHotkeyActionSpec
+    ) {
+        if (VolumeHotkeyActions.requiresConfiguredText(action)) {
+            val current = when (sequence) {
+                VolumeHotkeySequence.UpDown -> state.volumeHotkeyUpDownAction
+                VolumeHotkeySequence.DownUp -> state.volumeHotkeyDownUpAction
+            }
+            hotkeyTextDraft = current.text.takeIf { current.target == action.target }.orEmpty()
+            pendingHotkeyTextAction = sequence to action
+            hotkeyActionPickerSequence = null
+        } else {
+            viewModel.setVolumeHotkeyAction(sequence, action)
+            hotkeyActionPickerSequence = null
+        }
+    }
+
     LaunchedEffect(
         requiresBackgroundPopupPermission,
         state.floatingOverlayShowOnLockScreen,
@@ -680,9 +703,18 @@ fun FloatingOverlayScreen(
         }
 
         Md2StaggeredFloatIn(index = 3) {
+            KeyboardHotkeyEntryCard(
+                entries = state.keyboardHotkeys,
+                masterEnabled = state.keyboardHotkeysEnabled,
+                onMasterEnabledChange = viewModel::setKeyboardHotkeysMasterEnabled,
+                onOpen = onOpenKeyboardHotkeySettings
+            )
+        }
+
+        Md2StaggeredFloatIn(index = 4) {
             Md2SettingsCard(title = "音量热键") {
                 Text(
-                    "开启后，可在应用外通过设定的音量键顺序触发快捷功能；按键状态只用于判断你配置的热键。",
+                    "开启后，在应用外按下设定的音量键顺序，也能执行对应的快捷操作。",
                     style = MaterialTheme.typography.bodySmall
                 )
                 Spacer(Modifier.height(8.dp))
@@ -907,14 +939,11 @@ fun FloatingOverlayScreen(
             },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text("选择这个序列触发后的功能。", style = MaterialTheme.typography.bodySmall)
+                    Text("选择按完这组音量键后要执行的操作。", style = MaterialTheme.typography.bodySmall)
                     Text("直接打开", fontWeight = FontWeight.Bold)
                     VolumeHotkeyActions.directOptions.forEach { action ->
                         Md2TextButton(
-                            onClick = {
-                                viewModel.setVolumeHotkeyAction(sequence, action)
-                                hotkeyActionPickerSequence = null
-                            },
+                            onClick = { chooseVolumeHotkeyAction(sequence, action) },
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Text(
@@ -928,10 +957,7 @@ fun FloatingOverlayScreen(
                     Text("悬浮窗", fontWeight = FontWeight.Bold)
                     VolumeHotkeyActions.overlayOptions.forEach { action ->
                         Md2TextButton(
-                            onClick = {
-                                viewModel.setVolumeHotkeyAction(sequence, action)
-                                hotkeyActionPickerSequence = null
-                            },
+                            onClick = { chooseVolumeHotkeyAction(sequence, action) },
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Text(
@@ -961,6 +987,56 @@ fun FloatingOverlayScreen(
             confirmButton = {
                 Md2TextButton(onClick = { hotkeyActionPickerSequence = null }) {
                     Text("关闭")
+                }
+            }
+        )
+    }
+
+    pendingHotkeyTextAction?.let { (sequence, action) ->
+        KigttsAlertDialog(
+            onDismissRequest = {
+                pendingHotkeyTextAction = null
+                hotkeyTextDraft = ""
+            },
+            title = { Text(VolumeHotkeyActions.labelOf(action)) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        "按下热键后会打开对应页面，并发送下面的内容。",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    Md2DialogOutlinedField(
+                        value = hotkeyTextDraft,
+                        onValueChange = { hotkeyTextDraft = it.take(500) },
+                        label = "发送内容",
+                        singleLine = false,
+                        maxLines = 5
+                    )
+                }
+            },
+            confirmButton = {
+                Md2TextButton(
+                    onClick = {
+                        val text = hotkeyTextDraft.trim()
+                        if (text.isNotEmpty()) {
+                            viewModel.setVolumeHotkeyAction(sequence, action.copy(text = text))
+                            pendingHotkeyTextAction = null
+                            hotkeyTextDraft = ""
+                        }
+                    },
+                    enabled = hotkeyTextDraft.isNotBlank()
+                ) {
+                    Text("保存")
+                }
+            },
+            dismissButton = {
+                Md2TextButton(
+                    onClick = {
+                        pendingHotkeyTextAction = null
+                        hotkeyTextDraft = ""
+                    }
+                ) {
+                    Text("取消")
                 }
             }
         )
@@ -1171,7 +1247,7 @@ internal fun VolumeHotkeySettingRow(
             onClick = onPickAction,
             modifier = Modifier.fillMaxWidth()
         ) {
-            Text("配置触发功能")
+            Text("选择快捷操作")
         }
     }
 }

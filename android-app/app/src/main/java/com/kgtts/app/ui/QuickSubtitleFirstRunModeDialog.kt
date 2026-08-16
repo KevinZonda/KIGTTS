@@ -55,7 +55,7 @@ internal fun QuickSubtitleModeSelectionDialog(
         )
         QuickSubtitleModeChoice(
             title = "常规模式",
-            description = "分组栏和编辑入口始终显示，信息更完整。",
+            description = "始终显示分组和编辑按钮，查找内容更直观。",
             compact = false,
             selected = !selectedCompact,
             onClick = { onSelectedCompactChange(false) }

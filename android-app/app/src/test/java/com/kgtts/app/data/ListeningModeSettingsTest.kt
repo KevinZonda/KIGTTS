@@ -28,6 +28,7 @@ class ListeningModeSettingsTest {
             rotated180 = true,
             portraitPanelsSwapped = true,
             landscapePanelsSwapped = true,
+            floatingOverlayLandscapePanelsSwapped = false,
             hideDuringTextInput = true,
             recognitionLanguage = AsrRecognitionLanguage.JAPANESE,
             preferredInputType = AudioRoutePreference.INPUT_USB,
@@ -57,5 +58,29 @@ class ListeningModeSettingsTest {
         )
 
         assertFalse(parsed.hideDuringTextInput)
+    }
+
+    @Test
+    fun legacyLandscapePositionMigratesToFloatingOverlayPosition() {
+        val parsed = ListeningModeSettings.fromJson(
+            """{"landscapePanelsSwapped":true}"""
+        )
+
+        assertTrue(parsed.landscapePanelsSwapped)
+        assertTrue(parsed.floatingOverlayLandscapePanelsSwapped)
+    }
+
+    @Test
+    fun floatingOverlayLandscapePositionIsStoredIndependently() {
+        val parsed = ListeningModeSettings.fromJson(
+            """{"landscapePanelsSwapped":true,"floatingOverlayLandscapePanelsSwapped":false}"""
+        )
+
+        assertTrue(parsed.landscapePanelsSwapped)
+        assertFalse(parsed.floatingOverlayLandscapePanelsSwapped)
+        assertFalse(
+            ListeningModeSettings.fromJson(parsed.toJson())
+                .floatingOverlayLandscapePanelsSwapped
+        )
     }
 }

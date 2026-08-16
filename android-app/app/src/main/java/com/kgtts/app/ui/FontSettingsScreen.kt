@@ -396,7 +396,7 @@ internal fun FontWeightDialog(
                     modifier = Modifier.fillMaxWidth()
                 )
                 Text(
-                    "连续范围 ${axis.min}-${axis.max}，字体默认值 ${axis.default}",
+                    "可选字重 ${axis.min}-${axis.max}，字体默认值 ${axis.default}",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )

@@ -40,7 +40,7 @@ data class LockScreenSettings(
     val clockFontId: String = AppFontDefaults.SystemFontId,
     val clockFontWeight: Int = AppFontDefaults.DefaultWeight,
     val showLunarDate: Boolean = false,
-    val showBatteryStatus: Boolean = false,
+    val showBatteryStatus: Boolean = true,
     val batteryStyle: LockScreenBatteryStyle = LockScreenBatteryStyle.Compact,
     val batteryOnlyWhenChargingOrLow: Boolean = false,
     val lowBatteryThreshold: Int = DEFAULT_LOW_BATTERY_THRESHOLD
@@ -134,7 +134,7 @@ internal fun decodeLockScreenSettings(raw: String?): LockScreenSettings {
                 json.optInt("clockFontWeight", AppFontDefaults.DefaultWeight)
             ),
             showLunarDate = json.optBoolean("showLunarDate", false),
-            showBatteryStatus = json.optBoolean("showBatteryStatus", false),
+            showBatteryStatus = json.optBoolean("showBatteryStatus", true),
             batteryStyle = LockScreenBatteryStyle.fromWireName(
                 json.optString("batteryStyle", LockScreenBatteryStyle.Compact.wireName)
             ),
