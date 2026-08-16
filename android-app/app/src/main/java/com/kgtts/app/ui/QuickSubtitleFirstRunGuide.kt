@@ -129,7 +129,7 @@ internal fun quickSubtitleGuideSteps(
             }
             if (compactControls) {
                 add("竖屏可在右侧分组选择器上下滑动切组；横屏使用底部分组选择器左右滑动。")
-                add("编辑快捷文本的入口位于页面顶栏。")
+                add("可从页面右上角编辑快捷文本。")
             } else {
                 add("使用分组栏切换内容，右侧编辑按钮可管理分组和快捷文本。")
             }

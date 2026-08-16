@@ -1,7 +1,9 @@
 package com.lhtstudio.kigtts.app.ui
 
+import android.content.Context
 import android.os.SystemClock
 import android.view.HapticFeedbackConstants
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewConfiguration
 import android.view.ViewGroup
@@ -45,7 +47,7 @@ internal fun QuickSubtitleCandidateGroupRecycler(
     AndroidView(
         modifier = modifier,
         factory = { context ->
-            val recycler = RecyclerView(context).apply {
+            val recycler = QuickSubtitleGroupRecyclerView(context).apply {
                 clipToPadding = false
                 clipChildren = false
                 overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
@@ -319,8 +321,9 @@ private class QuickSubtitleCandidateGroupAdapter(
                         onEditRequested(group.id)
                     }
                 )
-            }
-        }
+    }
+}
+
     }
 
     fun updateState(
@@ -405,4 +408,35 @@ private class QuickSubtitleCandidateGroupAdapter(
     }
 
     class GroupViewHolder(val composeView: ComposeView) : RecyclerView.ViewHolder(composeView)
+}
+
+private class QuickSubtitleGroupRecyclerView(context: Context) : RecyclerView(context) {
+    private val touchSlop = ViewConfiguration.get(context).scaledTouchSlop.toFloat()
+    private var downX = 0f
+    private var downY = 0f
+
+    override fun dispatchTouchEvent(event: MotionEvent): Boolean {
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                downX = event.x
+                downY = event.y
+                parent?.requestDisallowInterceptTouchEvent(true)
+            }
+
+            MotionEvent.ACTION_MOVE -> {
+                val dx = kotlin.math.abs(event.x - downX)
+                val dy = kotlin.math.abs(event.y - downY)
+                if (dx > touchSlop || dy > touchSlop) {
+                    val canScrollHorizontally =
+                        canScrollHorizontally(-1) || canScrollHorizontally(1)
+                    val scrollsAlongAxis = if (canScrollHorizontally) dx >= dy else dy >= dx
+                    parent?.requestDisallowInterceptTouchEvent(scrollsAlongAxis)
+                }
+            }
+
+            MotionEvent.ACTION_UP,
+            MotionEvent.ACTION_CANCEL -> parent?.requestDisallowInterceptTouchEvent(false)
+        }
+        return super.dispatchTouchEvent(event)
+    }
 }

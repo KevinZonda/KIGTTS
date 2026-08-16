@@ -64,7 +64,7 @@ internal fun LockScreenWallpaperSettingsCard(
             }
         }
         Text(
-            "未设置时保持透明并显示系统锁屏壁纸；横竖屏会自动居中裁切。",
+            "未选择壁纸时会显示系统锁屏壁纸；图片会自动适配横竖屏。",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
@@ -84,7 +84,7 @@ internal fun LockScreenWallpaperSettingsCard(
             )
         }
         LockScreenEffectSlider(
-            title = "遮罩透明度",
+            title = "遮罩强度",
             valueLabel = "${(settings.scrimOpacity * 100).toInt()}%",
             value = settings.scrimOpacity,
             valueRange = 0f..1f,
@@ -135,14 +135,14 @@ internal fun LockScreenWallpaperSettingsCard(
                                 iconSize = 18.dp
                             )
                             Spacer(Modifier.size(6.dp))
-                            Text(if (style == LockScreenScrimStyle.EdgeGradient) "渐变" else "全填充")
+                            Text(if (style == LockScreenScrimStyle.EdgeGradient) "渐变" else "全屏")
                         }
                     }
                 )
             }
         }
         Text(
-            "未选择自定义壁纸时，遮罩也会覆盖系统锁屏壁纸。竖屏渐变覆盖顶部和底部；横屏仅从左侧向右淡出。",
+            "渐变遮罩会增强时间和解锁提示的可读性；横屏时仅覆盖左侧，使用系统壁纸时也会生效。",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
@@ -151,7 +151,7 @@ internal fun LockScreenWallpaperSettingsCard(
         ThemeColorPickerDialog(
             title = "选择遮罩颜色",
             initialColor = Color(settings.scrimColorArgb),
-            colorLabel = "候选遮罩色",
+            colorLabel = "候选颜色",
             onDismissRequest = { showScrimColorPicker = false },
             onColorSelected = { color ->
                 onSettingsChange(settings.copy(scrimColorArgb = color.toArgb()))

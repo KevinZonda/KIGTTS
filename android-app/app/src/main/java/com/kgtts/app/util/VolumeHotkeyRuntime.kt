@@ -5,6 +5,7 @@ import android.os.SystemClock
 import com.lhtstudio.kigtts.app.data.UserPrefs
 import com.lhtstudio.kigtts.app.overlay.FloatingOverlayService
 import com.lhtstudio.kigtts.app.overlay.OverlayBridge
+import com.lhtstudio.kigtts.app.service.RealtimeHostService
 
 class VolumeHotkeySequenceDetector {
     private var pendingDirection = 0
@@ -50,8 +51,8 @@ object VolumeHotkeyActionExecutor {
 
     fun execute(context: Context, action: VolumeHotkeyActionSpec) {
         when (action.kind) {
-            VolumeHotkeyActions.KIND_INTERNAL -> executeInternalAction(context, action.target)
-            VolumeHotkeyActions.KIND_OVERLAY -> executeOverlayAction(context, action.target)
+            VolumeHotkeyActions.KIND_INTERNAL -> executeInternalAction(context, action)
+            VolumeHotkeyActions.KIND_OVERLAY -> executeOverlayAction(context, action)
             VolumeHotkeyActions.KIND_EXTERNAL -> {
                 if (action.packageName.isNotBlank() && action.shortcutId.isNotBlank()) {
                     ExternalShortcutCatalog.launchChoice(
@@ -69,8 +70,19 @@ object VolumeHotkeyActionExecutor {
         }
     }
 
-    private fun executeInternalAction(context: Context, target: String) {
-        val appTarget = when (target) {
+    private fun executeInternalAction(context: Context, action: VolumeHotkeyActionSpec) {
+        if (action.target == VolumeHotkeyActions.TARGET_QUICK_SUBTITLE_TEXT) {
+            RealtimeHostService.submitQuickSubtitle(
+                context = context,
+                target = OverlayBridge.TARGET_SUBTITLE,
+                text = action.text
+            )
+            context.startActivity(
+                OverlayBridge.buildOpenPageIntent(context, OverlayBridge.TARGET_OPEN)
+            )
+            return
+        }
+        val appTarget = when (action.target) {
             VolumeHotkeyActions.TARGET_QUICK_CARD -> OverlayBridge.TARGET_OPEN_QUICK_CARD
             VolumeHotkeyActions.TARGET_DRAWING -> OverlayBridge.TARGET_OPEN_DRAWING
             VolumeHotkeyActions.TARGET_SOUNDBOARD -> OverlayBridge.TARGET_OPEN_SOUNDBOARD
@@ -81,16 +93,19 @@ object VolumeHotkeyActionExecutor {
         context.startActivity(OverlayBridge.buildOpenPageIntent(context, appTarget))
     }
 
-    private fun executeOverlayAction(context: Context, target: String) {
+    private fun executeOverlayAction(context: Context, action: VolumeHotkeyActionSpec) {
         if (!FloatingOverlayService.canDrawOverlays(context)) {
             context.startActivity(
                 OverlayBridge.buildOpenPageIntent(context, OverlayBridge.TARGET_OPEN_OVERLAY)
             )
             return
         }
-        when (target) {
+        when (action.target) {
             VolumeHotkeyActions.TARGET_OPEN_MINI_QUICK_SUBTITLE ->
                 FloatingOverlayService.openMiniQuickSubtitle(context)
+
+            VolumeHotkeyActions.TARGET_SEND_MINI_QUICK_SUBTITLE ->
+                FloatingOverlayService.openMiniQuickSubtitle(context, action.text)
 
             VolumeHotkeyActions.TARGET_OPEN_MINI_QUICK_CARD ->
                 FloatingOverlayService.openMiniQuickCard(context)

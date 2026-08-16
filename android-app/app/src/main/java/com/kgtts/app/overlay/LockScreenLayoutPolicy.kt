@@ -21,7 +21,23 @@ internal data class CompactClockFrame(
 
 internal object LockScreenLayoutPolicy {
     private const val TABLET_MIN_WIDTH_DP = 600f
+    private const val LARGE_PHONE_MIN_WIDTH_DP = 380f
+    private const val LARGE_PHONE_MIN_HEIGHT_DP = 840f
     private const val LARGE_SQUARE_MAX_ASPECT_RATIO = 1.28f
+
+    fun isLargePhonePortrait(
+        screenWidthPx: Int,
+        screenHeightPx: Int,
+        density: Float
+    ): Boolean {
+        if (screenWidthPx >= screenHeightPx) return false
+        val safeDensity = density.takeIf { it > 0f } ?: 1f
+        val widthDp = screenWidthPx / safeDensity
+        val heightDp = screenHeightPx / safeDensity
+        return widthDp >= LARGE_PHONE_MIN_WIDTH_DP &&
+            widthDp < TABLET_MIN_WIDTH_DP &&
+            heightDp >= LARGE_PHONE_MIN_HEIGHT_DP
+    }
 
     fun compactClockFrame(
         mode: LockScreenLayoutMode,
@@ -54,12 +70,42 @@ internal object LockScreenLayoutPolicy {
     ): Boolean {
         if (miniOverlayVisible || !listeningOverlayVisible) return false
         return when (mode) {
-            LockScreenLayoutMode.PhonePortrait -> true
+            LockScreenLayoutMode.PhonePortrait,
             LockScreenLayoutMode.LargeSquare ->
                 listeningTopClearancePx == null ||
                     listeningTopClearancePx < normalClockRequiredHeightPx
             else -> false
         }
+    }
+
+    fun phonePortraitListeningGroupOffsetDp(
+        largePhone: Boolean,
+        launcherVisible: Boolean
+    ): Float = when {
+        largePhone && launcherVisible -> 0f
+        largePhone -> 48f
+        launcherVisible -> -32f
+        else -> -56f
+    }
+
+    fun centeredPortraitLauncherGroupTopPx(
+        currentTopPx: Int,
+        groupHeightPx: Int,
+        safeTopPx: Int,
+        safeBottomPx: Int,
+        topReservePx: Int,
+        bottomReservePx: Int,
+        minimumTopPx: Int,
+        maximumTopPx: Int
+    ): Int {
+        val reservedTop = maxOf(safeTopPx + topReservePx, minimumTopPx)
+        val reservedBottom = minOf(safeBottomPx - bottomReservePx, safeBottomPx)
+        val availableHeight = reservedBottom - reservedTop
+        if (availableHeight < groupHeightPx) {
+            return currentTopPx.coerceIn(minimumTopPx, maximumTopPx)
+        }
+        return (reservedTop + (availableHeight - groupHeightPx) / 2)
+            .coerceIn(minimumTopPx, maximumTopPx)
     }
 
     fun mode(
@@ -107,23 +153,25 @@ internal object LockScreenLayoutPolicy {
         density: Float,
         sideMarginPx: Int
     ): Int {
-        val phoneWidth = (360f * density).toInt()
-        val phoneLandscapeWidth = (540f * density).toInt()
-        val tabletWidth = (400f * density).toInt()
         val minimumWidth = (280f * density).toInt()
         val availableWidth = when {
             mode == LockScreenLayoutMode.TabletLandscape ->
                 screenWidthPx / 2 - sideMarginPx * 2
             else -> screenWidthPx - sideMarginPx * 2
         }
-        val requestedWidth = when (mode) {
-            LockScreenLayoutMode.PhonePortrait -> phoneWidth
-            LockScreenLayoutMode.PhoneLandscape -> phoneLandscapeWidth
+        val requestedWidth = overlayDesignWidthPx(mode, density)
+        return min(availableWidth, requestedWidth).coerceAtLeast(minimumWidth)
+    }
+
+    fun overlayDesignWidthPx(mode: LockScreenLayoutMode, density: Float): Int {
+        val widthDp = when (mode) {
+            LockScreenLayoutMode.PhonePortrait -> 360f
+            LockScreenLayoutMode.PhoneLandscape -> 540f
             LockScreenLayoutMode.TabletPortrait,
             LockScreenLayoutMode.TabletLandscape,
-            LockScreenLayoutMode.LargeSquare -> tabletWidth
+            LockScreenLayoutMode.LargeSquare -> 400f
         }
-        return min(availableWidth, requestedWidth).coerceAtLeast(minimumWidth)
+        return (widthDp * density).toInt()
     }
 
     fun hostColumnWidthPx(
@@ -134,6 +182,33 @@ internal object LockScreenLayoutPolicy {
         minimumWidthPx: Int
     ): Int = (overlayLeftPx - overlayGapPx - contentStartInsetPx - startMarginPx)
         .coerceAtLeast(minimumWidthPx)
+
+    fun phoneLandscapeListeningSafeLeftPx(
+        safeLeftPx: Int,
+        safeRightPx: Int,
+        density: Float
+    ): Int {
+        val safeWidth = (safeRightPx - safeLeftPx).coerceAtLeast(1)
+        val safeDensity = density.takeIf { it > 0f } ?: 1f
+        val minimumReserve = (104f * safeDensity).toInt()
+        val maximumReserve = (180f * safeDensity).toInt()
+        val reserve = (safeWidth * 0.20f).toInt()
+            .coerceIn(minimumReserve.coerceAtMost(safeWidth / 3), maximumReserve.coerceAtMost(safeWidth / 3))
+        return (safeLeftPx + reserve).coerceAtMost(safeRightPx - 1)
+    }
+
+    fun phoneLandscapeOverlayTopPx(baseTopPx: Int, density: Float): Int {
+        val safeDensity = density.takeIf { it > 0f } ?: 1f
+        val topMargin = (12f * safeDensity).toInt()
+        val upwardOffset = (10f * safeDensity).toInt()
+        return (baseTopPx - upwardOffset).coerceAtLeast(topMargin)
+    }
+
+    fun phoneLandscapeInfoScale(columnWidthPx: Int, density: Float): Float {
+        val safeDensity = density.takeIf { it > 0f } ?: 1f
+        val columnWidthDp = columnWidthPx / safeDensity
+        return (columnWidthDp / 220f).coerceIn(0.68f, 1f)
+    }
 
     fun portraitOverlayTopPx(
         screenHeightPx: Int,

@@ -60,7 +60,6 @@ import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.ContentTransform
 import androidx.compose.animation.Crossfade
-import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -112,6 +111,7 @@ import androidx.camera.core.TorchState
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -134,6 +134,7 @@ import androidx.compose.ui.graphics.Outline
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.asAndroidPath
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
@@ -760,7 +761,8 @@ internal fun QuickCardMainScreen(
         }
     }
     val topMargin = UiTokens.PageTopBlank
-    val bottomMargin = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+    val bottomMargin =
+        WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 12.dp
 
     Box(modifier = Modifier.fillMaxSize()) {
         Column(
@@ -2758,59 +2760,136 @@ internal fun QuickCardIndicatorRail(
     vertical: Boolean = true
 ) {
     val safeCount = count.coerceAtLeast(1)
-    val dotSize = 6.dp
-    val gap = 6.dp
-    val contentSpan = dotSize * safeCount + gap * (safeCount - 1)
-    val trackModifier = if (vertical) {
-        Modifier.width(14.dp).height(contentSpan + 12.dp)
-    } else {
-        Modifier.height(14.dp).width(contentSpan + 12.dp)
+    val safeCurrent = current.coerceIn(0, safeCount - 1)
+    val visibleIndices = remember(safeCount, safeCurrent) {
+        quickCardIndicatorWindow(safeCount, safeCurrent)
     }
-    val arrangement = Arrangement.spacedBy(6.dp)
+    val windowStart = visibleIndices.firstOrNull() ?: 0
+    var previousCurrent by remember { mutableIntStateOf(safeCurrent) }
+    var previousWindowStart by remember { mutableIntStateOf(windowStart) }
+    var fromCurrent by remember { mutableIntStateOf(safeCurrent) }
+    var fromWindowStart by remember { mutableIntStateOf(windowStart) }
+    val transition = remember { Animatable(1f) }
+    val visibleCount = visibleIndices.size
+    val slotLongEdge = 18.dp
+    val dotSize = 6.dp
+    val indicatorGap = 6.dp
+    val windowTravel = dotSize + indicatorGap
+    val contentLongEdge =
+        slotLongEdge + windowTravel * (visibleCount - 1).coerceAtLeast(0)
+    val primaryColor = MaterialTheme.colorScheme.primary
+    val inactiveColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.78f)
 
-    Card(
-        shape = RoundedCornerShape(50),
-        backgroundColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.45f),
-        elevation = 0.dp
+    LaunchedEffect(safeCount, safeCurrent, windowStart) {
+        fromCurrent = previousCurrent
+        fromWindowStart = previousWindowStart
+        previousCurrent = safeCurrent
+        previousWindowStart = windowStart
+        transition.snapTo(0f)
+        transition.animateTo(
+            targetValue = 1f,
+            animationSpec = tween(130, easing = FastOutSlowInEasing)
+        )
+    }
+
+    Canvas(
+        modifier = Modifier.size(
+            width = if (vertical) dotSize else contentLongEdge,
+            height = if (vertical) contentLongEdge else dotSize
+        )
     ) {
-        if (vertical) {
-            Column(
-                modifier = trackModifier.padding(horizontal = 4.dp, vertical = 6.dp),
-                verticalArrangement = arrangement,
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                repeat(count) { index ->
-                    Box(
-                        modifier = Modifier
-                            .size(6.dp)
-                            .clip(CircleShape)
-                            .background(
-                                if (index == current) MaterialTheme.colorScheme.primary
-                                else Color.White.copy(alpha = 0.85f)
-                            )
-                    )
-                }
+        val dotPx = dotSize.toPx()
+        val pillPx = slotLongEdge.toPx()
+        val gapPx = indicatorGap.toPx()
+        val travelPx = windowTravel.toPx()
+
+        fun drawIndicatorSet(
+            indices: List<Int>,
+            selectedIndex: Int,
+            translation: Float,
+            overallAlpha: Float
+        ) {
+            var cursor = translation
+            indices.forEachIndexed { position, pageIndex ->
+                val selected = pageIndex == selectedIndex
+                val faded = isQuickCardIndicatorEdgeFaded(indices, position, safeCount)
+                val longEdge = if (selected) pillPx else dotPx
+                val base = cursor
+                val baseColor = if (selected) primaryColor else inactiveColor
+                val color = baseColor.copy(
+                    alpha = baseColor.alpha *
+                        (if (faded && !selected) 0.44f else 1f) *
+                        overallAlpha
+                )
+                val topLeft = if (vertical) Offset(0f, base) else Offset(base, 0f)
+                val size = if (vertical) Size(dotPx, longEdge) else Size(longEdge, dotPx)
+                drawRoundRect(color, topLeft, size, CornerRadius(dotPx / 2f))
+                cursor += longEdge + gapPx
             }
+        }
+
+        if (fromWindowStart != windowStart) {
+            val direction = if (windowStart > fromWindowStart) 1f else -1f
+            val oldIndices = quickCardIndicatorWindow(safeCount, fromCurrent)
+            drawIndicatorSet(
+                indices = oldIndices,
+                selectedIndex = fromCurrent,
+                translation = -direction * travelPx * transition.value,
+                overallAlpha = 1f - transition.value
+            )
+            drawIndicatorSet(
+                indices = visibleIndices,
+                selectedIndex = safeCurrent,
+                translation = direction * travelPx * (1f - transition.value),
+                overallAlpha = transition.value
+            )
         } else {
-            Row(
-                modifier = trackModifier.padding(horizontal = 6.dp, vertical = 4.dp),
-                horizontalArrangement = arrangement,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                repeat(count) { index ->
-                    Box(
-                        modifier = Modifier
-                            .size(6.dp)
-                            .clip(CircleShape)
-                            .background(
-                                if (index == current) MaterialTheme.colorScheme.primary
-                                else Color.White.copy(alpha = 0.85f)
-                            )
-                    )
+            var cursor = 0f
+            visibleIndices.forEachIndexed { position, pageIndex ->
+                val selection = when {
+                    pageIndex == fromCurrent && pageIndex == safeCurrent -> 1f
+                    pageIndex == fromCurrent -> 1f - transition.value
+                    pageIndex == safeCurrent -> transition.value
+                    else -> 0f
                 }
+                val longEdge = dotPx + (pillPx - dotPx) * selection
+                val base = cursor
+                val faded = isQuickCardIndicatorEdgeFaded(visibleIndices, position, safeCount)
+                val baseColor = lerp(inactiveColor, primaryColor, selection)
+                val color = baseColor.copy(
+                    alpha = baseColor.alpha * if (faded && selection < 0.5f) 0.44f else 1f
+                )
+                val topLeft = if (vertical) Offset(0f, base) else Offset(base, 0f)
+                val size = if (vertical) Size(dotPx, longEdge) else Size(longEdge, dotPx)
+                drawRoundRect(color, topLeft, size, CornerRadius(dotPx / 2f))
+                cursor += longEdge + gapPx
             }
         }
     }
+}
+
+private fun quickCardIndicatorWindow(
+    count: Int,
+    current: Int,
+    maxVisible: Int = 7
+): List<Int> {
+    val safeCount = count.coerceAtLeast(1)
+    val visibleCount = maxVisible.coerceAtLeast(1).coerceAtMost(safeCount)
+    if (safeCount <= visibleCount) return (0 until safeCount).toList()
+
+    val safeCurrent = current.coerceIn(0, safeCount - 1)
+    val start = (safeCurrent - visibleCount / 2).coerceIn(0, safeCount - visibleCount)
+    return (start until start + visibleCount).toList()
+}
+
+private fun isQuickCardIndicatorEdgeFaded(
+    visibleIndices: List<Int>,
+    position: Int,
+    count: Int
+): Boolean {
+    if (visibleIndices.isEmpty()) return false
+    return (position == 0 && visibleIndices.first() > 0) ||
+        (position == visibleIndices.lastIndex && visibleIndices.last() < count - 1)
 }
 
 @Composable

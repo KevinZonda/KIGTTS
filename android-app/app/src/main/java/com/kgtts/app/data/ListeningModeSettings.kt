@@ -13,6 +13,7 @@ data class ListeningModeSettings(
     val rotated180: Boolean = false,
     val portraitPanelsSwapped: Boolean = false,
     val landscapePanelsSwapped: Boolean = false,
+    val floatingOverlayLandscapePanelsSwapped: Boolean = false,
     val hideDuringTextInput: Boolean = true,
     val recognitionLanguage: String = AsrRecognitionLanguage.DEFAULT,
     val preferredInputType: Int = AudioRoutePreference.INPUT_BUILTIN_MIC,
@@ -58,6 +59,7 @@ data class ListeningModeSettings(
         put("rotated180", rotated180)
         put("portraitPanelsSwapped", portraitPanelsSwapped)
         put("landscapePanelsSwapped", landscapePanelsSwapped)
+        put("floatingOverlayLandscapePanelsSwapped", floatingOverlayLandscapePanelsSwapped)
         put("hideDuringTextInput", hideDuringTextInput)
         put("recognitionLanguage", recognitionLanguage)
         put("preferredInputType", preferredInputType)
@@ -79,6 +81,7 @@ data class ListeningModeSettings(
             if (raw.isNullOrBlank()) return ListeningModeSettings()
             return runCatching {
                 val json = JSONObject(raw)
+                val landscapePanelsSwapped = json.optBoolean("landscapePanelsSwapped", false)
                 ListeningModeSettings(
                     enabled = json.optBoolean("enabled", false),
                     modePromptDismissed = json.optBoolean("modePromptDismissed", false),
@@ -92,7 +95,11 @@ data class ListeningModeSettings(
                     ).toFloat(),
                     rotated180 = json.optBoolean("rotated180", false),
                     portraitPanelsSwapped = json.optBoolean("portraitPanelsSwapped", false),
-                    landscapePanelsSwapped = json.optBoolean("landscapePanelsSwapped", false),
+                    landscapePanelsSwapped = landscapePanelsSwapped,
+                    floatingOverlayLandscapePanelsSwapped = json.optBoolean(
+                        "floatingOverlayLandscapePanelsSwapped",
+                        landscapePanelsSwapped
+                    ),
                     hideDuringTextInput = json.optBoolean("hideDuringTextInput", true),
                     recognitionLanguage = json.optString(
                         "recognitionLanguage",

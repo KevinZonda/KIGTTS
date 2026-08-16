@@ -35,7 +35,9 @@ internal object OverlayListeningCardLayoutPolicy {
         verticalTopInsetPx: Int,
         verticalBottomInsetPx: Int,
         landscapeCenterXPx: Int,
-        listeningOnRight: Boolean
+        listeningOnRight: Boolean,
+        constrainPortraitListeningHeightToAvailable: Boolean = true,
+        constrainLandscapeListeningWidthToAvailable: Boolean = true
     ): OverlayListeningCardLayout {
         val mainVisibleWidth =
             (mainOuterWidthPx - mainPaddingLeftPx - mainPaddingRightPx).coerceAtLeast(1)
@@ -45,10 +47,14 @@ internal object OverlayListeningCardLayoutPolicy {
             val minimumTop = safeTopPx + verticalTopInsetPx
             val maximumListeningHeight =
                 safeBottomPx - verticalBottomInsetPx - minimumTop - gapPx - mainVisibleHeight
-            val listeningHeight = min(
-                requestedPortraitListeningHeightPx,
-                max(minimumListeningExtentPx, maximumListeningHeight)
-            )
+            val listeningHeight = if (constrainPortraitListeningHeightToAvailable) {
+                min(
+                    requestedPortraitListeningHeightPx,
+                    max(minimumListeningExtentPx, maximumListeningHeight)
+                )
+            } else {
+                requestedPortraitListeningHeightPx.coerceAtLeast(minimumListeningExtentPx)
+            }
             val groupHeight = listeningHeight + gapPx + mainVisibleHeight
             val maximumGroupTop = safeBottomPx - verticalBottomInsetPx - groupHeight
             val preferredGroupTop =
@@ -73,10 +79,14 @@ internal object OverlayListeningCardLayoutPolicy {
         val maximumGroupRight = safeRightPx - edgeInsetPx
         val maximumListeningWidth =
             maximumGroupRight - minimumGroupLeft - gapPx - mainVisibleWidth
-        val listeningWidth = min(
-            requestedLandscapeListeningWidthPx,
-            max(minimumListeningExtentPx, maximumListeningWidth)
-        )
+        val listeningWidth = if (constrainLandscapeListeningWidthToAvailable) {
+            min(
+                requestedLandscapeListeningWidthPx,
+                max(minimumListeningExtentPx, maximumListeningWidth)
+            )
+        } else {
+            requestedLandscapeListeningWidthPx.coerceAtLeast(minimumListeningExtentPx)
+        }
         val groupWidth = mainVisibleWidth + gapPx + listeningWidth
         val maximumGroupLeft = maximumGroupRight - groupWidth
         val preferredGroupLeft = landscapeCenterXPx - groupWidth / 2

@@ -45,8 +45,17 @@ class LockScreenLayoutPolicyTest {
     }
 
     @Test
-    fun `phone portrait listening launcher uses compact clock but mini pages hide it`() {
+    fun `phone portrait listening launcher only uses compact clock when normal clock does not fit`() {
         assertTrue(
+            LockScreenLayoutPolicy.useCompactClock(
+                mode = LockScreenLayoutMode.PhonePortrait,
+                miniOverlayVisible = false,
+                listeningOverlayVisible = true,
+                listeningTopClearancePx = 150,
+                normalClockRequiredHeightPx = 180
+            )
+        )
+        assertFalse(
             LockScreenLayoutPolicy.useCompactClock(
                 mode = LockScreenLayoutMode.PhonePortrait,
                 miniOverlayVisible = false,
@@ -62,6 +71,68 @@ class LockScreenLayoutPolicyTest {
                 listeningOverlayVisible = true,
                 listeningTopClearancePx = 80,
                 normalClockRequiredHeightPx = 180
+            )
+        )
+    }
+
+    @Test
+    fun `large phone listening group moves down while compact phones keep their offsets`() {
+        assertEquals(
+            0f,
+            LockScreenLayoutPolicy.phonePortraitListeningGroupOffsetDp(
+                largePhone = true,
+                launcherVisible = true
+            )
+        )
+        assertEquals(
+            48f,
+            LockScreenLayoutPolicy.phonePortraitListeningGroupOffsetDp(
+                largePhone = true,
+                launcherVisible = false
+            )
+        )
+        assertEquals(
+            -32f,
+            LockScreenLayoutPolicy.phonePortraitListeningGroupOffsetDp(
+                largePhone = false,
+                launcherVisible = true
+            )
+        )
+        assertEquals(
+            -56f,
+            LockScreenLayoutPolicy.phonePortraitListeningGroupOffsetDp(
+                largePhone = false,
+                launcherVisible = false
+            )
+        )
+    }
+
+    @Test
+    fun `large phone launcher group centers between clock and unlock reserves when space allows`() {
+        assertEquals(
+            750,
+            LockScreenLayoutPolicy.centeredPortraitLauncherGroupTopPx(
+                currentTopPx = 260,
+                groupHeightPx = 1700,
+                safeTopPx = 0,
+                safeBottomPx = 3200,
+                topReservePx = 200,
+                bottomReservePx = 200,
+                minimumTopPx = 40,
+                maximumTopPx = 1460
+            )
+        )
+        assertEquals(
+            260,
+            LockScreenLayoutPolicy.centeredPortraitLauncherGroupTopPx(
+                currentTopPx = 260,
+                groupHeightPx = 2800,
+                safeTopPx = 0,
+                safeBottomPx = 3200,
+                topReservePx = 300,
+                bottomReservePx = 300,
+                minimumTopPx = 40,
+                maximumTopPx = 360
             )
         )
     }
@@ -109,6 +180,15 @@ class LockScreenLayoutPolicyTest {
             120,
             LockScreenLayoutPolicy.overlayLeftPx(mode, 1080, 840, 48)
         )
+    }
+
+    @Test
+    fun `large phone portrait stays below tablet threshold`() {
+        assertTrue(LockScreenLayoutPolicy.isLargePhonePortrait(1440, 3200, 3.775f))
+        assertTrue(LockScreenLayoutPolicy.isLargePhonePortrait(1440, 3200, 2.6125f))
+        assertFalse(LockScreenLayoutPolicy.isLargePhonePortrait(1440, 3200, 4.5f))
+        assertFalse(LockScreenLayoutPolicy.isLargePhonePortrait(1600, 2560, 2f))
+        assertFalse(LockScreenLayoutPolicy.isLargePhonePortrait(3200, 1440, 2.6125f))
     }
 
     @Test
@@ -177,6 +257,49 @@ class LockScreenLayoutPolicyTest {
         assertEquals(
             612,
             LockScreenLayoutPolicy.hostColumnWidthPx(left, 0, 48, 72, 600)
+        )
+    }
+
+    @Test
+    fun `phone landscape listening reserves a clock column without affecting tablets`() {
+        val safeLeft = 0
+        val safeRight = 3200
+        val density = 4.5f
+        val listeningLeft = LockScreenLayoutPolicy.phoneLandscapeListeningSafeLeftPx(
+            safeLeftPx = safeLeft,
+            safeRightPx = safeRight,
+            density = density
+        )
+
+        assertEquals(640, listeningLeft)
+        assertTrue(
+            LockScreenLayoutPolicy.phoneLandscapeInfoScale(
+                columnWidthPx = listeningLeft - 72 - 108,
+                density = density
+            ) < 1f
+        )
+    }
+
+    @Test
+    fun `phone landscape overlay receives a bounded upward bias`() {
+        assertEquals(455, LockScreenLayoutPolicy.phoneLandscapeOverlayTopPx(500, 4.5f))
+        assertEquals(54, LockScreenLayoutPolicy.phoneLandscapeOverlayTopPx(20, 4.5f))
+    }
+
+    @Test
+    fun `lock screen keeps design width separate from visual safe width`() {
+        val density = 4.5f
+        val mode = LockScreenLayoutMode.PhonePortrait
+
+        assertEquals(1620, LockScreenLayoutPolicy.overlayDesignWidthPx(mode, density))
+        assertEquals(
+            1296,
+            LockScreenLayoutPolicy.overlayWidthPx(
+                mode = mode,
+                screenWidthPx = 1440,
+                density = density,
+                sideMarginPx = 72
+            )
         )
     }
 

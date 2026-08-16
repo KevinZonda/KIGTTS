@@ -10,6 +10,7 @@ enum class VolumeHotkeySequence {
 data class VolumeHotkeyActionSpec(
     val kind: String,
     val target: String,
+    val text: String = "",
     val packageName: String = "",
     val className: String = "",
     val shortcutId: String = "",
@@ -23,6 +24,7 @@ object VolumeHotkeyActions {
     const val KIND_EXTERNAL = "external"
 
     const val TARGET_QUICK_SUBTITLE = "quick_subtitle"
+    const val TARGET_QUICK_SUBTITLE_TEXT = "quick_subtitle_text"
     const val TARGET_QUICK_CARD = "quick_card"
     const val TARGET_DRAWING = "drawing"
     const val TARGET_SOUNDBOARD = "soundboard"
@@ -31,11 +33,13 @@ object VolumeHotkeyActions {
 
     const val TARGET_OPEN_OVERLAY = "open_overlay"
     const val TARGET_OPEN_MINI_QUICK_SUBTITLE = "open_mini_quick_subtitle"
+    const val TARGET_SEND_MINI_QUICK_SUBTITLE = "send_mini_quick_subtitle"
     const val TARGET_OPEN_MINI_QUICK_CARD = "open_mini_quick_card"
 
     val directOptions =
         listOf(
             internal(TARGET_QUICK_SUBTITLE),
+            internal(TARGET_QUICK_SUBTITLE_TEXT),
             internal(TARGET_QUICK_CARD),
             internal(TARGET_DRAWING),
             internal(TARGET_SOUNDBOARD),
@@ -47,6 +51,7 @@ object VolumeHotkeyActions {
         listOf(
             overlay(TARGET_OPEN_OVERLAY),
             overlay(TARGET_OPEN_MINI_QUICK_SUBTITLE),
+            overlay(TARGET_SEND_MINI_QUICK_SUBTITLE),
             overlay(TARGET_OPEN_MINI_QUICK_CARD)
         )
 
@@ -77,6 +82,7 @@ object VolumeHotkeyActions {
         return JSONObject().apply {
             put("kind", action.kind)
             put("target", action.target)
+            put("text", action.text)
             put("packageName", action.packageName)
             put("className", action.className)
             put("shortcutId", action.shortcutId)
@@ -92,6 +98,7 @@ object VolumeHotkeyActions {
             VolumeHotkeyActionSpec(
                 kind = obj.optString("kind", fallback.kind).ifBlank { fallback.kind },
                 target = obj.optString("target", fallback.target).ifBlank { fallback.target },
+                text = obj.optString("text", ""),
                 packageName = obj.optString("packageName", ""),
                 className = obj.optString("className", ""),
                 shortcutId = obj.optString("shortcutId", ""),
@@ -105,6 +112,7 @@ object VolumeHotkeyActions {
         return when (action.kind) {
             KIND_INTERNAL -> when (action.target) {
                 TARGET_QUICK_SUBTITLE -> "快捷字幕"
+                TARGET_QUICK_SUBTITLE_TEXT -> "快捷字幕（指定文本）"
                 TARGET_QUICK_CARD -> "快捷名片"
                 TARGET_DRAWING -> "画板"
                 TARGET_SOUNDBOARD -> "音效板"
@@ -115,6 +123,7 @@ object VolumeHotkeyActions {
             KIND_OVERLAY -> when (action.target) {
                 TARGET_OPEN_OVERLAY -> "打开悬浮窗"
                 TARGET_OPEN_MINI_QUICK_SUBTITLE -> "打开迷你快捷字幕"
+                TARGET_SEND_MINI_QUICK_SUBTITLE -> "发送迷你快捷字幕（指定文本）"
                 TARGET_OPEN_MINI_QUICK_CARD -> "打开迷你快捷名片"
                 else -> "未设置"
             }
@@ -126,4 +135,8 @@ object VolumeHotkeyActions {
             else -> "未设置"
         }
     }
+
+    fun requiresConfiguredText(action: VolumeHotkeyActionSpec): Boolean =
+        action.target == TARGET_QUICK_SUBTITLE_TEXT ||
+            action.target == TARGET_SEND_MINI_QUICK_SUBTITLE
 }

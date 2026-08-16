@@ -295,6 +295,7 @@ import com.lhtstudio.kigtts.app.util.QuickCardRenderCache
 import com.lhtstudio.kigtts.app.util.VolumeHotkeyActionSpec
 import com.lhtstudio.kigtts.app.util.VolumeHotkeyActions
 import com.lhtstudio.kigtts.app.util.VolumeHotkeySequence
+import com.lhtstudio.kigtts.app.util.KeyboardHotkeyEntry
 import com.google.android.gms.tasks.Task
 import com.google.mlkit.vision.barcode.BarcodeScanner
 import com.google.mlkit.vision.barcode.BarcodeScannerOptions
@@ -450,6 +451,8 @@ data class UiState(
         VolumeHotkeyActions.defaultFor(VolumeHotkeySequence.UpDown),
     val volumeHotkeyDownUpAction: VolumeHotkeyActionSpec =
         VolumeHotkeyActions.defaultFor(VolumeHotkeySequence.DownUp),
+    val keyboardHotkeysEnabled: Boolean = true,
+    val keyboardHotkeys: List<KeyboardHotkeyEntry> = emptyList(),
     val ttsDisabled: Boolean = false,
     val soundboardInterruptOnNewPlayback: Boolean = true,
     val soundboardKeywordTriggerEnabled: Boolean = false,

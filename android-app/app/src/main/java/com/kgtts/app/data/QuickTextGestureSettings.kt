@@ -65,7 +65,7 @@ object QuickTextGestures {
         template(
             id = "m_shape",
             title = "M 形",
-            description = "从左下起笔，连续画出 M 形折线。",
+            description = "从左下开始，一笔画出 M 形。",
             0.10f to 0.86f,
             0.10f to 0.16f,
             0.50f to 0.70f,
@@ -75,7 +75,7 @@ object QuickTextGestures {
         template(
             id = "w_shape",
             title = "W 形",
-            description = "从左上起笔，连续画出 W 形折线。",
+            description = "从左上开始，一笔画出 W 形。",
             0.10f to 0.16f,
             0.10f to 0.86f,
             0.50f to 0.30f,
@@ -85,7 +85,7 @@ object QuickTextGestures {
         template(
             id = "z_shape",
             title = "Z 形",
-            description = "从左上向右画，再斜向左下并向右收笔。",
+            description = "从左上向右画，再斜向左下，最后向右收笔。",
             0.10f to 0.18f,
             0.90f to 0.18f,
             0.10f to 0.84f,
@@ -94,7 +94,7 @@ object QuickTextGestures {
         template(
             id = "lightning",
             title = "闪电",
-            description = "从右上起笔，按折线方向快速画到左下。",
+            description = "从右上开始，沿折线一笔画到左下。",
             0.82f to 0.10f,
             0.30f to 0.46f,
             0.68f to 0.46f,
@@ -103,7 +103,7 @@ object QuickTextGestures {
         template(
             id = "hourglass",
             title = "沙漏",
-            description = "从左上斜到右下，再向上并斜回左下。",
+            description = "从左上斜到右下，再向上折回左下。",
             0.12f to 0.14f,
             0.88f to 0.86f,
             0.88f to 0.14f,
@@ -112,7 +112,7 @@ object QuickTextGestures {
         template(
             id = "folded_hook",
             title = "折钩",
-            description = "从左上向下，沿底部折向右上并向内收笔。",
+            description = "从左上向下，沿底部折向右上，再向内收笔。",
             0.16f to 0.12f,
             0.16f to 0.78f,
             0.32f to 0.90f,

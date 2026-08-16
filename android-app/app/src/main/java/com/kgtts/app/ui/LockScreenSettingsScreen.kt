@@ -43,6 +43,7 @@ import kotlinx.coroutines.withContext
 internal enum class OverlaySettingsPage {
     Main,
     QuickTextGestures,
+    KeyboardHotkeys,
     LockScreen,
     ClockFont
 }
@@ -67,9 +68,9 @@ internal fun LockScreenSettingsEntryCard(
         }
         Text(
             if (enabled) {
-                "已开启${if (hasWallpaper) " · 使用自定义壁纸" else " · 透出系统锁屏壁纸"}"
+                "已开启${if (hasWallpaper) " · 自定义壁纸" else " · 系统锁屏壁纸"}"
             } else {
-                "开启后可在锁屏上查看时间并使用快捷操作；普通悬浮窗可保持关闭。"
+                "在锁屏上查看时间、日期，并使用常用快捷功能。"
             },
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -84,9 +85,9 @@ internal fun LockScreenSettingsEntryCard(
         ) {
             MsIcon("lock", contentDescription = null)
             Column(modifier = Modifier.weight(1f)) {
-                Text("锁屏样式设置", fontWeight = FontWeight.SemiBold)
+                Text("锁屏外观", fontWeight = FontWeight.SemiBold)
                 Text(
-                    "壁纸、时间日期、电量和字体",
+                    "壁纸、时钟、日期与电量",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -185,7 +186,7 @@ internal fun LockScreenSettingsScreen(
                 }
             )
             Text(
-                "自定义锁屏独立运行；关闭普通悬浮窗后仍可使用。",
+                "在锁屏上查看时间、日期，并使用快捷字幕、名片等常用功能。",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -218,7 +219,7 @@ internal fun LockScreenSettingsScreen(
 
         Md2SettingsCard(title = "时间与日期") {
             Md2SettingSwitchRow(
-                title = "时间和日期居左显示",
+                title = "时间和日期靠左",
                 checked = settings.timeAndDateAlignedStart,
                 onCheckedChange = { enabled ->
                     viewModel.updateLockScreenSettings {
@@ -227,14 +228,14 @@ internal fun LockScreenSettingsScreen(
                 }
             )
             Md2SettingSwitchRow(
-                title = "在日期后显示农历",
+                title = "显示农历日期",
                 checked = settings.showLunarDate,
                 onCheckedChange = { enabled ->
                     viewModel.updateLockScreenSettings { it.copy(showLunarDate = enabled) }
                 }
             )
             Text(
-                "农历会附加在公历日期后方，例如“7月26日 星期日 · 农历六月十三”。",
+                "农历会显示在日期后面，例如“7月26日 星期日 · 农历六月十三”。",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -249,20 +250,20 @@ internal fun LockScreenSettingsScreen(
 
         Md2SettingsCard(title = "锁屏字体") {
             Md2SettingSwitchRow(
-                title = "锁屏使用系统字体",
+                title = "使用系统字体",
                 checked = settings.useSystemFont,
                 onCheckedChange = { enabled ->
                     viewModel.updateLockScreenSettings { it.copy(useSystemFont = enabled) }
                 }
             )
             Text(
-                "仅影响时间、日期、电量状态和滑动解锁提示，不影响锁屏中的快捷操作面板。",
+                "时间、日期、电量和解锁提示将使用系统字体；快捷功能面板保持原样。",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Spacer(Modifier.height(6.dp))
             Md2SettingSwitchRow(
-                title = "使用单独的时钟字体",
+                title = "单独设置时钟字体",
                 checked = settings.useSeparateClockFont,
                 onCheckedChange = { enabled ->
                     viewModel.updateLockScreenSettings { it.copy(useSeparateClockFont = enabled) }
@@ -270,7 +271,7 @@ internal fun LockScreenSettingsScreen(
                 }
             )
             Text(
-                "只改变数字时间，日期、农历和其它锁屏文字仍使用上方设置。",
+                "仅更改时间数字的字体，日期和其它文字不会变化。",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )

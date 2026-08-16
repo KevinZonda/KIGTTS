@@ -87,6 +87,7 @@ internal fun LedSubtitleFloatingInputPreview(
     rotated180: Boolean,
     onFontSizeChange: (Float) -> Unit,
     onFontSizeChangeFinished: () -> Unit,
+    onCursorDelta: (Int) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val layoutDirection = LocalLayoutDirection.current
@@ -97,6 +98,8 @@ internal fun LedSubtitleFloatingInputPreview(
                 text = AnnotatedString(text),
                 cursorIndex = cursorIndex.coerceIn(0, text.length),
                 bottomPadding = bottomPadding,
+                cursorSwipeEnabled = true,
+                onCursorDelta = onCursorDelta,
                 fontSizeSp = maxFontSizeSp,
                 minFontSizeSp = 28f,
                 maxFontSizeSp = maxAllowedFontSizeSp,

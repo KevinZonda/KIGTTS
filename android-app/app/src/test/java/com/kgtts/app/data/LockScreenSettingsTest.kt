@@ -19,7 +19,7 @@ class LockScreenSettingsTest {
         assertFalse(settings.useSystemFont)
         assertFalse(settings.useSeparateClockFont)
         assertFalse(settings.showLunarDate)
-        assertFalse(settings.showBatteryStatus)
+        assertTrue(settings.showBatteryStatus)
         assertEquals(LockScreenBatteryStyle.Compact, settings.batteryStyle)
         assertFalse(settings.batteryOnlyWhenChargingOrLow)
         assertEquals(30, settings.lowBatteryThreshold)
@@ -54,6 +54,14 @@ class LockScreenSettingsTest {
         val settings = decodeLockScreenSettings("not-json")
 
         assertEquals(LockScreenSettings(), settings)
+    }
+
+    @Test
+    fun `battery display defaults on without overriding an explicit choice`() {
+        assertTrue(decodeLockScreenSettings("{}").showBatteryStatus)
+        assertFalse(
+            decodeLockScreenSettings("""{"showBatteryStatus":false}""").showBatteryStatus
+        )
     }
 
     @Test

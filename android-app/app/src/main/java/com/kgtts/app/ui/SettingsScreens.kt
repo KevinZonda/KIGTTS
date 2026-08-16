@@ -1165,7 +1165,7 @@ fun SettingsScreen(
                         )
                     } else {
                         Text(
-                            text = "一个资源包包含语音识别、V6 内建标点、智能断句、语音降噪和说话人分离所需的组件。",
+                            text = "安装完成即可使用语音识别功能",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -1364,7 +1364,7 @@ fun SettingsScreen(
                     }
                     val currentVadMode = VadMode.fromFlags(state.classicVadEnabled, state.sileroVadEnabled)
                     Md2SettingDropdownRow(
-                        title = "自动判断说话起止",
+                        title = "自动识别说话与停顿",
                         value = VadMode.labelOf(currentVadMode),
                         expanded = vadModeExpanded,
                         onExpandedChange = { vadModeExpanded = it },
@@ -1385,7 +1385,7 @@ fun SettingsScreen(
                     }
                     val sileroVadControlsEnabled = state.sileroVadEnabled
                     Text(
-                        "说话触发门槛：${String.format("%.2f", sileroVadThresholdDraft)}",
+                        "收音灵敏度：${String.format("%.2f", sileroVadThresholdDraft)}",
                         style = MaterialTheme.typography.bodySmall,
                         color = LocalContentColor.current.copy(
                             alpha = if (sileroVadControlsEnabled) 1f else 0.38f
@@ -1415,14 +1415,14 @@ fun SettingsScreen(
                         )
                     )
                     Text(
-                        "越低越容易触发；轻声吞首字可先试 0.35-0.45。",
+                        "调低后更容易识别轻声；环境嘈杂时可适当调高。",
                         style = MaterialTheme.typography.bodySmall,
                         color = LocalContentColor.current.copy(
                             alpha = if (sileroVadControlsEnabled) 0.74f else 0.38f
                         )
                     )
                     Text(
-                        "保留触发前声音：$sileroVadPreRollDraft 毫秒",
+                        "保留开头声音：$sileroVadPreRollDraft 毫秒",
                         style = MaterialTheme.typography.bodySmall,
                         color = LocalContentColor.current.copy(
                             alpha = if (sileroVadControlsEnabled) 1f else 0.38f
@@ -1750,7 +1750,7 @@ fun SettingsScreen(
                         }
                     }
                     Text(
-                        "用于测试当前麦克风收音和本地回放。回放会应用当前语音降噪设置，但不会触发识别或朗读。测试前请先停止正在进行的语音识别。",
+                        "测试当前麦克风的收音与回放效果。",
                         style = MaterialTheme.typography.bodySmall
                     )
                 }

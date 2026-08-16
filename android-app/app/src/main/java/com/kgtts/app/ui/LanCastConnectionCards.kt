@@ -72,14 +72,14 @@ internal fun LanCastServiceCard(
             if (status.running) {
                 val connected = status.displayClients + status.remoteClients
                 Text(
-                    text = "已连接 $connected 个网页，其中 ${status.audioClients} 个投屏端接收音频",
+                    text = "已连接 $connected 个网页端，其中 ${status.audioClients} 个正在接收声音",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Md2TextButton(onClick = onBackgroundSettingsRequested) {
                     MsIcon("battery_saver", contentDescription = null)
                     Spacer(Modifier.size(6.dp))
-                    Text("后台运行设置")
+                    Text("保持后台连接")
                 }
             }
             status.error?.let { error ->

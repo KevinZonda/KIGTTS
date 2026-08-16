@@ -1,6 +1,7 @@
 package com.lhtstudio.kigtts.app.overlay
 
 import android.animation.LayoutTransition
+import android.animation.ArgbEvaluator
 import android.animation.ValueAnimator
 import android.animation.Animator
 import android.animation.AnimatorListenerAdapter
@@ -61,6 +62,7 @@ import android.view.Gravity
 import android.view.ViewConfiguration
 import android.view.MotionEvent
 import android.view.ScaleGestureDetector
+import android.view.Surface
 import android.view.View
 import android.view.ViewGroup
 import android.view.ViewOutlineProvider
@@ -151,6 +153,8 @@ open class FloatingOverlayService : Service() {
     private val fabIdleDockAlpha = 0.56f
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val windowManager by lazy { getSystemService(WindowManager::class.java) }
+    private var displayMetricsWindowManager: WindowManager? = null
+    private var displayMetricsWindowRotation = -1
     private val iconTypeface: Typeface? by lazy {
         runCatching {
             ResourcesCompat.getFont(this, R.font.material_symbols_sharp)
@@ -197,14 +201,38 @@ open class FloatingOverlayService : Service() {
     protected open fun onListeningOverlayVisibilityChanged(visible: Boolean) = Unit
     protected open fun onListeningOverlayTopClearanceChanged(clearancePx: Int?) = Unit
 
+    protected open fun listeningOverlaySafeBounds(safeBounds: Rect): Rect = Rect(safeBounds)
+
     protected open fun usesVerticalListeningOverlayLayout(): Boolean = !isLandscapeUi()
 
     protected open fun verticalListeningOverlayTopInsetPx(): Int = dp(12)
 
     protected open fun verticalListeningOverlayBottomInsetPx(): Int = dp(12)
 
+    protected open fun portraitListeningOverlayHeightPx(safeBounds: Rect): Int =
+        min(dp(176), (safeBounds.height() * 0.2f).roundToInt()).coerceAtLeast(dp(144))
+
+    protected open fun preservePortraitListeningOverlayHeight(): Boolean = false
+
     protected open fun landscapeListeningOverlayCenterXPx(safeBounds: Rect): Int =
-        safeBounds.centerX() - if (isPhoneLandscapeUi()) dp(16) else 0
+        displayBounds().centerX()
+
+    protected open fun landscapeListeningOverlayMinimumWidthPx(): Int = dp(96)
+
+    protected open fun portraitListeningOverlayMinimumHeightPx(): Int = dp(96)
+
+    protected open fun listeningOverlayGroupVerticalOffsetPx(): Int = 0
+
+    protected open fun listeningOverlayGroupTopPx(
+        currentTopPx: Int,
+        groupHeightPx: Int,
+        safeBounds: Rect,
+        minimumTopPx: Int,
+        maximumTopPx: Int
+    ): Int = (currentTopPx + listeningOverlayGroupVerticalOffsetPx())
+        .coerceIn(minimumTopPx, maximumTopPx)
+
+    protected fun isExpandedLauncherOverlayVisible(): Boolean = panelVisible
 
     protected open fun shouldSyncTopStatusContent(): Boolean = true
     protected open suspend fun awaitOverlayHostReady() = Unit
@@ -268,8 +296,10 @@ open class FloatingOverlayService : Service() {
     private var fabIconView: ImageView? = null
     private var fabTouchDockEdge: String? = null
     private var panelRoot: FrameLayout? = null
+    private var panelContentGroup: FrameLayout? = null
     private var panelContent: LinearLayout? = null
     private var panelParams: WindowManager.LayoutParams? = null
+    private val panelContentTouchBounds = Rect()
     private var panelVisible = false
     private var panelPageIndex = 0
     private var panelStatusTextView: TextView? = null
@@ -306,6 +336,7 @@ open class FloatingOverlayService : Service() {
     private var panelPickerSearchInput: OverlaySelectionEditText? = null
     private var panelPickerTextContextMenu: OverlayTextContextMenuController? = null
     private var miniRoot: FrameLayout? = null
+    private var miniContentGroup: FrameLayout? = null
     private var miniContent: LinearLayout? = null
     private var miniParams: WindowManager.LayoutParams? = null
     private var miniVisible = false
@@ -349,7 +380,10 @@ open class FloatingOverlayService : Service() {
     private var listeningOverlayUserTouching = false
     private var listeningOverlayUserScrolled = false
     private var listeningOverlayTouchDownY = 0f
-    private var miniSubtitleCardView: LinearLayout? = null
+    private var listeningOverlayRelayoutGeneration = 0L
+    private var miniSubtitleCardView: FrameLayout? = null
+    private var miniSoundboardStopCardView: LinearLayout? = null
+    private var miniSoundboardStopCardTargetVisible = false
     private var miniSubtitleSeekBar: SeekBar? = null
     private var miniQuickItemsContainer: FrameLayout? = null
     private var miniQuickItemsRecyclerView: RecyclerView? = null
@@ -447,7 +481,9 @@ open class FloatingOverlayService : Service() {
     private var lastFabDisplayHeight = 0
     private var overlayWindowsInitialized = false
     private var fabPositionReady = false
-    private val pendingServiceActions = mutableListOf<String>()
+    private data class PendingServiceAction(val action: String, val text: String = "")
+
+    private val pendingServiceActions = mutableListOf<PendingServiceAction>()
     private var downRawX = 0f
     private var downRawY = 0f
     private var downWinX = 0
@@ -606,6 +642,7 @@ open class FloatingOverlayService : Service() {
     private var miniPreviewOverlayTargetVisible = false
     private var quickCards: List<QuickCard> = emptyList()
     private var quickCardSelectedIndex = 0
+    private var quickCardSelectionSaveJob: Job? = null
     private var soundboardConfig: SoundboardConfig = defaultSoundboardConfig()
     private var miniSoundboardSelectedGroupId: Long = soundboardConfig.selectedGroupId
     private var miniSoundboardPortraitLayout: SoundboardLayoutMode = SoundboardLayoutMode.List
@@ -613,8 +650,6 @@ open class FloatingOverlayService : Service() {
     private var soundboardConfigRawCache = ""
     private var soundboardPlaybackStates: Map<Long, SoundboardPlaybackState> = emptyMap()
     private var soundboardPlaybackJob: Job? = null
-    private val miniQuickCardPageHeights = mutableMapOf<Long, Int>()
-    private var miniQuickCardMeasureWidth = 0
     private var quickCardConfigRawCache = ""
     private var overlayShortcutSaving = false
     private var overlayLauncherLayoutLoaded = false
@@ -872,13 +907,6 @@ open class FloatingOverlayService : Service() {
                     ViewGroup.LayoutParams.MATCH_PARENT
                 )
             )
-            holder.container.post {
-                val measuredHeight = holder.container.height
-                if (measuredHeight > 0) {
-                    miniQuickCardPageHeights[miniQuickCardHeightKey(card)] = measuredHeight
-                    miniQuickCardPreviewContainer?.requestLayout()
-                }
-            }
         }
 
         override fun getItemCount(): Int = items.size
@@ -2129,7 +2157,9 @@ open class FloatingOverlayService : Service() {
             onOverlayWindowsInitialized()
             val startupActions = pendingServiceActions.toList()
             pendingServiceActions.clear()
-            startupActions.forEach(::handleServiceAction)
+            startupActions.forEach { request ->
+                handleServiceAction(request.action, request.text)
+            }
             observeSettings()
             observeAppFontChanges()
             observeSoundboardPlayback()
@@ -2138,19 +2168,20 @@ open class FloatingOverlayService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val action = intent?.action
+        val text = intent?.getStringExtra(EXTRA_SERVICE_TEXT).orEmpty()
         if (action == ACTION_STOP) {
             stopSelf()
             return START_NOT_STICKY
         }
         if (!overlayWindowsInitialized && action != null) {
-            pendingServiceActions += action
+            pendingServiceActions += PendingServiceAction(action, text)
             return START_STICKY
         }
-        handleServiceAction(action)
+        handleServiceAction(action, text)
         return START_STICKY
     }
 
-    private fun handleServiceAction(action: String?) {
+    private fun handleServiceAction(action: String?, text: String = "") {
         when (action) {
             ACTION_STOP -> {
                 stopSelf()
@@ -2160,6 +2191,7 @@ open class FloatingOverlayService : Service() {
             }
             ACTION_OPEN_MINI_SUBTITLE -> {
                 showMiniPanel(MiniOverlayMode.Subtitle)
+                submitQuickSubtitleText(text)
             }
             ACTION_OPEN_MINI_QUICK_CARD -> {
                 showMiniPanel(MiniOverlayMode.QuickCard)
@@ -2197,8 +2229,8 @@ open class FloatingOverlayService : Service() {
     protected fun requestExpandedPanel() {
         if (overlayWindowsInitialized) {
             showPanel()
-        } else if (ACTION_OPEN_PANEL !in pendingServiceActions) {
-            pendingServiceActions += ACTION_OPEN_PANEL
+        } else if (pendingServiceActions.none { it.action == ACTION_OPEN_PANEL }) {
+            pendingServiceActions += PendingServiceAction(ACTION_OPEN_PANEL)
         }
     }
 
@@ -2411,6 +2443,7 @@ open class FloatingOverlayService : Service() {
         soundboardPlaybackJob = scope.launch {
             SoundboardManager.playbackState().collectLatest { next ->
                 soundboardPlaybackStates = next
+                refreshMiniSoundboardStopCardUi()
                 if (miniVisible && miniMode == MiniOverlayMode.Soundboard) {
                     refreshMiniSoundboardPlaybackUi()
                 }
@@ -2489,19 +2522,17 @@ open class FloatingOverlayService : Service() {
     }
 
     private fun setPanelWindowVisibleImmediately(visible: Boolean) {
-        panelContent?.animate()?.cancel()
-        panelContent?.alpha = 1f
-        panelContent?.translationY = 0f
+        resetOverlayAnimationTarget(panelContent)
         panelContent?.visibility = if (visible) View.VISIBLE else View.GONE
+        panelContentGroup?.visibility = if (visible) View.VISIBLE else View.GONE
         panelRoot?.visibility = if (visible) View.VISIBLE else View.GONE
         panelVisible = visible
     }
 
     private fun setMiniWindowVisibleImmediately(visible: Boolean) {
-        miniContent?.animate()?.cancel()
-        miniContent?.alpha = 1f
-        miniContent?.translationY = 0f
+        resetOverlayAnimationTarget(miniContent)
         miniContent?.visibility = if (visible) View.VISIBLE else View.GONE
+        miniContentGroup?.visibility = if (visible) View.VISIBLE else View.GONE
         miniRoot?.visibility = if (visible) View.VISIBLE else View.GONE
         miniVisible = visible
     }
@@ -2592,9 +2623,40 @@ open class FloatingOverlayService : Service() {
             UserPrefs.setListeningModeSettings(this@FloatingOverlayService, next)
         }
         refreshStatusDetailUi()
-        refreshListeningOverlayUi()
-        if (panelVisible) updatePanelPosition()
-        if (miniVisible) updateMiniPanelPosition()
+        if (usesAttachedHostWindow() && (panelVisible || miniVisible)) {
+            animateAttachedListeningOverlayRelayout()
+        } else {
+            refreshListeningOverlayUi()
+            if (panelVisible) updatePanelPosition()
+            if (miniVisible) updateMiniPanelPosition()
+        }
+    }
+
+    private fun animateAttachedListeningOverlayRelayout() {
+        val content = when {
+            panelVisible -> panelContent
+            miniVisible -> miniContent
+            else -> null
+        } ?: return
+        val target = overlayAnimationTarget(content) ?: return
+        val generation = ++listeningOverlayRelayoutGeneration
+        target.animate().cancel()
+        target.animate()
+            .alpha(0f)
+            .setDuration(90L)
+            .withEndAction {
+                if (generation != listeningOverlayRelayoutGeneration) return@withEndAction
+                refreshListeningOverlayUi(animate = false)
+                if (panelVisible) updatePanelPosition()
+                if (miniVisible) updateMiniPanelPosition()
+                target.alpha = 0f
+                target.translationY = 0f
+                target.animate()
+                    .alpha(1f)
+                    .setDuration(170L)
+                    .start()
+            }
+            .start()
     }
 
     private fun previewListeningOverlayFontSize(sizeSp: Float) {
@@ -2635,7 +2697,7 @@ open class FloatingOverlayService : Service() {
 
     private fun attachListeningOverlayCardToActiveRoot() {
         val card = listeningOverlayCardView ?: return
-        val target = if (listeningOverlayHostedByPanel) panelRoot else miniRoot
+        val target = if (listeningOverlayHostedByPanel) panelContentGroup else miniContentGroup
         target ?: return
         if (card.parent !== target) {
             (card.parent as? ViewGroup)?.removeView(card)
@@ -2649,19 +2711,13 @@ open class FloatingOverlayService : Service() {
 
     private fun attachMiniPreviewOverlayToActiveRoot() {
         val overlay = miniPreviewOverlay ?: return
-        val listeningCardParent =
-            if (miniPreviewMode == MiniPreviewMode.Listening) {
-                listeningOverlayCardView?.parent as? FrameLayout
-            } else {
-                null
-            }
         val keepPanelHost = listeningOverlayHostedByPanel &&
             (
                 miniPreviewMode == MiniPreviewMode.Listening ||
                     (miniPreviewMode == MiniPreviewMode.None && overlay.parent === panelRoot)
                 )
         val fallbackTarget = if (keepPanelHost) panelRoot else miniRoot
-        val target = listeningCardParent ?: fallbackTarget ?: return
+        val target = fallbackTarget ?: return
         if (overlay.parent !== target) {
             (overlay.parent as? ViewGroup)?.removeView(overlay)
             target.addView(
@@ -2686,6 +2742,54 @@ open class FloatingOverlayService : Service() {
         } else {
             card.bringToFront()
         }
+    }
+
+    private data class ListeningTransitionGhost(
+        val view: ImageView,
+        val bitmap: Bitmap
+    )
+
+    private fun createListeningTransitionGhost(): ListeningTransitionGhost? {
+        val card = listeningOverlayCardView ?: return null
+        if (card.visibility != View.VISIBLE || !listeningOverlayCardTargetVisible) return null
+        val parent = card.parent as? FrameLayout ?: return null
+        val width = card.width.takeIf { it > 0 } ?: return null
+        val height = card.height.takeIf { it > 0 } ?: return null
+        val sourceParams = card.layoutParams as? FrameLayout.LayoutParams ?: return null
+        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        card.draw(Canvas(bitmap))
+        val ghost = ImageView(this).apply {
+            setImageBitmap(bitmap)
+            scaleType = ImageView.ScaleType.FIT_XY
+            alpha = card.alpha
+            scaleX = card.scaleX
+            scaleY = card.scaleY
+            pivotX = card.pivotX
+            pivotY = card.pivotY
+            translationX = card.translationX
+            translationY = card.translationY
+            isClickable = false
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+        }
+        parent.addView(
+            ghost,
+            FrameLayout.LayoutParams(sourceParams.width, sourceParams.height).apply {
+                gravity = sourceParams.gravity
+                leftMargin = sourceParams.leftMargin
+                topMargin = sourceParams.topMargin
+                rightMargin = sourceParams.rightMargin
+                bottomMargin = sourceParams.bottomMargin
+            }
+        )
+        ghost.bringToFront()
+        return ListeningTransitionGhost(ghost, bitmap)
+    }
+
+    private fun disposeListeningTransitionGhost(ghost: ListeningTransitionGhost?) {
+        ghost ?: return
+        (ghost.view.parent as? ViewGroup)?.removeView(ghost.view)
+        ghost.view.setImageDrawable(null)
+        ghost.bitmap.recycle()
     }
 
     private fun listeningOverlayHostVisible(): Boolean =
@@ -2901,7 +3005,10 @@ open class FloatingOverlayService : Service() {
                     "左右切换聆听字幕位置"
                 ) {
                     updateListeningOverlaySettings { current ->
-                        current.copy(landscapePanelsSwapped = !current.landscapePanelsSwapped)
+                        current.copy(
+                            floatingOverlayLandscapePanelsSwapped =
+                                !current.floatingOverlayLandscapePanelsSwapped
+                        )
                     }
                 }.also { listeningOverlaySwapButtonView = it }
             )
@@ -3139,7 +3246,7 @@ open class FloatingOverlayService : Service() {
             if (builder.isEmpty()) "正在聆听周围的声音…" else builder
     }
 
-    private fun refreshListeningOverlayUi() {
+    private fun refreshListeningOverlayUi(animate: Boolean = true) {
         val card = listeningOverlayCardView ?: return
         attachListeningOverlayCardToActiveRoot()
         val shouldHideForInput =
@@ -3158,23 +3265,26 @@ open class FloatingOverlayService : Service() {
                     closeMiniPreview()
                 }
                 card.animate().cancel()
-                card.animate()
-                    .alpha(0f)
-                    .scaleX(0.98f)
-                    .scaleY(0.98f)
-                    .translationY(dp(8).toFloat())
-                    .setDuration(160L)
-                    .withEndAction {
-                        if (!listeningOverlayCardTargetVisible) {
-                            card.visibility = View.GONE
-                            card.alpha = 1f
-                            card.scaleX = 1f
-                            card.scaleY = 1f
-                            card.translationY = 0f
-                            updateListeningOverlayHostPosition()
+                if (animate) {
+                    card.animate()
+                        .alpha(0f)
+                        .translationY(dp(8).toFloat())
+                        .setDuration(160L)
+                        .withEndAction {
+                            if (!listeningOverlayCardTargetVisible) {
+                                card.visibility = View.GONE
+                                card.alpha = 1f
+                                card.translationY = 0f
+                                updateListeningOverlayHostPosition()
+                            }
                         }
-                    }
-                    .start()
+                        .start()
+                } else {
+                    card.visibility = View.GONE
+                    card.alpha = 1f
+                    card.translationY = 0f
+                    updateListeningOverlayHostPosition()
+                }
             }
             return
         }
@@ -3183,20 +3293,22 @@ open class FloatingOverlayService : Service() {
             listeningOverlayCardTargetVisible = true
             onListeningOverlayVisibilityChanged(true)
             card.animate().cancel()
-            if (wasHidden) {
-                card.alpha = 0f
-                card.scaleX = 0.98f
-                card.scaleY = 0.98f
-                card.translationY = dp(8).toFloat()
+            if (animate) {
+                if (wasHidden) {
+                    card.alpha = 0f
+                    card.translationY = dp(8).toFloat()
+                    card.visibility = View.VISIBLE
+                }
+                card.animate()
+                    .alpha(1f)
+                    .translationY(0f)
+                    .setDuration(if (wasHidden) 200L else 140L)
+                    .start()
+            } else {
                 card.visibility = View.VISIBLE
+                card.alpha = 1f
+                card.translationY = 0f
             }
-            card.animate()
-                .alpha(1f)
-                .scaleX(1f)
-                .scaleY(1f)
-                .translationY(0f)
-                .setDuration(if (wasHidden) 200L else 140L)
-                .start()
         }
         listeningOverlaySwapButtonView?.visibility =
             if (usesVerticalListeningOverlayLayout()) View.GONE else View.VISIBLE
@@ -3626,6 +3738,8 @@ open class FloatingOverlayService : Service() {
             elevation = dp(8).toFloat()
             clipChildren = false
             clipToPadding = false
+            isClickable = true
+            setOnClickListener { }
             setPadding(dp(10), dp(18), dp(10), dp(18))
         }
 
@@ -3635,6 +3749,8 @@ open class FloatingOverlayService : Service() {
             elevation = dp(8).toFloat()
             clipChildren = false
             clipToPadding = false
+            isClickable = true
+            setOnClickListener { }
             setPadding(dp(14), dp(14), dp(14), dp(14))
             val pageHostFrame = FrameLayout(this@FloatingOverlayService).apply {
                 clipChildren = false
@@ -3708,6 +3824,18 @@ open class FloatingOverlayService : Service() {
         }
         applyPanelExpandedLayout()
 
+        panelContentGroup = FrameLayout(this).apply {
+            clipChildren = false
+            clipToPadding = false
+            addView(
+                panelContent,
+                FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                )
+            )
+        }
+
         panelRoot = FrameLayout(this).apply {
             visibility = View.GONE
             setBackgroundColor(Color.TRANSPARENT)
@@ -3715,18 +3843,36 @@ open class FloatingOverlayService : Service() {
             clipToPadding = false
             isClickable = true
             isFocusable = false
-            setOnClickListener {
-                if (overlayStatusExpanded) {
-                    collapseOverlayStatusExpanded()
-                } else {
-                    hidePanel()
+            setOnTouchListener { _, event ->
+                when (event.actionMasked) {
+                    MotionEvent.ACTION_UP -> {
+                        val insideContent = panelContentTouchBounds.contains(
+                            event.x.roundToInt(),
+                            event.y.roundToInt()
+                        )
+                        if (!insideContent) {
+                            if (overlayStatusExpanded) {
+                                collapseOverlayStatusExpanded()
+                            } else {
+                                hidePanel()
+                            }
+                        }
+                    }
+                    MotionEvent.ACTION_OUTSIDE -> {
+                        if (overlayStatusExpanded) {
+                            collapseOverlayStatusExpanded()
+                        } else {
+                            hidePanel()
+                        }
+                    }
                 }
+                true
             }
             addView(
-                panelContent,
+                panelContentGroup,
                 FrameLayout.LayoutParams(
-                    ViewGroup.LayoutParams.WRAP_CONTENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT
                 )
             )
             addView(
@@ -4061,14 +4207,11 @@ open class FloatingOverlayService : Service() {
                 }
             })
         }
-        val subtitleCard = LinearLayout(this).apply {
+        val subtitleCardContent = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            background = roundedRectDrawable(overlayRadiusDp, overlayCardColor())
-            elevation = dp(8).toFloat()
             clipChildren = false
             clipToPadding = false
             setPadding(dp(16), dp(16), dp(16), dp(16))
-            isClickable = true
             addView(
                 miniSubtitleGestureHostView,
                 LinearLayout.LayoutParams(
@@ -4105,6 +4248,63 @@ open class FloatingOverlayService : Service() {
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     ViewGroup.LayoutParams.WRAP_CONTENT
                 )
+            )
+        }
+        val soundboardStopCard = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            visibility = View.GONE
+            alpha = 0f
+            scaleX = 0.9f
+            scaleY = 0.9f
+            background = roundedRectDrawable(overlayRadiusDp, overlayCardColor())
+            elevation = dp(8).toFloat()
+            setPadding(dp(12), dp(8), dp(12), dp(8))
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                foreground = selectableDrawable()
+            }
+            addView(symbolTextView("stop_circle", 20f, overlayOnSurfaceColor()))
+            addView(spaceView(dp(8), 1))
+            addView(
+                TextView(this@FloatingOverlayService).apply {
+                    text = "停止当前音效"
+                    setTextColor(overlayOnSurfaceColor())
+                    setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
+                    typeface = Typeface.DEFAULT_BOLD
+                    includeFontPadding = false
+                    maxLines = 1
+                }
+            )
+            contentDescription = "停止当前音效"
+            setOnClickListener {
+                performOverlayKeyHaptic(this)
+                scope.launch { SoundboardManager.stopAll() }
+            }
+        }
+        miniSoundboardStopCardView = soundboardStopCard
+        val subtitleCard = FrameLayout(this).apply {
+            background = roundedRectDrawable(overlayRadiusDp, overlayCardColor())
+            elevation = dp(8).toFloat()
+            clipChildren = false
+            clipToPadding = false
+            isClickable = true
+            addView(
+                subtitleCardContent,
+                FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                )
+            )
+            addView(
+                soundboardStopCard,
+                FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    Gravity.END or Gravity.BOTTOM
+                ).apply {
+                    rightMargin = dp(12)
+                    bottomMargin = dp(60)
+                }
             )
             setOnClickListener { openMiniSubtitlePreview() }
             setOnLongClickListener {
@@ -4392,45 +4592,10 @@ open class FloatingOverlayService : Service() {
         miniQuickCardPreviewContainer =
             object : FrameLayout(this) {
                 override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-                    val pager = miniQuickCardPager
-                    val recycler = pager?.getChildAt(0) as? RecyclerView
-                    val currentChild =
-                        recycler?.findViewHolderForAdapterPosition(pager.currentItem)?.itemView
-                            ?: recycler?.getChildAt(0)
-                    val contentWidth = (
-                        MeasureSpec.getSize(widthMeasureSpec) -
-                            paddingLeft -
-                            paddingRight
-                        ).coerceAtLeast(0)
-                    if (contentWidth != miniQuickCardMeasureWidth) {
-                        miniQuickCardMeasureWidth = contentWidth
-                        miniQuickCardPageHeights.clear()
-                    }
-                    val currentCard =
-                        if (quickCards.isEmpty()) null else quickCards.getOrNull(pager?.currentItem ?: 0)
-                    val cachedHeight = miniQuickCardPageHeights[miniQuickCardHeightKey(currentCard)]
                     val targetHeight = if (isPhoneLandscapeUi()) {
-                        landscapeOverlayContentHeight() + dp(16)
+                        landscapeQuickCardContentHeight() + dp(16)
                     } else {
-                        when {
-                            cachedHeight != null -> cachedHeight + paddingTop + paddingBottom
-                            currentChild != null -> {
-                                val childWidthSpec = MeasureSpec.makeMeasureSpec(
-                                    contentWidth,
-                                    MeasureSpec.EXACTLY
-                                )
-                                val childHeightSpec = MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED)
-                                currentChild.measure(childWidthSpec, childHeightSpec)
-                                currentChild.measuredHeight.also {
-                                    miniQuickCardPageHeights[miniQuickCardHeightKey(currentCard)] = it
-                                } + paddingTop + paddingBottom
-                            }
-                            else -> {
-                                measureMiniQuickCardPageHeight(contentWidth, currentCard).also {
-                                    miniQuickCardPageHeights[miniQuickCardHeightKey(currentCard)] = it
-                                } + paddingTop + paddingBottom
-                            }
-                        }.coerceAtLeast(miniQuickCardPortraitPreviewMinHeight())
+                        miniQuickCardPortraitPreviewMinHeight()
                     }
                     val exactHeight = MeasureSpec.makeMeasureSpec(targetHeight, MeasureSpec.EXACTLY)
                     super.onMeasure(widthMeasureSpec, exactHeight)
@@ -4446,6 +4611,10 @@ open class FloatingOverlayService : Service() {
                     overScrollMode = View.OVER_SCROLL_NEVER
                     clipChildren = false
                     clipToPadding = false
+                    setPageTransformer { page, position ->
+                        page.translationX = 0f
+                        page.alpha = (1f - abs(position)).coerceIn(0f, 1f)
+                    }
                     (getChildAt(0) as? RecyclerView)?.apply {
                         overScrollMode = View.OVER_SCROLL_NEVER
                         clipChildren = false
@@ -4467,10 +4636,6 @@ open class FloatingOverlayService : Service() {
                             }
                         }
                     )
-                    setPageTransformer { page, position ->
-                        page.translationX = 0f
-                        page.alpha = (1f - abs(position)).coerceIn(0f, 1f)
-                    }
                 }
                 addView(
                     miniQuickCardPager,
@@ -4846,7 +5011,14 @@ open class FloatingOverlayService : Service() {
             addView(
                 symbolTextView("arrow_back", 26f, overlayOnSurfaceColor()).apply {
                     miniBackButtonView = this
-                    setOnClickListener { returnFromMiniToPanel() }
+                    setOnClickListener {
+                        performOverlayKeyHaptic(this)
+                        if (miniQuickListOverlayView?.visibility == View.VISIBLE) {
+                            hideMiniQuickTextListOverlay()
+                        } else {
+                            returnFromMiniToPanel()
+                        }
+                    }
                 },
                 FrameLayout.LayoutParams(
                     ViewGroup.LayoutParams.WRAP_CONTENT,
@@ -4860,6 +5032,7 @@ open class FloatingOverlayService : Service() {
                 symbolTextView("open_in_new", 26f, overlayOnSurfaceColor()).apply {
                     miniOpenButtonView = this
                     setOnClickListener {
+                        performOverlayKeyHaptic(this)
                         when (miniMode) {
                             MiniOverlayMode.QuickCard -> launchQuickCardPage()
                             MiniOverlayMode.Soundboard -> launchAppPage(OverlayBridge.TARGET_OPEN_SOUNDBOARD)
@@ -4922,6 +5095,18 @@ open class FloatingOverlayService : Service() {
         }
         applyMiniExpandedLayout()
 
+        miniContentGroup = FrameLayout(this).apply {
+            clipChildren = false
+            clipToPadding = false
+            addView(
+                miniContent,
+                FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                )
+            )
+        }
+
         miniRoot = FrameLayout(this).apply {
             visibility = View.GONE
             setBackgroundColor(Color.TRANSPARENT)
@@ -4937,15 +5122,15 @@ open class FloatingOverlayService : Service() {
                 }
             }
             addView(
-                miniContent,
+                miniContentGroup,
                 FrameLayout.LayoutParams(
-                    ViewGroup.LayoutParams.WRAP_CONTENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT
                 )
             )
         }
         listeningOverlayCardView = createListeningOverlayCard()
-        miniRoot?.addView(
+        miniContentGroup?.addView(
             listeningOverlayCardView,
             FrameLayout.LayoutParams(dp(340), dp(236))
         )
@@ -5119,6 +5304,7 @@ open class FloatingOverlayService : Service() {
         panelPickerSearchInput = null
         removeWindow(panelRoot)
         panelRoot = null
+        panelContentGroup = null
         panelContent = null
         panelStatusTextView = null
         panelStatusLogoView = null
@@ -5147,6 +5333,7 @@ open class FloatingOverlayService : Service() {
         saveMiniQuickItemsScrollState()
         removeWindow(miniRoot)
         miniRoot = null
+        miniContentGroup = null
         listeningOverlayCardView = null
         listeningOverlayTextView = null
         listeningOverlayScrollView = null
@@ -5185,6 +5372,8 @@ open class FloatingOverlayService : Service() {
         miniBottomBarView = null
         miniLandscapeRailView = null
         miniSubtitleCardView = null
+        miniSoundboardStopCardView = null
+        miniSoundboardStopCardTargetVisible = false
         miniSubtitleTextView = null
         miniSubtitleGestureHostView = null
         miniSubtitleGestureView = null
@@ -6115,20 +6304,18 @@ open class FloatingOverlayService : Service() {
             AppLogger.w("FloatingOverlayService.reconcile stale panelVisible reason=$reason")
             panelVisible = false
             panelRoot?.visibility = View.GONE
-            panelContent?.animate()?.cancel()
-            panelContent?.alpha = 1f
-            panelContent?.translationY = 0f
+            resetOverlayAnimationTarget(panelContent)
             panelContent?.visibility = View.GONE
+            panelContentGroup?.visibility = View.GONE
         }
         if (miniVisible && !actualMiniVisible) {
             AppLogger.w("FloatingOverlayService.reconcile stale miniVisible reason=$reason")
             miniVisible = false
             miniQuickListOverlayView?.visibility = View.GONE
             miniRoot?.visibility = View.GONE
-            miniContent?.animate()?.cancel()
-            miniContent?.alpha = 1f
-            miniContent?.translationY = 0f
+            resetOverlayAnimationTarget(miniContent)
             miniContent?.visibility = View.GONE
+            miniContentGroup?.visibility = View.GONE
         }
         if (!panelVisible && actualPanelVisible) {
             AppLogger.w("FloatingOverlayService.reconcile stray panel window reason=$reason")
@@ -6152,6 +6339,8 @@ open class FloatingOverlayService : Service() {
             ensureRealtimeHostBound()
             collapseOverlayStatusExpanded(animate = false)
             val switchingFromMini = miniVisible
+            val listeningTransitionGhost =
+                if (switchingFromMini) createListeningTransitionGhost() else null
             panelVisible = true
             listeningOverlayHostedByPanel = true
             attachListeningOverlayCardToActiveRoot()
@@ -6163,7 +6352,7 @@ open class FloatingOverlayService : Service() {
             loadOverlayLauncherLayout()
             refreshPanelUi()
             applyPanelExpandedLayout()
-            refreshListeningOverlayUi()
+            refreshListeningOverlayUi(animate = false)
             updatePanelPosition()
             panelRoot?.visibility = View.VISIBLE
             if (switchingFromMini) {
@@ -6174,6 +6363,7 @@ open class FloatingOverlayService : Service() {
                     outgoingEnd = {
                         miniVisible = false
                         miniRoot?.visibility = View.GONE
+                        disposeListeningTransitionGhost(listeningTransitionGhost)
                         updateFabUi()
                     }
                 )
@@ -6196,9 +6386,9 @@ open class FloatingOverlayService : Service() {
         cancelPendingPanelPageSwitch()
         hideShortcutPicker()
         panelVisible = false
-        refreshListeningOverlayUi()
         animateOverlayOut(panelContent) {
             forceHidePanelWindow("animation_end")
+            refreshListeningOverlayUi(animate = false)
         }
         panelContent?.postDelayed({
             if (!panelVisible && panelRoot?.visibility == View.VISIBLE) {
@@ -6219,6 +6409,8 @@ open class FloatingOverlayService : Service() {
             ensureRealtimeHostBound()
             collapseOverlayStatusExpanded(animate = false)
             val switchingFromPanel = panelVisible
+            val listeningTransitionGhost =
+                if (switchingFromPanel) createListeningTransitionGhost() else null
             miniMode = mode
             miniVisible = true
             listeningOverlayHostedByPanel = false
@@ -6250,11 +6442,11 @@ open class FloatingOverlayService : Service() {
             }
             refreshMiniModeUi()
             applyMiniExpandedLayout()
-            refreshListeningOverlayUi()
+            refreshListeningOverlayUi(animate = false)
             updateMiniPanelPosition()
             refreshMiniPreviewUi()
             miniRoot?.visibility = View.VISIBLE
-            refreshListeningOverlayUi()
+            refreshListeningOverlayUi(animate = false)
             updateMiniPanelPosition()
             if (switchingFromPanel) {
                 updateFabUi()
@@ -6266,6 +6458,7 @@ open class FloatingOverlayService : Service() {
                         panelEditMode = false
                         panelRoot?.visibility = View.GONE
                         hideShortcutPicker()
+                        disposeListeningTransitionGhost(listeningTransitionGhost)
                         updateFabUi()
                     }
                 )
@@ -6292,9 +6485,9 @@ open class FloatingOverlayService : Service() {
         closeMiniPreview()
         miniQuickListOverlayView?.visibility = View.GONE
         miniVisible = false
-        refreshListeningOverlayUi()
         animateOverlayOut(miniContent) {
             forceHideMiniWindow("animation_end")
+            refreshListeningOverlayUi(animate = false)
         }
         miniContent?.postDelayed({
             if (!miniVisible && miniRoot?.visibility == View.VISIBLE) {
@@ -6305,10 +6498,9 @@ open class FloatingOverlayService : Service() {
     }
 
     private fun forceHidePanelWindow(reason: String) {
-        panelContent?.animate()?.cancel()
-        panelContent?.alpha = 1f
-        panelContent?.translationY = 0f
+        resetOverlayAnimationTarget(panelContent)
         panelContent?.visibility = View.GONE
+        panelContentGroup?.visibility = View.GONE
         panelRoot?.visibility = View.GONE
         panelVisible = false
         updateFabUi()
@@ -6316,10 +6508,9 @@ open class FloatingOverlayService : Service() {
     }
 
     private fun forceHideMiniWindow(reason: String) {
-        miniContent?.animate()?.cancel()
-        miniContent?.alpha = 1f
-        miniContent?.translationY = 0f
+        resetOverlayAnimationTarget(miniContent)
         miniContent?.visibility = View.GONE
+        miniContentGroup?.visibility = View.GONE
         miniQuickListOverlayView?.visibility = View.GONE
         miniRoot?.visibility = View.GONE
         miniVisible = false
@@ -6353,7 +6544,62 @@ open class FloatingOverlayService : Service() {
                 MiniOverlayMode.QuickCard -> "打开快捷名片"
                 MiniOverlayMode.Soundboard -> "打开音效板"
             }
+        miniBackButtonView?.contentDescription =
+            if (quickListOverlayVisible) "关闭快捷文本列表" else "返回悬浮窗启动器"
+        refreshMiniSoundboardStopCardUi()
         scheduleAttachedOverlayPositionRefresh()
+    }
+
+    private fun refreshMiniSoundboardStopCardUi(animate: Boolean = true) {
+        val card = miniSoundboardStopCardView ?: return
+        val shouldShow =
+            miniVisible &&
+                miniMode == MiniOverlayMode.Subtitle &&
+                soundboardPlaybackStates.values.any { it.playing }
+        if (miniSoundboardStopCardTargetVisible == shouldShow &&
+            ((shouldShow && card.visibility == View.VISIBLE) ||
+                (!shouldShow && card.visibility != View.VISIBLE))
+        ) {
+            return
+        }
+        miniSoundboardStopCardTargetVisible = shouldShow
+        card.animate().cancel()
+        if (!animate) {
+            card.visibility = if (shouldShow) View.VISIBLE else View.GONE
+            card.alpha = if (shouldShow) 1f else 0f
+            card.scaleX = if (shouldShow) 1f else 0.9f
+            card.scaleY = if (shouldShow) 1f else 0.9f
+            return
+        }
+        if (shouldShow) {
+            card.visibility = View.VISIBLE
+            card.alpha = 0f
+            card.scaleX = 0.9f
+            card.scaleY = 0.9f
+            card.animate()
+                .alpha(1f)
+                .scaleX(1f)
+                .scaleY(1f)
+                .setDuration(180L)
+                .setInterpolator(DecelerateInterpolator())
+                .start()
+        } else if (card.visibility == View.VISIBLE) {
+            card.animate()
+                .alpha(0f)
+                .scaleX(0.92f)
+                .scaleY(0.92f)
+                .setDuration(150L)
+                .setInterpolator(DecelerateInterpolator())
+                .withEndAction {
+                    if (!miniSoundboardStopCardTargetVisible) {
+                        card.visibility = View.GONE
+                        card.alpha = 0f
+                        card.scaleX = 0.9f
+                        card.scaleY = 0.9f
+                    }
+                }
+                .start()
+        }
     }
 
     private fun setMiniSubtitleBodyVisibility(visible: Boolean, animate: Boolean) {
@@ -6395,13 +6641,34 @@ open class FloatingOverlayService : Service() {
         }
     }
 
+    private fun overlayAnimationTarget(view: View?): View? = when (view) {
+        panelContent -> panelContentGroup ?: view
+        miniContent -> miniContentGroup ?: view
+        else -> view
+    }
+
+    private fun resetOverlayAnimationTarget(view: View?) {
+        val target = overlayAnimationTarget(view) ?: return
+        target.animate().cancel()
+        target.alpha = 1f
+        target.translationY = 0f
+    }
+
     private fun animateOverlayIn(view: View?, fromBottom: Boolean) {
         view ?: return
-        view.animate().cancel()
-        view.alpha = 0f
-        view.translationY = if (fromBottom) dp(36).toFloat() else dp(16).toFloat()
+        val target = overlayAnimationTarget(view) ?: return
+        target.animate().cancel()
+        target.alpha = 0f
+        target.translationY = if (usesAttachedHostWindow()) {
+            0f
+        } else if (fromBottom) {
+            dp(36).toFloat()
+        } else {
+            dp(16).toFloat()
+        }
         view.visibility = View.VISIBLE
-        view.animate()
+        target.visibility = View.VISIBLE
+        target.animate()
             .alpha(1f)
             .translationY(0f)
             .setDuration(220L)
@@ -6413,15 +6680,20 @@ open class FloatingOverlayService : Service() {
             endAction?.invoke()
             return
         }
-        view.animate().cancel()
-        view.animate()
+        val target = overlayAnimationTarget(view) ?: run {
+            endAction?.invoke()
+            return
+        }
+        target.animate().cancel()
+        target.animate()
             .alpha(0f)
-            .translationY(dp(18).toFloat())
+            .translationY(if (usesAttachedHostWindow()) 0f else dp(18).toFloat())
             .setDuration(180L)
             .withEndAction {
-                view.alpha = 1f
-                view.translationY = 0f
+                target.alpha = 1f
+                target.translationY = 0f
                 view.visibility = View.GONE
+                target.visibility = View.GONE
                 endAction?.invoke()
             }
             .start()
@@ -6473,24 +6745,46 @@ open class FloatingOverlayService : Service() {
         outgoingEnd: (() -> Unit)? = null
     ) {
         incoming ?: return
-        outgoing?.animate()?.cancel()
-        incoming.animate().cancel()
-        incoming.alpha = 0f
-        incoming.translationY = dp(18).toFloat()
+        val outgoingTarget = overlayAnimationTarget(outgoing)
+        val incomingTarget = overlayAnimationTarget(incoming) ?: return
+        outgoingTarget?.animate()?.cancel()
+        incomingTarget.animate().cancel()
+        incomingTarget.alpha = 0f
+        incomingTarget.translationY = if (usesAttachedHostWindow()) 0f else dp(18).toFloat()
         incoming.visibility = View.VISIBLE
-        incoming.animate()
+        incomingTarget.visibility = View.VISIBLE
+        if (usesAttachedHostWindow() && outgoingTarget != null) {
+            outgoingTarget.animate()
+                .alpha(0f)
+                .translationY(0f)
+                .setDuration(110L)
+                .withEndAction {
+                    outgoingTarget.alpha = 1f
+                    outgoingTarget.translationY = 0f
+                    outgoing?.visibility = View.VISIBLE
+                    outgoingEnd?.invoke()
+                    incomingTarget.animate()
+                        .alpha(1f)
+                        .translationY(0f)
+                        .setDuration(170L)
+                        .start()
+                }
+                .start()
+            return
+        }
+        incomingTarget.animate()
             .alpha(1f)
             .translationY(0f)
             .setDuration(220L)
             .start()
-        outgoing?.animate()
+        outgoingTarget?.animate()
             ?.alpha(0f)
-            ?.translationY(dp(42).toFloat())
+            ?.translationY(if (usesAttachedHostWindow()) 0f else dp(42).toFloat())
             ?.setDuration(220L)
             ?.withEndAction {
-                outgoing.alpha = 1f
-                outgoing.translationY = 0f
-                outgoing.visibility = View.VISIBLE
+                outgoingTarget.alpha = 1f
+                outgoingTarget.translationY = 0f
+                outgoing?.visibility = View.VISIBLE
                 outgoingEnd?.invoke()
             }
             ?.start() ?: outgoingEnd?.invoke()
@@ -6503,6 +6797,179 @@ open class FloatingOverlayService : Service() {
         val listeningOnRight: Boolean
     )
 
+    private data class ScaledOverlayPlacement(
+        val mainLeftPx: Int,
+        val mainTopPx: Int
+    )
+
+    private fun resolveOverlayAutoScale(
+        requiredWidthPx: Int,
+        requiredHeightPx: Int,
+        safeBounds: Rect
+    ): OverlayScaleResult {
+        return OverlayScalePolicy.resolve(
+            requiredWidthPx = requiredWidthPx,
+            requiredHeightPx = requiredHeightPx,
+            safeWidthPx = safeBounds.width(),
+            safeHeightPx = safeBounds.height(),
+            horizontalMarginPx = dp(16),
+            verticalMarginPx = overlayVerticalMarginPx()
+        )
+    }
+
+    private fun applyOverlayAutoScale(view: View?, scale: Float) {
+        view ?: return
+        val normalized = scale.coerceIn(OverlayScalePolicy.DEFAULT_MINIMUM_SCALE, 1f)
+        view.pivotX = 0f
+        view.pivotY = 0f
+        view.scaleX = normalized
+        view.scaleY = normalized
+    }
+
+    private fun measureOverlayContentHeight(content: View, contentWidthPx: Int): Int {
+        content.measure(
+            View.MeasureSpec.makeMeasureSpec(contentWidthPx, View.MeasureSpec.EXACTLY),
+            View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED)
+        )
+        return content.measuredHeight.coerceAtLeast(1)
+    }
+
+    private fun applyAttachedOverlayWindowBounds(
+        params: WindowManager.LayoutParams,
+        content: View,
+        contentLeftPx: Int,
+        contentTopPx: Int,
+        contentWidthPx: Int,
+        contentHeightPx: Int
+    ) {
+        val scale = content.scaleX.coerceIn(OverlayScalePolicy.DEFAULT_MINIMUM_SCALE, 1f)
+        params.width = (contentWidthPx * scale).roundToInt().coerceAtLeast(1)
+        params.height = (contentHeightPx * scale).roundToInt().coerceAtLeast(1)
+        params.x = contentLeftPx
+        params.y = contentTopPx
+        content.layoutParams = FrameLayout.LayoutParams(contentWidthPx, contentHeightPx)
+    }
+
+    private fun scalePositionedOverlayGroup(
+        content: View,
+        listeningCard: View,
+        safeBounds: Rect,
+        contentLeftPx: Int,
+        contentTopPx: Int,
+        contentWidthPx: Int,
+        contentHeightPx: Int,
+        minimumRequiredHeightPx: Int = 0
+    ): ScaledOverlayPlacement {
+        val cardParams = listeningCard.layoutParams as FrameLayout.LayoutParams
+        val groupLeft = minOf(contentLeftPx, cardParams.leftMargin)
+        val groupTop = minOf(contentTopPx, cardParams.topMargin)
+        val groupRight = maxOf(
+            contentLeftPx + contentWidthPx,
+            cardParams.leftMargin + cardParams.width
+        )
+        val groupBottom = maxOf(
+            contentTopPx + contentHeightPx,
+            cardParams.topMargin + cardParams.height
+        )
+        val groupWidth = (groupRight - groupLeft).coerceAtLeast(1)
+        val groupHeight = (groupBottom - groupTop).coerceAtLeast(1)
+        val result = resolveOverlayAutoScale(
+            groupWidth,
+            max(groupHeight, minimumRequiredHeightPx),
+            safeBounds
+        )
+        applyOverlayAutoScale(content, result.scale)
+        applyOverlayAutoScale(listeningCard, result.scale)
+        if (result.scale >= 0.999f) {
+            val verticalMargin = overlayVerticalMarginPx()
+            val minimumGroupTop = safeBounds.top + verticalMargin
+            val maximumGroupTop = (safeBounds.bottom - verticalMargin - groupHeight)
+                .coerceAtLeast(minimumGroupTop)
+            val adjustedGroupTop = listeningOverlayGroupTopPx(
+                currentTopPx = groupTop,
+                groupHeightPx = groupHeight,
+                safeBounds = safeBounds,
+                minimumTopPx = minimumGroupTop,
+                maximumTopPx = maximumGroupTop
+            )
+            if (adjustedGroupTop == groupTop) {
+                return ScaledOverlayPlacement(contentLeftPx, contentTopPx)
+            }
+            val appliedOffset = adjustedGroupTop - groupTop
+            cardParams.topMargin += appliedOffset
+            listeningCard.layoutParams = cardParams
+            onListeningOverlayTopClearanceChanged(cardParams.topMargin - safeBounds.top)
+            return ScaledOverlayPlacement(contentLeftPx, contentTopPx + appliedOffset)
+        }
+
+        val visualGroupWidth = (groupWidth * result.scale).roundToInt().coerceAtLeast(1)
+        val visualGroupHeight = (groupHeight * result.scale).roundToInt().coerceAtLeast(1)
+        val visualGroupLeft = if (usesVerticalListeningOverlayLayout()) {
+            OverlayScalePolicy.placeGroupStart(
+                logicalStartPx = groupLeft,
+                logicalExtentPx = groupWidth,
+                visualExtentPx = visualGroupWidth,
+                safeStartPx = safeBounds.left,
+                safeEndPx = safeBounds.right,
+                marginPx = dp(16)
+            )
+        } else {
+            OverlayScalePolicy.placeCenteredGroupStart(
+                preferredCenterPx = landscapeListeningOverlayCenterXPx(safeBounds),
+                visualExtentPx = visualGroupWidth,
+                safeStartPx = safeBounds.left,
+                safeEndPx = safeBounds.right,
+                marginPx = dp(16)
+            )
+        }
+        val visualGroupTopBase = OverlayScalePolicy.placeGroupStart(
+            logicalStartPx = groupTop,
+            logicalExtentPx = groupHeight,
+            visualExtentPx = visualGroupHeight,
+            safeStartPx = safeBounds.top,
+            safeEndPx = safeBounds.bottom,
+            marginPx = overlayVerticalMarginPx()
+        )
+        val verticalMargin = overlayVerticalMarginPx()
+        val minimumVisualTop = safeBounds.top + verticalMargin
+        val maximumVisualTop = (safeBounds.bottom - verticalMargin - visualGroupHeight)
+            .coerceAtLeast(minimumVisualTop)
+        val visualGroupTop = listeningOverlayGroupTopPx(
+            currentTopPx = visualGroupTopBase,
+            groupHeightPx = visualGroupHeight,
+            safeBounds = safeBounds,
+            minimumTopPx = minimumVisualTop,
+            maximumTopPx = maximumVisualTop
+        )
+        val scaledContentLeft = OverlayScalePolicy.transformChildStart(
+            contentLeftPx,
+            groupLeft,
+            visualGroupLeft,
+            result.scale
+        )
+        val scaledContentTop = OverlayScalePolicy.transformChildStart(
+            contentTopPx,
+            groupTop,
+            visualGroupTop,
+            result.scale
+        )
+        cardParams.leftMargin = OverlayScalePolicy.transformChildStart(
+            cardParams.leftMargin,
+            groupLeft,
+            visualGroupLeft,
+            result.scale
+        )
+        cardParams.topMargin = OverlayScalePolicy.transformChildStart(
+            cardParams.topMargin,
+            groupTop,
+            visualGroupTop,
+            result.scale
+        )
+        listeningCard.layoutParams = cardParams
+        onListeningOverlayTopClearanceChanged(cardParams.topMargin - safeBounds.top)
+        return ScaledOverlayPlacement(scaledContentLeft, scaledContentTop)
+    }
+
     private fun positionListeningOverlayCard(
         content: LinearLayout,
         listeningCard: LinearLayout,
@@ -6513,9 +6980,9 @@ open class FloatingOverlayService : Service() {
         preferredMainTop: Int
     ): PositionedListeningOverlay {
         val vertical = usesVerticalListeningOverlayLayout()
-        val listeningOnRight = settings.listeningModeSettings.landscapePanelsSwapped
-        val portraitHeight =
-            min(dp(176), (safeBounds.height() * 0.2f).roundToInt()).coerceAtLeast(dp(144))
+        val listeningOnRight =
+            settings.listeningModeSettings.floatingOverlayLandscapePanelsSwapped
+        val portraitHeight = portraitListeningOverlayHeightPx(safeBounds)
         val layout = OverlayListeningCardLayoutPolicy.resolve(
             vertical = vertical,
             safeLeftPx = safeBounds.left,
@@ -6532,13 +6999,20 @@ open class FloatingOverlayService : Service() {
             preferredMainTopPx = preferredMainTop,
             requestedPortraitListeningHeightPx = portraitHeight,
             requestedLandscapeListeningWidthPx = dp(236),
-            minimumListeningExtentPx = dp(96),
+            minimumListeningExtentPx = if (vertical) {
+                portraitListeningOverlayMinimumHeightPx()
+            } else {
+                landscapeListeningOverlayMinimumWidthPx()
+            },
             gapPx = dp(12),
             edgeInsetPx = dp(12),
             verticalTopInsetPx = verticalListeningOverlayTopInsetPx(),
             verticalBottomInsetPx = verticalListeningOverlayBottomInsetPx(),
             landscapeCenterXPx = landscapeListeningOverlayCenterXPx(safeBounds),
-            listeningOnRight = listeningOnRight
+            listeningOnRight = listeningOnRight,
+            constrainPortraitListeningHeightToAvailable =
+                !preservePortraitListeningOverlayHeight(),
+            constrainLandscapeListeningWidthToAvailable = false
         )
         listeningCard.measure(
             View.MeasureSpec.makeMeasureSpec(
@@ -6575,11 +7049,7 @@ open class FloatingOverlayService : Service() {
         val params = panelParams ?: return
         val contentWidth = overlayContentWidthPx(phoneMaxDp = 360, tabletMaxDp = 400)
         val safeBounds = overlaySafeBounds()
-        content.measure(
-            View.MeasureSpec.makeMeasureSpec(contentWidth, View.MeasureSpec.EXACTLY),
-            View.MeasureSpec.makeMeasureSpec(safeBounds.height(), View.MeasureSpec.AT_MOST)
-        )
-        val targetHeight = content.measuredHeight
+        val targetHeight = measureOverlayContentHeight(content, contentWidth)
         var targetX = overlayContentLeftPx(contentWidth)
         var targetY = overlayContentTopPx(targetHeight)
         val previousContentLeft =
@@ -6592,15 +7062,16 @@ open class FloatingOverlayService : Service() {
                 panelVisible &&
                 listeningOverlayHostedByPanel &&
                 listeningCard?.visibility == View.VISIBLE &&
-                listeningCard.parent === root
+                listeningCard.parent === panelContentGroup
         var animateLandscapeSwap = false
         var listeningLayoutVertical = true
         var listeningOnRight = false
         if (listeningVisible && listeningCard != null) {
+            val listeningSafeBounds = listeningOverlaySafeBounds(safeBounds)
             val positioned = positionListeningOverlayCard(
                 content = content,
                 listeningCard = listeningCard,
-                safeBounds = safeBounds,
+                safeBounds = listeningSafeBounds,
                 contentWidth = contentWidth,
                 contentHeight = targetHeight,
                 preferredMainLeft = targetX,
@@ -6612,8 +7083,23 @@ open class FloatingOverlayService : Service() {
                 !listeningLayoutVertical &&
                     listeningOverlayPositionInitialized &&
                     listeningOverlayLastLandscapeSwapped != listeningOnRight
-            targetX = positioned.mainLeftPx
-            targetY = positioned.mainTopPx
+            val scaled = scalePositionedOverlayGroup(
+                content = content,
+                listeningCard = listeningCard,
+                safeBounds = listeningSafeBounds,
+                contentLeftPx = positioned.mainLeftPx,
+                contentTopPx = positioned.mainTopPx,
+                contentWidthPx = contentWidth,
+                contentHeightPx = targetHeight
+            )
+            targetX = scaled.mainLeftPx
+            targetY = scaled.mainTopPx
+        } else {
+            val scale = resolveOverlayAutoScale(contentWidth, targetHeight, safeBounds)
+            applyOverlayAutoScale(content, scale.scale)
+            applyOverlayAutoScale(listeningCard, 1f)
+            targetX = overlayContentLeftPx(scale.visualWidthPx)
+            targetY = overlayContentTopPx(scale.visualHeightPx)
         }
         if (usesAttachedHostWindow()) {
             if (listeningVisible) {
@@ -6628,13 +7114,13 @@ open class FloatingOverlayService : Service() {
                     listeningCard = listeningCard!!
                 )
             } else {
-                params.width = contentWidth
-                params.height = targetHeight
-                params.x = targetX
-                params.y = targetY
-                content.layoutParams = FrameLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT
+                applyAttachedOverlayWindowBounds(
+                    params = params,
+                    content = content,
+                    contentLeftPx = targetX,
+                    contentTopPx = targetY,
+                    contentWidthPx = contentWidth,
+                    contentHeightPx = targetHeight
                 )
             }
         } else {
@@ -6644,16 +7130,18 @@ open class FloatingOverlayService : Service() {
             params.y = 0
             content.layoutParams = FrameLayout.LayoutParams(
                 contentWidth,
-                ViewGroup.LayoutParams.WRAP_CONTENT
+                targetHeight
             ).apply {
                 leftMargin = targetX
                 topMargin = targetY
             }
         }
+        updatePanelContentTouchBounds(content, contentWidth, targetHeight)
         positionStatusDetailCard(
             content = content,
             topStrip = panelTopStripView,
-            card = panelStatusDetailRefs?.card
+            card = panelStatusDetailRefs?.card,
+            windowParams = params
         )
         runCatching { windowManager.updateViewLayout(root, params) }
         if (listeningVisible && !listeningLayoutVertical && listeningCard != null) {
@@ -6675,10 +7163,29 @@ open class FloatingOverlayService : Service() {
         } else if (!listeningVisible) {
             listeningOverlayPositionInitialized = false
         }
-        if (listeningCard?.parent === root) {
-            bringListeningCardOrPreviewToFront(root, listeningCard)
-        }
+        listeningCard
+            ?.takeIf { it.parent === panelContentGroup }
+            ?.let { bringListeningCardOrPreviewToFront(root, it) }
         syncConfirmOverlayToActiveWindow()
+    }
+
+    private fun updatePanelContentTouchBounds(
+        content: View,
+        contentWidthPx: Int,
+        contentHeightPx: Int
+    ) {
+        val params = content.layoutParams as? FrameLayout.LayoutParams ?: run {
+            panelContentTouchBounds.setEmpty()
+            return
+        }
+        val scale = content.scaleX.coerceIn(OverlayScalePolicy.DEFAULT_MINIMUM_SCALE, 1f)
+        val allowance = dp(8)
+        panelContentTouchBounds.set(
+            params.leftMargin - allowance,
+            params.topMargin - allowance,
+            params.leftMargin + (contentWidthPx * scale).roundToInt() + allowance,
+            params.topMargin + (contentHeightPx * scale).roundToInt() + allowance
+        )
     }
 
     private fun scheduleAttachedOverlayPositionRefresh() {
@@ -6695,11 +7202,7 @@ open class FloatingOverlayService : Service() {
         val params = miniParams ?: return
         val contentWidth = overlayContentWidthPx(phoneMaxDp = 360, tabletMaxDp = 400)
         val safeBounds = overlaySafeBounds()
-        content.measure(
-            View.MeasureSpec.makeMeasureSpec(contentWidth, View.MeasureSpec.EXACTLY),
-            View.MeasureSpec.makeMeasureSpec(safeBounds.height(), View.MeasureSpec.AT_MOST)
-        )
-        val targetHeight = content.measuredHeight
+        val targetHeight = measureOverlayContentHeight(content, contentWidth)
         var targetX = overlayContentLeftPx(contentWidth)
         var targetY = miniOverlayContentTopPx(targetHeight)
         val previousContentLeft =
@@ -6713,15 +7216,16 @@ open class FloatingOverlayService : Service() {
                 miniVisible &&
                 miniMode != MiniOverlayMode.QuickCard &&
                 listeningCard?.visibility == View.VISIBLE &&
-                listeningCard.parent === root
+                listeningCard.parent === miniContentGroup
         var animateLandscapeSwap = false
         var listeningLayoutVertical = true
         var listeningOnRight = false
         if (listeningVisible && listeningCard != null) {
+            val listeningSafeBounds = listeningOverlaySafeBounds(safeBounds)
             val positioned = positionListeningOverlayCard(
                 content = content,
                 listeningCard = listeningCard,
-                safeBounds = safeBounds,
+                safeBounds = listeningSafeBounds,
                 contentWidth = contentWidth,
                 contentHeight = targetHeight,
                 preferredMainLeft = targetX,
@@ -6733,8 +7237,28 @@ open class FloatingOverlayService : Service() {
                 !listeningLayoutVertical &&
                     listeningOverlayPositionInitialized &&
                     listeningOverlayLastLandscapeSwapped != listeningOnRight
-            targetX = positioned.mainLeftPx
-            targetY = positioned.mainTopPx
+            val scaled = scalePositionedOverlayGroup(
+                content = content,
+                listeningCard = listeningCard,
+                safeBounds = listeningSafeBounds,
+                contentLeftPx = positioned.mainLeftPx,
+                contentTopPx = positioned.mainTopPx,
+                contentWidthPx = contentWidth,
+                contentHeightPx = targetHeight,
+                minimumRequiredHeightPx = miniOverlayScaleRequiredHeightPx(targetHeight)
+            )
+            targetX = scaled.mainLeftPx
+            targetY = scaled.mainTopPx
+        } else {
+            val scale = resolveOverlayAutoScale(
+                contentWidth,
+                miniOverlayScaleRequiredHeightPx(targetHeight),
+                safeBounds
+            )
+            applyOverlayAutoScale(content, scale.scale)
+            applyOverlayAutoScale(listeningCard, 1f)
+            targetX = overlayContentLeftPx((contentWidth * scale.scale).roundToInt())
+            targetY = miniOverlayContentTopPx((targetHeight * scale.scale).roundToInt())
         }
         if (usesAttachedHostWindow()) {
             if (listeningVisible) {
@@ -6749,13 +7273,13 @@ open class FloatingOverlayService : Service() {
                     listeningCard = listeningCard!!
                 )
             } else {
-                params.width = contentWidth
-                params.height = targetHeight
-                params.x = targetX
-                params.y = targetY
-                content.layoutParams = FrameLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT
+                applyAttachedOverlayWindowBounds(
+                    params = params,
+                    content = content,
+                    contentLeftPx = targetX,
+                    contentTopPx = targetY,
+                    contentWidthPx = contentWidth,
+                    contentHeightPx = targetHeight
                 )
             }
         } else {
@@ -6765,7 +7289,7 @@ open class FloatingOverlayService : Service() {
             params.y = 0
             content.layoutParams = FrameLayout.LayoutParams(
                 contentWidth,
-                ViewGroup.LayoutParams.WRAP_CONTENT
+                targetHeight
             ).apply {
                 leftMargin = targetX
                 topMargin = targetY
@@ -6774,7 +7298,8 @@ open class FloatingOverlayService : Service() {
         positionStatusDetailCard(
             content = content,
             topStrip = miniTopStripView,
-            card = miniStatusDetailRefs?.card
+            card = miniStatusDetailRefs?.card,
+            windowParams = params
         )
         runCatching { windowManager.updateViewLayout(root, params) }
         if (listeningVisible && !listeningLayoutVertical && listeningCard != null) {
@@ -6802,9 +7327,9 @@ open class FloatingOverlayService : Service() {
         } else if (!listeningVisible) {
             listeningOverlayPositionInitialized = false
         }
-        if (listeningCard?.parent === root) {
-            bringListeningCardOrPreviewToFront(root, listeningCard)
-        }
+        listeningCard
+            ?.takeIf { it.parent === miniContentGroup }
+            ?.let { bringListeningCardOrPreviewToFront(root, it) }
         syncConfirmOverlayToActiveWindow()
     }
 
@@ -6837,13 +7362,17 @@ open class FloatingOverlayService : Service() {
         val shadowAllowance = dp(2)
         val unionLeft = minOf(contentLeft, cardParams.leftMargin)
         val unionTop = minOf(contentTop, cardParams.topMargin)
+        val contentVisualWidth = (contentWidth * content.scaleX).roundToInt().coerceAtLeast(1)
+        val contentVisualHeight = (contentHeight * content.scaleY).roundToInt().coerceAtLeast(1)
+        val cardVisualWidth = (cardParams.width * listeningCard.scaleX).roundToInt().coerceAtLeast(1)
+        val cardVisualHeight = (cardParams.height * listeningCard.scaleY).roundToInt().coerceAtLeast(1)
         val unionRight = maxOf(
-            contentLeft + contentWidth,
-            cardParams.leftMargin + cardParams.width
+            contentLeft + contentVisualWidth,
+            cardParams.leftMargin + cardVisualWidth
         )
         val unionBottom = maxOf(
-            contentTop + contentHeight,
-            cardParams.topMargin + cardParams.height
+            contentTop + contentVisualHeight,
+            cardParams.topMargin + cardVisualHeight
         )
         val windowLeft = (unionLeft - shadowAllowance).coerceAtLeast(0)
         val windowTop = (unionTop - shadowAllowance).coerceAtLeast(0)
@@ -6865,7 +7394,8 @@ open class FloatingOverlayService : Service() {
     private fun positionStatusDetailCard(
         content: LinearLayout,
         topStrip: View?,
-        card: LinearLayout?
+        card: LinearLayout?,
+        windowParams: WindowManager.LayoutParams
     ) {
         card ?: return
         val contentLp = content.layoutParams as? FrameLayout.LayoutParams ?: return
@@ -6878,13 +7408,39 @@ open class FloatingOverlayService : Service() {
                 ?: ((contentLp.width.takeIf { it > 0 } ?: overlayContentWidthPx(phoneMaxDp = 360, tabletMaxDp = 400)))
             ) - insetLeft - insetRight
         val topStripHeight = topStrip?.measuredHeight?.takeIf { it > 0 } ?: 0
-        card.layoutParams = ((card.layoutParams as? FrameLayout.LayoutParams)
+        val contentScale = content.scaleX.coerceIn(OverlayScalePolicy.DEFAULT_MINIMUM_SCALE, 1f)
+        val cardLp = ((card.layoutParams as? FrameLayout.LayoutParams)
             ?: FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)).apply {
             width = cardWidth.coerceAtLeast(dp(240))
+            height = ViewGroup.LayoutParams.WRAP_CONTENT
             gravity = Gravity.TOP or Gravity.START
-            leftMargin = contentLp.leftMargin + insetLeft
-            topMargin = contentLp.topMargin + insetTop + topStripHeight + dp(8)
+            leftMargin = contentLp.leftMargin + (insetLeft * contentScale).roundToInt()
+            topMargin = contentLp.topMargin +
+                ((insetTop + topStripHeight + dp(8)) * contentScale).roundToInt()
         }
+        card.minimumHeight = 0
+        card.layoutParams = cardLp
+        card.measure(
+            View.MeasureSpec.makeMeasureSpec(cardLp.width, View.MeasureSpec.EXACTLY),
+            View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED)
+        )
+        val desiredHeight = card.measuredHeight.coerceAtLeast(1)
+        // Preserve the complete menu when an attached host remeasures WRAP_CONTENT
+        // against the shorter lock-screen overlay window.
+        cardLp.height = desiredHeight
+        card.layoutParams = cardLp
+        val visibleBottom = if (usesAttachedHostWindow()) {
+            windowParams.height.takeIf { it > 0 } ?: displayHeight()
+        } else {
+            overlaySafeBounds().bottom
+        }
+        val availableHeight = (visibleBottom - cardLp.topMargin - dp(8)).coerceAtLeast(dp(120))
+        val fitScale = min(contentScale, availableHeight.toFloat() / desiredHeight.toFloat())
+            .coerceIn(0.56f, 1f)
+        card.pivotX = 0f
+        card.pivotY = 0f
+        card.scaleX = fitScale
+        card.scaleY = fitScale
         card.bringToFront()
     }
 
@@ -6907,6 +7463,23 @@ open class FloatingOverlayService : Service() {
     private fun isTabletLandscapeUi(): Boolean = isTabletUi() && isLandscapeUi()
 
     private fun landscapeOverlayContentHeight(): Int = dp(208)
+
+    private fun landscapeQuickCardContentHeight(): Int = dp(232)
+
+    private fun landscapeOverlayBodyHeightPx(): Int = landscapeOverlayContentHeight() + dp(72)
+
+    private fun miniOverlayScaleRequiredHeightPx(measuredHeightPx: Int): Int {
+        if (!isPhoneLandscapeUi()) return measuredHeightPx
+        val content = miniContent
+        val topStripHeight = miniTopStripView?.measuredHeight?.takeIf { it > 0 } ?: dp(52)
+        val designHeight =
+            (content?.paddingTop ?: dp(10)) +
+                topStripHeight +
+                dp(12) +
+                landscapeOverlayBodyHeightPx() +
+                (content?.paddingBottom ?: dp(10))
+        return max(measuredHeightPx, designHeight)
+    }
 
     private fun reparentView(
         view: View?,
@@ -6938,13 +7511,15 @@ open class FloatingOverlayService : Service() {
         if (isPhoneLandscapeUi()) {
             val railWidth = dp(92)
             val railGap = dp(12)
+            val bodyHeight = landscapeOverlayBodyHeightPx()
             val cardWidth = (
                 overlayContentWidthPx(phoneMaxDp = 360, tabletMaxDp = 400) -
                     ((panelContent?.paddingLeft ?: 0) + (panelContent?.paddingRight ?: 0)) -
                     railWidth -
                     railGap
                 ).coerceAtLeast(dp(280))
-            rail.minimumHeight = dp(248)
+            rail.minimumHeight = bodyHeight
+            card.gravity = Gravity.CENTER_VERTICAL
             reparentView(
                 openButton,
                 rail,
@@ -6994,7 +7569,7 @@ open class FloatingOverlayService : Service() {
                 body,
                 LinearLayout.LayoutParams(
                     cardWidth,
-                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    bodyHeight,
                 )
             )
             reparentView(
@@ -7002,12 +7577,13 @@ open class FloatingOverlayService : Service() {
                 body,
                 LinearLayout.LayoutParams(
                     railWidth,
-                    ViewGroup.LayoutParams.MATCH_PARENT
+                    bodyHeight
                 ).apply {
                     leftMargin = railGap
                 }
             )
         } else {
+            card.gravity = Gravity.NO_GRAVITY
             reparentView(
                 editButton,
                 bottomBar,
@@ -7075,7 +7651,8 @@ open class FloatingOverlayService : Service() {
         rail.removeAllViews()
 
         if (isPhoneLandscapeUi()) {
-            rail.minimumHeight = dp(248)
+            val bodyHeight = landscapeOverlayBodyHeightPx()
+            rail.minimumHeight = bodyHeight
             reparentView(
                 openButton,
                 rail,
@@ -7125,7 +7702,7 @@ open class FloatingOverlayService : Service() {
                 bodyContainer,
                 LinearLayout.LayoutParams(
                     0,
-                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    bodyHeight,
                     1f
                 )
             )
@@ -7134,7 +7711,7 @@ open class FloatingOverlayService : Service() {
                 bodyContainer,
                 LinearLayout.LayoutParams(
                     dp(92),
-                    ViewGroup.LayoutParams.MATCH_PARENT
+                    bodyHeight
                 ).apply {
                     leftMargin = dp(12)
                 }
@@ -7183,7 +7760,7 @@ open class FloatingOverlayService : Service() {
                 bodyContainer,
                 LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT
+                    dp(90)
                 ).apply {
                     topMargin = dp(12)
                 }
@@ -7466,7 +8043,15 @@ open class FloatingOverlayService : Service() {
         val safeWidth = overlaySafeBounds().width()
         val phoneMax = dp(phoneMaxDp)
         val tabletMax = dp(tabletMaxDp)
-        val phoneLandscapeMax = dp(max(phoneMaxDp + 180, 520))
+        val phoneLandscapeMax = dp(max(phoneMaxDp + 180, 540))
+        val designWidth = when {
+            isTabletLandscapeUi() -> tabletMax
+            isPhoneLandscapeUi() -> phoneLandscapeMax
+            else -> phoneMax
+        }.coerceAtLeast(dp(280))
+        if (!usesAttachedHostWindow()) {
+            return designWidth
+        }
         return when {
             isTabletLandscapeUi() -> min(safeWidth / 2 - sideMargin * 2, tabletMax)
             isPhoneLandscapeUi() -> min(safeWidth - sideMargin * 2, phoneLandscapeMax)
@@ -7478,8 +8063,7 @@ open class FloatingOverlayService : Service() {
         val sideMargin = dp(16)
         val safeBounds = overlaySafeBounds()
         if (!isTabletLandscapeUi()) {
-            val landscapePhoneBias = if (isPhoneLandscapeUi()) dp(16) else 0
-            return (safeBounds.left + (safeBounds.width() - contentWidth) / 2 - landscapePhoneBias)
+            return (displayBounds().centerX() - contentWidth / 2)
                 .coerceIn(
                     safeBounds.left + sideMargin,
                     max(safeBounds.left + sideMargin, safeBounds.right - contentWidth - sideMargin)
@@ -7498,7 +8082,7 @@ open class FloatingOverlayService : Service() {
     }
 
     protected open fun overlayContentTopPx(contentHeight: Int): Int {
-        val topBottomMargin = dp(20)
+        val topBottomMargin = overlayVerticalMarginPx()
         val safeBounds = overlaySafeBounds()
         val portraitBias = if (!isLandscapeUi()) dp(16) else 0
         return (safeBounds.top + (safeBounds.height() - contentHeight) / 2 - portraitBias)
@@ -7513,6 +8097,8 @@ open class FloatingOverlayService : Service() {
 
     protected open fun miniOverlayContentTopPx(contentHeight: Int): Int =
         overlayContentTopPx(contentHeight)
+
+    private fun overlayVerticalMarginPx(): Int = dp(if (isPhoneLandscapeUi()) 10 else 20)
 
     private suspend fun loadQuickSubtitleConfig() {
         val raw = UserPrefs.getQuickSubtitleConfig(this)
@@ -8118,7 +8704,7 @@ open class FloatingOverlayService : Service() {
 
     private fun miniQuickTextListContentHeight(): Int {
         return if (isPhoneLandscapeUi()) {
-            landscapeOverlayContentHeight() + dp(72)
+            landscapeOverlayBodyHeightPx()
         } else {
             dp(296)
         }
@@ -8303,6 +8889,7 @@ open class FloatingOverlayService : Service() {
         miniQuickRow?.requestLayout()
         miniQuickItemsAdapter?.submitItems(group.id, group.items, group.itemColors)
         refreshMiniSubtitleLayoutMetrics()
+        refreshMiniSoundboardStopCardUi()
         restoreMiniQuickItemsScrollState(group.id)
         if (miniQuickListOverlayView?.visibility == View.VISIBLE) {
             refreshMiniQuickTextListOverlayUi()
@@ -8407,14 +8994,18 @@ open class FloatingOverlayService : Service() {
         val indicatorContainer = miniQuickCardIndicatorContainer ?: return
         val landscapePhone = isPhoneLandscapeUi()
 
-        body.orientation = if (landscapePhone) LinearLayout.HORIZONTAL else LinearLayout.VERTICAL
+        body.orientation = LinearLayout.VERTICAL
         body.gravity = if (landscapePhone) Gravity.CENTER_VERTICAL else Gravity.NO_GRAVITY
+        (body.layoutParams as? FrameLayout.LayoutParams)?.let { lp ->
+            lp.gravity = if (landscapePhone) Gravity.CENTER_VERTICAL else Gravity.TOP
+            body.layoutParams = lp
+        }
 
         (previewContainer.layoutParams as? LinearLayout.LayoutParams)?.let { lp ->
             if (landscapePhone) {
-                lp.width = 0
+                lp.width = ViewGroup.LayoutParams.MATCH_PARENT
                 lp.height = ViewGroup.LayoutParams.WRAP_CONTENT
-                lp.weight = 1f
+                lp.weight = 0f
                 lp.topMargin = 0
                 lp.leftMargin = 0
             } else {
@@ -8431,9 +9022,9 @@ open class FloatingOverlayService : Service() {
                 lp.width = ViewGroup.LayoutParams.WRAP_CONTENT
                 lp.height = ViewGroup.LayoutParams.WRAP_CONTENT
                 lp.weight = 0f
-                lp.topMargin = 0
-                lp.leftMargin = dp(10)
-                lp.gravity = Gravity.CENTER_VERTICAL
+                lp.topMargin = dp(6)
+                lp.leftMargin = dp(2)
+                lp.gravity = Gravity.START
             } else {
                 lp.width = ViewGroup.LayoutParams.WRAP_CONTENT
                 lp.height = ViewGroup.LayoutParams.WRAP_CONTENT
@@ -8444,17 +9035,11 @@ open class FloatingOverlayService : Service() {
             }
             indicatorContainer.layoutParams = lp
         }
-        indicatorContainer.orientation =
-            if (landscapePhone) LinearLayout.VERTICAL else LinearLayout.HORIZONTAL
+        indicatorContainer.orientation = LinearLayout.HORIZONTAL
         indicatorContainer.gravity = Gravity.CENTER
         indicatorContainer.background = roundedRectDrawable(dp(999).toFloat(), overlayCardColor())
         indicatorContainer.elevation = dp(4).toFloat()
-        indicatorContainer.setPadding(
-            if (landscapePhone) dp(6) else dp(8),
-            if (landscapePhone) dp(10) else dp(5),
-            if (landscapePhone) dp(6) else dp(8),
-            if (landscapePhone) dp(10) else dp(5)
-        )
+        indicatorContainer.setPadding(dp(8), dp(5), dp(8), dp(5))
         refreshMiniQuickCardIndicators()
         body.requestLayout()
     }
@@ -8642,34 +9227,271 @@ open class FloatingOverlayService : Service() {
 
     private fun refreshMiniQuickCardIndicators() {
         val container = miniQuickCardIndicatorContainer ?: return
-        val vertical = isPhoneLandscapeUi()
-        container.removeAllViews()
-        val count = max(1, quickCards.size)
-        repeat(count) { index ->
-            container.addView(
-                View(this).apply {
-                    background = circleDrawable(
-                        if (index == quickCardSelectedIndex.coerceIn(0, count - 1)) {
-                            overlayPrimaryColor()
-                        } else {
-                            overlayIndicatorInactiveColor()
-                        }
-                    )
-                    setOnClickListener {
-                        if (quickCards.isNotEmpty()) {
-                            miniQuickCardPager?.setCurrentItem(index.coerceIn(0, quickCards.lastIndex), true)
-                        }
-                    }
-                },
-                LinearLayout.LayoutParams(dp(8), dp(8)).apply {
-                    if (vertical) {
-                        if (index > 0) topMargin = dp(8)
-                    } else if (index > 0) {
-                        leftMargin = dp(8)
-                    }
+        refreshOverlayPageIndicatorRail(
+            container = container,
+            count = quickCards.size,
+            current = quickCardSelectedIndex
+        ) { index ->
+            if (quickCards.isNotEmpty()) {
+                val targetIndex = index.coerceIn(0, quickCards.lastIndex)
+                if (targetIndex != quickCardSelectedIndex) {
+                    quickCardSelectedIndex = targetIndex
+                    saveQuickCardSelectedIndex()
+                    prefetchQuickCardAssets()
+                    refreshMiniQuickCardIndicators()
                 }
+                miniQuickCardPager?.setCurrentItem(targetIndex, true)
+            }
+        }
+    }
+
+    private inner class OverlayPageIndicatorView : View(this@FloatingOverlayService) {
+        private val indicatorPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+        private val colorEvaluator = ArgbEvaluator()
+        private var pageCount = 1
+        private var currentPage = 0
+        private var fromPage = 0
+        private var fromWindowStart = 0
+        private var transitionProgress = 1f
+        private var transitionAnimator: ValueAnimator? = null
+        private var touchX = 0f
+        private var pageSelected: ((Int) -> Unit)? = null
+
+        init {
+            isClickable = true
+            isFocusable = true
+        }
+
+        fun submit(count: Int, current: Int, onPageSelected: (Int) -> Unit) {
+            val safeCount = count.coerceAtLeast(1)
+            val safeCurrent = current.coerceIn(0, safeCount - 1)
+            pageSelected = onPageSelected
+            if (pageCount == safeCount && currentPage == safeCurrent) {
+                invalidate()
+                return
+            }
+
+            fromPage = currentPage.coerceIn(0, pageCount - 1)
+            fromWindowStart = quickCardIndicatorWindow(pageCount, fromPage).firstOrNull() ?: 0
+            val visibleCountChanged = min(7, pageCount) != min(7, safeCount)
+            pageCount = safeCount
+            fromPage = fromPage.coerceIn(0, pageCount - 1)
+            currentPage = safeCurrent
+            contentDescription = "第 ${safeCurrent + 1} 页，共 $safeCount 页"
+            transitionAnimator?.cancel()
+            if (visibleCountChanged) requestLayout()
+            if (!isShown) {
+                transitionProgress = 1f
+                invalidate()
+                return
+            }
+            transitionProgress = 0f
+            transitionAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
+                duration = 130L
+                interpolator = DecelerateInterpolator()
+                addUpdateListener { animator ->
+                    transitionProgress = animator.animatedValue as Float
+                    invalidate()
+                }
+                start()
+            }
+        }
+
+        override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+            val visibleCount = min(7, pageCount).coerceAtLeast(1)
+            val desiredWidth = dp(20) + dp(16) * (visibleCount - 1)
+            setMeasuredDimension(
+                resolveSize(desiredWidth, widthMeasureSpec),
+                resolveSize(dp(8), heightMeasureSpec)
             )
         }
+
+        override fun onDraw(canvas: Canvas) {
+            super.onDraw(canvas)
+            val visibleIndices = quickCardIndicatorWindow(pageCount, currentPage)
+            val windowStart = visibleIndices.firstOrNull() ?: 0
+            val travelPx = dp(16).toFloat()
+
+            if (fromWindowStart != windowStart && transitionProgress < 1f) {
+                val direction = if (windowStart > fromWindowStart) 1f else -1f
+                drawIndicatorSet(
+                    canvas = canvas,
+                    indices = quickCardIndicatorWindow(pageCount, fromPage),
+                    selectedPage = fromPage,
+                    translationX = -direction * travelPx * transitionProgress,
+                    overallAlpha = 1f - transitionProgress
+                )
+                drawIndicatorSet(
+                    canvas = canvas,
+                    indices = visibleIndices,
+                    selectedPage = currentPage,
+                    translationX = direction * travelPx * (1f - transitionProgress),
+                    overallAlpha = transitionProgress
+                )
+                return
+            }
+
+            var indicatorLeft = indicatorContentLeft(visibleIndices.size)
+            visibleIndices.forEachIndexed { position, pageIndex ->
+                val selection = when {
+                    pageIndex == fromPage && pageIndex == currentPage -> 1f
+                    pageIndex == fromPage -> 1f - transitionProgress
+                    pageIndex == currentPage -> transitionProgress
+                    else -> 0f
+                }
+                drawIndicator(
+                    canvas = canvas,
+                    left = indicatorLeft,
+                    pageIndex = pageIndex,
+                    position = position,
+                    indices = visibleIndices,
+                    selection = selection,
+                    overallAlpha = 1f
+                )
+                indicatorLeft += indicatorWidth(selection) + dp(8)
+            }
+        }
+
+        private fun drawIndicatorSet(
+            canvas: Canvas,
+            indices: List<Int>,
+            selectedPage: Int,
+            translationX: Float,
+            overallAlpha: Float
+        ) {
+            var indicatorLeft = indicatorContentLeft(indices.size) + translationX
+            indices.forEachIndexed { position, pageIndex ->
+                val selection = if (pageIndex == selectedPage) 1f else 0f
+                drawIndicator(
+                    canvas = canvas,
+                    left = indicatorLeft,
+                    pageIndex = pageIndex,
+                    position = position,
+                    indices = indices,
+                    selection = selection,
+                    overallAlpha = overallAlpha
+                )
+                indicatorLeft += indicatorWidth(selection) + dp(8)
+            }
+        }
+
+        private fun indicatorWidth(selection: Float): Float {
+            return dp(8) + (dp(20) - dp(8)) * selection
+        }
+
+        private fun indicatorContentLeft(visibleCount: Int): Float {
+            val contentWidth = dp(20) + dp(16) * (visibleCount - 1)
+            return (width - contentWidth) / 2f
+        }
+
+        private fun drawIndicator(
+            canvas: Canvas,
+            left: Float,
+            pageIndex: Int,
+            position: Int,
+            indices: List<Int>,
+            selection: Float,
+            overallAlpha: Float
+        ) {
+            val dot = dp(8).toFloat()
+            val indicatorWidth = indicatorWidth(selection)
+            val faded =
+                (position == 0 && indices.firstOrNull()?.let { it > 0 } == true) ||
+                    (position == indices.lastIndex &&
+                        indices.lastOrNull()?.let { it < pageCount - 1 } == true)
+            indicatorPaint.color = colorEvaluator.evaluate(
+                selection,
+                overlayIndicatorInactiveColor(),
+                overlayPrimaryColor()
+            ) as Int
+            val baseAlpha = if (faded && pageIndex != currentPage) 0.38f else if (selection > 0f) 1f else 0.82f
+            indicatorPaint.alpha = (255f * baseAlpha * overallAlpha).roundToInt().coerceIn(0, 255)
+            canvas.drawRoundRect(
+                left,
+                0f,
+                left + indicatorWidth,
+                dot,
+                dot / 2f,
+                dot / 2f,
+                indicatorPaint
+            )
+        }
+
+        override fun onTouchEvent(event: MotionEvent): Boolean {
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    touchX = event.x
+                    return true
+                }
+                MotionEvent.ACTION_UP -> {
+                    touchX = event.x
+                    return performClick()
+                }
+                MotionEvent.ACTION_CANCEL -> return true
+            }
+            return super.onTouchEvent(event)
+        }
+
+        override fun performClick(): Boolean {
+            super.performClick()
+            val indices = quickCardIndicatorWindow(pageCount, currentPage)
+            var left = indicatorContentLeft(indices.size)
+            var nearestSlot = 0
+            var nearestDistance = Float.MAX_VALUE
+            indices.forEachIndexed { slot, pageIndex ->
+                val selection = if (pageIndex == currentPage) 1f else 0f
+                val indicatorWidth = indicatorWidth(selection)
+                val distance = abs(touchX - (left + indicatorWidth / 2f))
+                if (distance < nearestDistance) {
+                    nearestDistance = distance
+                    nearestSlot = slot
+                }
+                left += indicatorWidth + dp(8)
+            }
+            performOverlayKeyHaptic(this)
+            pageSelected?.invoke(indices[nearestSlot])
+            return true
+        }
+
+        override fun onDetachedFromWindow() {
+            transitionAnimator?.cancel()
+            transitionAnimator = null
+            super.onDetachedFromWindow()
+        }
+    }
+
+    private fun refreshOverlayPageIndicatorRail(
+        container: LinearLayout,
+        count: Int,
+        current: Int,
+        onPageSelected: (Int) -> Unit
+    ) {
+        val indicator = container.getChildAt(0) as? OverlayPageIndicatorView
+            ?: OverlayPageIndicatorView().also { view ->
+            container.removeAllViews()
+            container.addView(
+                view,
+                LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    dp(8)
+                )
+            )
+        }
+        indicator.submit(count, current, onPageSelected)
+    }
+
+    private fun quickCardIndicatorWindow(
+        count: Int,
+        current: Int,
+        maxVisible: Int = 7
+    ): List<Int> {
+        val safeCount = count.coerceAtLeast(1)
+        val visibleCount = maxVisible.coerceAtLeast(1).coerceAtMost(safeCount)
+        if (safeCount <= visibleCount) return (0 until safeCount).toList()
+
+        val safeCurrent = current.coerceIn(0, safeCount - 1)
+        val start = (safeCurrent - visibleCount / 2).coerceIn(0, safeCount - visibleCount)
+        return (start until start + visibleCount).toList()
     }
 
     private fun createMiniGroupSwipeTouchListener(): View.OnTouchListener {
@@ -8770,31 +9592,39 @@ open class FloatingOverlayService : Service() {
     }
 
     private fun saveQuickCardSelectedIndex() {
-        val root = JSONObject().apply {
-            put("selectedIndex", quickCardSelectedIndex)
-            put(
-                "cards",
-                JSONArray().apply {
-                    quickCards.forEach { card ->
-                        put(
-                            JSONObject().apply {
-                                put("id", card.id)
-                                put("type", QuickCardType.Text.wireValue)
-                                put("title", card.title)
-                                put("note", card.note)
-                                put("themeColor", card.themeColor)
-                                put("link", card.link)
-                                put("portraitImagePath", card.portraitImagePath)
-                                put("landscapeImagePath", card.landscapeImagePath)
+        val selectedIndexSnapshot = quickCardSelectedIndex
+        val cardsSnapshot = quickCards.toList()
+        quickCardSelectionSaveJob?.cancel()
+        quickCardSelectionSaveJob = scope.launch {
+            delay(220L)
+            val payload = withContext(Dispatchers.Default) {
+                JSONObject().apply {
+                    put("selectedIndex", selectedIndexSnapshot)
+                    put(
+                        "cards",
+                        JSONArray().apply {
+                            cardsSnapshot.forEach { card ->
+                                put(
+                                    JSONObject().apply {
+                                        put("id", card.id)
+                                        put("type", QuickCardType.Text.wireValue)
+                                        put("title", card.title)
+                                        put("note", card.note)
+                                        put("themeColor", card.themeColor)
+                                        put("link", card.link)
+                                        put("portraitImagePath", card.portraitImagePath)
+                                        put("landscapeImagePath", card.landscapeImagePath)
+                                    }
+                                )
                             }
-                        )
-                    }
-                }
-            )
-        }.toString()
-        quickCardConfigRawCache = root
-        scope.launch(Dispatchers.IO) {
-            UserPrefs.setQuickCardConfig(this@FloatingOverlayService, root)
+                        }
+                    )
+                }.toString()
+            }
+            quickCardConfigRawCache = payload
+            withContext(Dispatchers.IO) {
+                UserPrefs.setQuickCardConfig(this@FloatingOverlayService, payload)
+            }
         }
     }
 
@@ -8822,7 +9652,6 @@ open class FloatingOverlayService : Service() {
         val previewHost = miniQuickCardPreviewContainer ?: return
         val pager = miniQuickCardPager ?: return
         val adapter = miniQuickCardPagerAdapter ?: return
-        miniQuickCardPageHeights.clear()
         adapter.submitCards(quickCards)
         previewHost.requestLayout()
         val safeIndex =
@@ -9124,10 +9953,14 @@ open class FloatingOverlayService : Service() {
         val tabsCard = miniSoundboardTabsCardView ?: return
         val landscapePhone = isPhoneLandscapeUi()
         configureMiniSoundboardTabsCard(landscapePhone)
-        val contentHeight = if (landscapePhone) landscapeOverlayContentHeight() else dp(260)
+        val contentHeight = if (landscapePhone) landscapeOverlayBodyHeightPx() else dp(260)
         body.removeAllViews()
         body.orientation = if (landscapePhone) LinearLayout.HORIZONTAL else LinearLayout.VERTICAL
         body.gravity = Gravity.NO_GRAVITY
+        (body.layoutParams as? FrameLayout.LayoutParams)?.let { lp ->
+            lp.gravity = if (landscapePhone) Gravity.CENTER_VERTICAL else Gravity.TOP
+            body.layoutParams = lp
+        }
         if (landscapePhone) {
             reparentView(
                 contentCard,
@@ -9269,8 +10102,6 @@ open class FloatingOverlayService : Service() {
         }
     }
 
-    private fun miniQuickCardHeightKey(card: QuickCard?): Long = card?.id ?: Long.MIN_VALUE
-
     private fun miniQuickCardPageContentWidth(landscapePhone: Boolean): Int =
         min(
             if (landscapePhone) dp(440) else dp(244),
@@ -9316,20 +10147,6 @@ open class FloatingOverlayService : Service() {
         }
     }
 
-    private fun measureMiniQuickCardPageHeight(contentWidth: Int, card: QuickCard?): Int {
-        val previewContainer = miniQuickCardPreviewContainer ?: return miniQuickCardPortraitPreviewMinHeight()
-        if (isPhoneLandscapeUi()) {
-            return landscapeOverlayContentHeight() - previewContainer.paddingTop - previewContainer.paddingBottom
-        }
-        val probe = createMiniQuickCardPage(card)
-        val childWidthSpec = View.MeasureSpec.makeMeasureSpec(contentWidth.coerceAtLeast(0), View.MeasureSpec.EXACTLY)
-        val childHeightSpec = View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED)
-        probe.measure(childWidthSpec, childHeightSpec)
-        return probe.measuredHeight.coerceAtLeast(
-            miniQuickCardPortraitPreviewMinHeight() - previewContainer.paddingTop - previewContainer.paddingBottom
-        )
-    }
-
     private fun createMiniQuickCardPage(card: QuickCard?): View {
         val landscapePhone = isPhoneLandscapeUi()
         val contentWidth = miniQuickCardPageContentWidth(landscapePhone)
@@ -9357,7 +10174,7 @@ open class FloatingOverlayService : Service() {
                 FrameLayout.LayoutParams(
                     ViewGroup.LayoutParams.WRAP_CONTENT,
                     ViewGroup.LayoutParams.WRAP_CONTENT,
-                    Gravity.CENTER
+                    if (landscapePhone) Gravity.BOTTOM or Gravity.START else Gravity.CENTER
                 )
             )
         }
@@ -9918,7 +10735,7 @@ open class FloatingOverlayService : Service() {
         val cardAspect = if (landscape) 16f / 9f else 9f / 16f
         val maxHeight =
             if (renderStyle == OverlayQuickCardRenderStyle.Panel && isPhoneLandscapeUi()) {
-                landscapeOverlayContentHeight()
+                landscapeQuickCardContentHeight()
             } else {
                 Int.MAX_VALUE
             }
@@ -12410,23 +13227,14 @@ open class FloatingOverlayService : Service() {
 
     private fun refreshPanelIndicators() {
         val container = panelIndicatorContainer ?: return
-        container.removeAllViews()
-        repeat(panelPageCount) { index ->
-            container.addView(
-                View(this).apply {
-                    background = circleDrawable(
-                        if (panelPageIndex == index) overlayPrimaryColor() else overlayIndicatorInactiveColor()
-                    )
-                    setOnClickListener {
-                        panelPageIndex = index
-                        refreshPanelIndicators()
-                        scrollPanelToPage(index, animate = true)
-                    }
-                },
-                LinearLayout.LayoutParams(dp(8), dp(8)).apply {
-                    if (index > 0) leftMargin = dp(8)
-                }
-            )
+        refreshOverlayPageIndicatorRail(
+            container = container,
+            count = panelPageCount,
+            current = panelPageIndex
+        ) { index ->
+            panelPageIndex = index
+            refreshPanelIndicators()
+            scrollPanelToPage(index, animate = true)
         }
     }
 
@@ -13075,6 +13883,7 @@ open class FloatingOverlayService : Service() {
                     ViewGroup.LayoutParams.WRAP_CONTENT
                 )
             )
+            addView(spaceView(1, dp(10)))
         }
         return OverlayStatusDetailRefs(
             card = card,
@@ -13511,8 +14320,11 @@ open class FloatingOverlayService : Service() {
             View.MeasureSpec.makeMeasureSpec(contentWidth, View.MeasureSpec.EXACTLY),
             View.MeasureSpec.makeMeasureSpec(displayHeight(), View.MeasureSpec.AT_MOST)
         )
-        val targetWidth = contentWidth
-        val targetHeight = content.height.takeIf { it > 0 } ?: content.measuredHeight.takeIf { it > 0 } ?: return
+        val contentScale = content.scaleX.coerceIn(OverlayScalePolicy.DEFAULT_MINIMUM_SCALE, 1f)
+        val targetWidth = (contentWidth * contentScale).roundToInt().coerceAtLeast(1)
+        val unscaledHeight =
+            content.height.takeIf { it > 0 } ?: content.measuredHeight.takeIf { it > 0 } ?: return
+        val targetHeight = (unscaledHeight * contentScale).roundToInt().coerceAtLeast(1)
         val contentLocation = IntArray(2)
         content.getLocationOnScreen(contentLocation)
         val extraWidth = if (isPhoneLandscapeUi()) dp(40) else 0
@@ -14002,16 +14814,52 @@ open class FloatingOverlayService : Service() {
     private fun dp(value: Int): Int = (resources.displayMetrics.density * value).roundToInt()
     private fun dp(value: Float): Int = (resources.displayMetrics.density * value).roundToInt()
 
-    private fun displayBounds(): Rect {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            return Rect(windowManager.currentWindowMetrics.bounds)
-        }
-        val display = getSystemService(DisplayManager::class.java)?.getDisplay(Display.DEFAULT_DISPLAY)
+    private fun defaultDisplay(): Display? =
+        getSystemService(DisplayManager::class.java)?.getDisplay(Display.DEFAULT_DISPLAY)
+
+    @Suppress("DEPRECATION")
+    private fun currentDisplayRotation(): Int =
+        defaultDisplay()?.rotation ?: Surface.ROTATION_0
+
+    private fun currentDisplayMetricsWindowManager(): WindowManager {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return windowManager
+        val rotation = currentDisplayRotation()
+        displayMetricsWindowManager
+            ?.takeIf { displayMetricsWindowRotation == rotation }
+            ?.let { return it }
+        val manager = runCatching {
+            val displayContext = defaultDisplay()?.let(::createDisplayContext) ?: this
+            displayContext
+                .createWindowContext(WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY, null)
+                .getSystemService(WindowManager::class.java)
+        }.getOrElse { windowManager }
+        displayMetricsWindowRotation = rotation
+        displayMetricsWindowManager = manager
+        return manager
+    }
+
+    private fun orientedDisplayBounds(widthPx: Int, heightPx: Int, rotation: Int): Rect {
+        val rotated = rotation == Surface.ROTATION_90 || rotation == Surface.ROTATION_270
+        val width = if (rotated) max(widthPx, heightPx) else min(widthPx, heightPx)
+        val height = if (rotated) min(widthPx, heightPx) else max(widthPx, heightPx)
+        return Rect(0, 0, width, height)
+    }
+
+    protected fun displayBounds(): Rect {
+        val display = defaultDisplay()
         if (display != null) {
             val metrics = DisplayMetrics()
             @Suppress("DEPRECATION")
             display.getRealMetrics(metrics)
-            return Rect(0, 0, metrics.widthPixels, metrics.heightPixels)
+            return orientedDisplayBounds(
+                metrics.widthPixels,
+                metrics.heightPixels,
+                currentDisplayRotation()
+            )
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            val bounds = currentDisplayMetricsWindowManager().currentWindowMetrics.bounds
+            return orientedDisplayBounds(bounds.width(), bounds.height(), currentDisplayRotation())
         }
         return Rect(0, 0, resources.displayMetrics.widthPixels, resources.displayMetrics.heightPixels)
     }
@@ -14019,9 +14867,11 @@ open class FloatingOverlayService : Service() {
     private fun overlaySafeBounds(): Rect {
         val bounds = displayBounds()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            val metrics = windowManager.currentWindowMetrics
+            val metrics = currentDisplayMetricsWindowManager().currentWindowMetrics
             val insets = metrics.windowInsets.getInsetsIgnoringVisibility(
-                android.view.WindowInsets.Type.navigationBars()
+                android.view.WindowInsets.Type.statusBars() or
+                    android.view.WindowInsets.Type.navigationBars() or
+                    android.view.WindowInsets.Type.displayCutout()
             )
             return Rect(
                 bounds.left + insets.left,
@@ -14056,6 +14906,7 @@ open class FloatingOverlayService : Service() {
         private const val ACTION_OPEN_MINI_SUBTITLE = "com.lhtstudio.kigtts.app.action.OVERLAY_OPEN_MINI_SUBTITLE"
         private const val ACTION_OPEN_MINI_QUICK_CARD = "com.lhtstudio.kigtts.app.action.OVERLAY_OPEN_MINI_QUICK_CARD"
         private const val ACTION_OPEN_MINI_SOUNDBOARD = "com.lhtstudio.kigtts.app.action.OVERLAY_OPEN_MINI_SOUNDBOARD"
+        private const val EXTRA_SERVICE_TEXT = "overlay_service_text"
         fun canDrawOverlays(context: Context): Boolean {
             return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                 Settings.canDrawOverlays(context)
@@ -14083,9 +14934,10 @@ open class FloatingOverlayService : Service() {
             ContextCompat.startForegroundService(context, intent)
         }
 
-        fun openMiniQuickSubtitle(context: Context) {
+        fun openMiniQuickSubtitle(context: Context, text: String = "") {
             val intent = Intent(context, FloatingOverlayService::class.java).apply {
                 action = ACTION_OPEN_MINI_SUBTITLE
+                putExtra(EXTRA_SERVICE_TEXT, text)
             }
             ContextCompat.startForegroundService(context, intent)
         }

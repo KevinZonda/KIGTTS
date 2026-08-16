@@ -42,6 +42,8 @@ internal class LockScreenHostLayoutController(
             density = metrics.density
         )
         currentMode = mode
+        unlockText.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
+        unlockIcon.setTextSize(TypedValue.COMPLEX_UNIT_SP, 25f)
         detachReusableViews()
         root.removeAllViews()
         root.addView(
@@ -245,12 +247,6 @@ internal class LockScreenHostLayoutController(
         density: Float,
         timeGroup: LinearLayout
     ) {
-        timeView.setTextSize(
-            TypedValue.COMPLEX_UNIT_SP,
-            if (mode == LockScreenLayoutMode.TabletLandscape) 72f else 54f
-        )
-        timeGroup.setPadding(0, 0, 0, 0)
-        configureUnlockHint(horizontal = timeAndDateAlignedStart)
         val sideMargin = dp(16)
         val overlayWidth = LockScreenLayoutPolicy.overlayWidthPx(
             mode,
@@ -264,24 +260,54 @@ internal class LockScreenHostLayoutController(
             overlayWidth,
             sideMargin
         )
+        val phoneLandscapeListening =
+            mode == LockScreenLayoutMode.PhoneLandscape && listeningOverlayVisible
+        val contentBoundary = if (phoneLandscapeListening) {
+            LockScreenLayoutPolicy.phoneLandscapeListeningSafeLeftPx(
+                safeLeftPx = root.paddingLeft,
+                safeRightPx = screenWidth - root.paddingRight,
+                density = density
+            )
+        } else {
+            overlayLeft
+        }
         val columnWidth = if (mode == LockScreenLayoutMode.TabletLandscape) {
             (screenWidth / 2 - sideMargin * 2).coerceAtLeast(dp(220))
         } else {
             LockScreenLayoutPolicy.hostColumnWidthPx(
-                overlayLeftPx = overlayLeft,
+                overlayLeftPx = contentBoundary,
                 contentStartInsetPx = root.paddingLeft,
                 startMarginPx = sideMargin,
                 overlayGapPx = dp(24),
-                minimumWidthPx = dp(220)
+                minimumWidthPx = if (phoneLandscapeListening) dp(84) else dp(220)
             )
         }
+        val infoScale = if (phoneLandscapeListening) {
+            LockScreenLayoutPolicy.phoneLandscapeInfoScale(columnWidth, density)
+        } else {
+            1f
+        }
+        timeView.setTextSize(
+            TypedValue.COMPLEX_UNIT_SP,
+            (if (mode == LockScreenLayoutMode.TabletLandscape) 72f else 54f) * infoScale
+        )
+        dateView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 17f * maxOf(infoScale, 0.8f))
+        batteryView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f * maxOf(infoScale, 0.8f))
+        unlockText.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f * infoScale)
+        unlockIcon.setTextSize(TypedValue.COMPLEX_UNIT_SP, 25f * infoScale)
+        timeGroup.setPadding(0, 0, 0, 0)
+        configureUnlockHint(horizontal = timeAndDateAlignedStart)
         val infoColumn = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             gravity = if (timeAndDateAlignedStart) Gravity.START else Gravity.CENTER
             addView(
                 timeGroup,
                 LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    if (phoneLandscapeListening) {
+                        ViewGroup.LayoutParams.MATCH_PARENT
+                    } else {
+                        ViewGroup.LayoutParams.WRAP_CONTENT
+                    },
                     ViewGroup.LayoutParams.WRAP_CONTENT
                 )
             )
@@ -297,7 +323,11 @@ internal class LockScreenHostLayoutController(
             addView(
                 infoColumn,
                 FrameLayout.LayoutParams(
-                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    if (phoneLandscapeListening) {
+                        ViewGroup.LayoutParams.MATCH_PARENT
+                    } else {
+                        ViewGroup.LayoutParams.WRAP_CONTENT
+                    },
                     ViewGroup.LayoutParams.WRAP_CONTENT,
                     Gravity.CENTER
                 )

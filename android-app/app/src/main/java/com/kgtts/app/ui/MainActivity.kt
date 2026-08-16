@@ -33,6 +33,7 @@ import android.provider.DocumentsContract
 import android.provider.MediaStore
 import android.provider.Settings
 import android.view.HapticFeedbackConstants
+import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.ScaleGestureDetector
 import android.view.Surface
@@ -273,6 +274,7 @@ import com.lhtstudio.kigtts.app.util.LauncherMenuShortcuts
 import com.lhtstudio.kigtts.app.util.LiveSubtitleNotificationBridge
 import com.lhtstudio.kigtts.app.util.QqScannerSupport
 import com.lhtstudio.kigtts.app.util.QuickCardRenderCache
+import com.lhtstudio.kigtts.app.util.KeyboardHotkeys
 import com.lhtstudio.kigtts.app.util.VolumeHotkeyActionSpec
 import com.lhtstudio.kigtts.app.util.VolumeHotkeyActions
 import com.lhtstudio.kigtts.app.util.VolumeHotkeySequence
@@ -348,6 +350,7 @@ class MainActivity : ComponentActivity() {
     private var realtimeHostBound = false
     private var realtimeHostService: RealtimeHostService? = null
     private var realtimeHostModelsInitialized = false
+    private var consumedKeyboardHotkeyCode: Int? = null
 
     private fun attachRealtimeHostForVisibleUi(service: RealtimeHostService) {
         viewModel.attachRealtimeHost(
@@ -391,6 +394,38 @@ class MainActivity : ComponentActivity() {
         if (config.fontScale == 1f) return base
         config.fontScale = 1f
         return createConfigurationContext(config).resources
+    }
+
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (event.action == KeyEvent.ACTION_UP && consumedKeyboardHotkeyCode == event.keyCode) {
+            consumedKeyboardHotkeyCode = null
+            return true
+        }
+        if (event.action != KeyEvent.ACTION_DOWN || event.repeatCount != 0) {
+            return super.dispatchKeyEvent(event)
+        }
+        val state = viewModel.uiState
+        if (!state.settingsLoaded ||
+            !state.onboardingCompleted ||
+            !state.keyboardHotkeysEnabled ||
+            isTextInputActive()
+        ) {
+            return super.dispatchKeyEvent(event)
+        }
+        val entry = KeyboardHotkeys.findMatch(state.keyboardHotkeys, event)
+            ?: return super.dispatchKeyEvent(event)
+
+        consumedKeyboardHotkeyCode = event.keyCode
+        if (state.hapticFeedbackEnabled) {
+            window.decorView.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+        }
+        viewModel.triggerKeyboardHotkey(entry)
+        return true
+    }
+
+    private fun isTextInputActive(): Boolean {
+        val focused = currentFocus ?: window.decorView.findFocus()
+        return focused?.onCheckIsTextEditor() == true
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {

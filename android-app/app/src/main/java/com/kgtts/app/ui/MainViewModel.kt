@@ -313,6 +313,7 @@ import com.lhtstudio.kigtts.app.util.QuickCardRenderCache
 import com.lhtstudio.kigtts.app.util.VolumeHotkeyActionSpec
 import com.lhtstudio.kigtts.app.util.VolumeHotkeyActions
 import com.lhtstudio.kigtts.app.util.VolumeHotkeySequence
+import com.lhtstudio.kigtts.app.util.KeyboardHotkeyEntry
 import com.lhtstudio.kigtts.app.util.snapPlaybackGainPercent
 import com.google.android.gms.tasks.Task
 import com.google.mlkit.vision.barcode.BarcodeScanner
@@ -507,6 +508,10 @@ class MainViewModel(
     private fun appendRecognizedHistory(text: String, id: Long? = null, fromQuickText: Boolean = false) {
         val normalized = text.trim()
         if (normalized.isEmpty()) return
+        realtimeHost?.let { host ->
+            host.recordRecognizedHistory(normalized, id, fromQuickText)
+            return
+        }
         val historyId = id ?: manualRecognizedIdSeed--
         if (id != null && realtimeRecognized.any { it.id == id }) return
         val item = RecognizedItem(id = historyId, text = normalized)
@@ -610,6 +615,8 @@ class MainViewModel(
     private var pendingSoundboardGroupSelectionId: Long? = null
     private var quickCardsNextId = 1L
     private var quickCardsSaving = false
+    private var quickCardsSavePending = false
+    private var quickCardSelectionSaveJob: Job? = null
     private var pendingQuickCardPackageUri: Uri? = null
     private var onboardingCompleting = false
 
@@ -958,6 +965,8 @@ class MainViewModel(
             volumeHotkeyEnableWarningDismissed = settings.volumeHotkeyEnableWarningDismissed,
             volumeHotkeyUpDownAction = settings.volumeHotkeyUpDownAction,
             volumeHotkeyDownUpAction = settings.volumeHotkeyDownUpAction,
+            keyboardHotkeysEnabled = settings.keyboardHotkeysEnabled,
+            keyboardHotkeys = settings.keyboardHotkeys,
             ttsDisabled = settings.ttsDisabled,
             soundboardInterruptOnNewPlayback = settings.soundboardInterruptOnNewPlayback,
             soundboardKeywordTriggerEnabled = settings.soundboardKeywordTriggerEnabled,
@@ -2418,40 +2427,69 @@ class MainViewModel(
         prefetchQuickCardAssets()
     }
 
-    private fun saveQuickCardConfig() {
-        if (quickCardsSaving) return
-        quickCardsSaving = true
-        val root = JSONObject().apply {
-            put("selectedIndex", quickCardSelectedIndex)
-            val cardsArr = JSONArray()
-            quickCards.forEach { c ->
-                cardsArr.put(
-                    JSONObject().apply {
-                        put("id", c.id)
-                        put("type", c.type.wireValue)
-                        put("title", c.title)
-                        put("note", c.note)
-                        put("themeColor", c.themeColor)
-                        put("link", c.link)
-                        put("portraitImagePath", c.portraitImagePath)
-                        put("landscapeImagePath", c.landscapeImagePath)
-                    }
-                )
-            }
-            put("cards", cardsArr)
+    private fun saveQuickCardConfig(prefetchAssets: Boolean = true) {
+        quickCardSelectionSaveJob?.cancel()
+        quickCardSelectionSaveJob = null
+        if (quickCardsSaving) {
+            quickCardsSavePending = true
+            if (prefetchAssets) prefetchQuickCardAssets()
+            return
         }
-        val payload = root.toString()
+        quickCardsSaving = true
+        val cardsSnapshot = quickCards.toList()
+        val selectedIndexSnapshot = quickCardSelectedIndex
         viewModelScope.launch {
             try {
+                val payload = withContext(Dispatchers.Default) {
+                    serializeQuickCardConfig(cardsSnapshot, selectedIndexSnapshot)
+                }
                 UserPrefs.setQuickCardConfig(appContext, payload)
                 withContext(Dispatchers.IO) {
                     WidgetSnapshotStore.publishQuickCards(appContext, payload)
                 }
             } finally {
                 quickCardsSaving = false
+                if (quickCardsSavePending) {
+                    quickCardsSavePending = false
+                    saveQuickCardConfig(prefetchAssets = false)
+                }
             }
         }
-        prefetchQuickCardAssets()
+        if (prefetchAssets) prefetchQuickCardAssets()
+    }
+
+    private fun serializeQuickCardConfig(cards: List<QuickCard>, selectedIndex: Int): String {
+        return JSONObject().apply {
+            put("selectedIndex", selectedIndex)
+            put(
+                "cards",
+                JSONArray().apply {
+                    cards.forEach { card ->
+                        put(
+                            JSONObject().apply {
+                                put("id", card.id)
+                                put("type", card.type.wireValue)
+                                put("title", card.title)
+                                put("note", card.note)
+                                put("themeColor", card.themeColor)
+                                put("link", card.link)
+                                put("portraitImagePath", card.portraitImagePath)
+                                put("landscapeImagePath", card.landscapeImagePath)
+                            }
+                        )
+                    }
+                }
+            )
+        }.toString()
+    }
+
+    private fun scheduleQuickCardSelectionSave() {
+        quickCardSelectionSaveJob?.cancel()
+        quickCardSelectionSaveJob = viewModelScope.launch {
+            delay(220L)
+            quickCardSelectionSaveJob = null
+            saveQuickCardConfig(prefetchAssets = false)
+        }
     }
 
     fun prepareQuickCardPackageImport(uri: Uri) {
@@ -2613,9 +2651,11 @@ class MainViewModel(
             quickCardSelectedIndex = 0
             return
         }
-        quickCardSelectedIndex = index.coerceIn(0, quickCards.lastIndex)
-        saveQuickCardConfig()
+        val nextIndex = index.coerceIn(0, quickCards.lastIndex)
+        if (quickCardSelectedIndex == nextIndex) return
+        quickCardSelectedIndex = nextIndex
         prefetchQuickCardAssets()
+        scheduleQuickCardSelectionSave()
     }
 
     fun reorderQuickCardsByIds(orderedIds: List<Long>) {
@@ -4273,6 +4313,70 @@ class MainViewModel(
         }
         viewModelScope.launch {
             UserPrefs.setVolumeHotkeyAction(appContext, sequence, action)
+        }
+    }
+
+    fun saveKeyboardHotkey(entry: KeyboardHotkeyEntry) {
+        val entries = uiState.keyboardHotkeys.toMutableList()
+        val index = entries.indexOfFirst { it.id == entry.id }
+        if (index >= 0) {
+            entries[index] = entry
+        } else {
+            entries += entry
+        }
+        persistKeyboardHotkeys(entries)
+    }
+
+    fun setKeyboardHotkeysMasterEnabled(enabled: Boolean) {
+        if (uiState.keyboardHotkeysEnabled == enabled) return
+        uiState = uiState.copy(keyboardHotkeysEnabled = enabled)
+        viewModelScope.launch {
+            UserPrefs.setKeyboardHotkeysMasterEnabled(appContext, enabled)
+        }
+    }
+
+    fun triggerKeyboardHotkey(entry: KeyboardHotkeyEntry) {
+        if (!uiState.keyboardHotkeysEnabled || !entry.enabled || entry.text.isBlank()) return
+        submitQuickSubtitlePreset(
+            text = entry.text,
+            hasVoice = uiState.voiceDir != null,
+            interruptCurrent = uiState.quickSubtitleInterruptQueue
+        )
+        handleQuickSubtitleLaunchRequest(
+            requestId = SystemClock.uptimeMillis(),
+            target = OverlayBridge.TARGET_SUBTITLE,
+            text = entry.text,
+            navigateToPage = true
+        )
+    }
+
+    fun setKeyboardHotkeysEnabled(ids: Set<Long>, enabled: Boolean) {
+        if (ids.isEmpty()) return
+        persistKeyboardHotkeys(
+            uiState.keyboardHotkeys.map { entry ->
+                if (entry.id in ids) entry.copy(enabled = enabled) else entry
+            }
+        )
+    }
+
+    fun deleteKeyboardHotkeys(ids: Set<Long>) {
+        if (ids.isEmpty()) return
+        persistKeyboardHotkeys(uiState.keyboardHotkeys.filterNot { it.id in ids })
+    }
+
+    fun reorderKeyboardHotkeys(orderedIds: List<Long>) {
+        if (orderedIds.isEmpty()) return
+        val byId = uiState.keyboardHotkeys.associateBy { it.id }
+        val reordered = orderedIds.mapNotNull(byId::get) +
+            uiState.keyboardHotkeys.filterNot { it.id in orderedIds }
+        persistKeyboardHotkeys(reordered)
+    }
+
+    private fun persistKeyboardHotkeys(entries: List<KeyboardHotkeyEntry>) {
+        if (entries == uiState.keyboardHotkeys) return
+        uiState = uiState.copy(keyboardHotkeys = entries)
+        viewModelScope.launch {
+            UserPrefs.setKeyboardHotkeys(appContext, entries)
         }
     }
 

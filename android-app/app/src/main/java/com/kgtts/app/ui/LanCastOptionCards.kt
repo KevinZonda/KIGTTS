@@ -30,7 +30,7 @@ internal fun LanCastAudioCard(viewModel: MainViewModel, state: UiState) {
                 value = mode.label,
                 expanded = expanded,
                 onExpandedChange = { expanded = it },
-                supportingText = "投屏显示页面需要先开启投屏端音频；仅投屏端模式没有接收端时会回退本机播放。"
+                supportingText = "开启后，声音会在投屏设备上播放，如果未连接投屏设备时则会自动改为手机播放。"
             ) {
                 LanCastAudioOutputMode.entries.forEach { option ->
                     DropdownMenuItem(onClick = {
