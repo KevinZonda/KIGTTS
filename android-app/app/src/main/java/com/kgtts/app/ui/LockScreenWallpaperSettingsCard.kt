@@ -90,29 +90,11 @@ internal fun LockScreenWallpaperSettingsCard(
             valueRange = 0f..1f,
             onValueChange = { onSettingsChange(settings.copy(scrimOpacity = it)) }
         )
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable(onClick = openScrimColorPicker)
-                .padding(vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            Box(
-                Modifier
-                    .size(28.dp)
-                    .background(Color(settings.scrimColorArgb), androidx.compose.foundation.shape.CircleShape)
-            )
-            Column(Modifier.weight(1f)) {
-                Text("遮罩颜色", fontWeight = FontWeight.SemiBold)
-                Text(
-                    formatColorHexAndNameZhCn(settings.scrimColorArgb),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-            MsIcon("chevron_right", contentDescription = "选择遮罩颜色")
-        }
+        ColorPickerSettingRow(
+            title = "遮罩颜色",
+            colorArgb = settings.scrimColorArgb,
+            onClick = openScrimColorPicker
+        )
         Text(
             "遮罩样式",
             style = MaterialTheme.typography.bodySmall,

@@ -442,6 +442,7 @@ data class UiState(
     val floatingOverlayFabPrefersKeyboard: Boolean = false,
     val floatingOverlayHardcodedShortcutSupplement: Boolean = false,
     val quickTextGestureSettings: QuickTextGestureSettings = QuickTextGestureSettings(),
+    val volumeHotkeysEnabled: Boolean = true,
     val volumeHotkeyUpDownEnabled: Boolean = false,
     val volumeHotkeyDownUpEnabled: Boolean = false,
     val volumeHotkeyWindowMs: Int = UserPrefs.VOLUME_HOTKEY_DEFAULT_WINDOW_MS,

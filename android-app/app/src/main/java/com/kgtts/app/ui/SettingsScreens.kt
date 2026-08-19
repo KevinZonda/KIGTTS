@@ -428,8 +428,57 @@ internal fun SettingsNavHost(
             SettingsScreen(
                 viewModel = viewModel,
                 state = state,
+                detailPage = null,
+                onOpenDetail = { page ->
+                    navController.navigate(SettingsRoutes.detail(page)) { launchSingleTop = true }
+                },
                 onOpenFonts = {
                     navController.navigate(SettingsRoutes.Fonts) { launchSingleTop = true }
+                },
+                onOpenVoicePacks = {
+                    navController.navigate(SettingsRoutes.VoicePacks) { launchSingleTop = true }
+                },
+                onOpenListeningSettings = {
+                    navController.navigate(SettingsRoutes.Listening) { launchSingleTop = true }
+                },
+                onOpenLicenses = {
+                    navController.navigate(SettingsRoutes.Licenses) { launchSingleTop = true }
+                },
+                onOpenPrivacy = {
+                    navController.navigate(SettingsRoutes.Privacy) { launchSingleTop = true }
+                },
+                onOpenAgreement = {
+                    navController.navigate(SettingsRoutes.Agreement) { launchSingleTop = true }
+                },
+                onOpenQuickSubtitleGuide = onOpenQuickSubtitleGuide,
+                onOpenRecognitionResourceSources = onOpenRecognitionResourceSources,
+                onPickRecognitionResourcePackage = onPickRecognitionResourcePackage,
+                onDownloadRecognitionResources = onDownloadRecognitionResources,
+                onOpenKokoroSources = onOpenKokoroSources,
+                onPickKokoroVoicePackage = onPickKokoroVoicePackage,
+                onDownloadKokoroVoice = onDownloadKokoroVoice,
+                onOpenKokoroVoiceSettings = onOpenKokoroVoiceSettings
+            )
+        }
+        composable(
+            route = SettingsRoutes.Detail,
+            arguments = listOf(navArgument(SettingsRoutes.DetailArg) { type = NavType.StringType })
+        ) { backStackEntry ->
+            val detailPage = SettingsDetailPage.fromRouteId(
+                backStackEntry.arguments?.getString(SettingsRoutes.DetailArg)
+            ) ?: return@composable
+            SettingsScreen(
+                viewModel = viewModel,
+                state = state,
+                detailPage = detailPage,
+                onOpenDetail = { page ->
+                    navController.navigate(SettingsRoutes.detail(page)) { launchSingleTop = true }
+                },
+                onOpenFonts = {
+                    navController.navigate(SettingsRoutes.Fonts) { launchSingleTop = true }
+                },
+                onOpenVoicePacks = {
+                    navController.navigate(SettingsRoutes.VoicePacks) { launchSingleTop = true }
                 },
                 onOpenListeningSettings = {
                     navController.navigate(SettingsRoutes.Listening) { launchSingleTop = true }
@@ -455,6 +504,9 @@ internal fun SettingsNavHost(
         }
         composable(SettingsRoutes.Log) {
             LogScreen(onTopBarActionsChange = onTopBarActionsChange)
+        }
+        composable(SettingsRoutes.VoicePacks) {
+            VoicePackScreen(viewModel = viewModel, state = state)
         }
         composable(SettingsRoutes.Fonts) {
             FontSettingsScreen(
@@ -485,10 +537,13 @@ internal fun SettingsNavHost(
 
 
 @Composable
-fun SettingsScreen(
+internal fun SettingsScreen(
     viewModel: MainViewModel,
     state: UiState,
+    detailPage: SettingsDetailPage?,
+    onOpenDetail: (SettingsDetailPage) -> Unit,
     onOpenFonts: () -> Unit,
+    onOpenVoicePacks: () -> Unit,
     onOpenListeningSettings: () -> Unit,
     onOpenLicenses: () -> Unit,
     onOpenPrivacy: () -> Unit,
@@ -957,42 +1012,7 @@ fun SettingsScreen(
     }
 
     @Composable
-    fun AboutDocumentRow(
-        title: String,
-        onClick: () -> Unit,
-        modifier: Modifier = Modifier,
-        showDivider: Boolean = true
-    ) {
-        val hapticOnClick = rememberKigttsHapticClick(onClick)
-        Column(modifier = modifier.fillMaxWidth()) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(4.dp))
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = rememberRipple(bounded = true),
-                        onClick = hapticOnClick
-                    )
-                    .padding(vertical = 10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                Text(
-                    text = title,
-                    modifier = Modifier.weight(1f),
-                    style = MaterialTheme.typography.bodyLarge
-                )
-                MsIcon("chevron_right", contentDescription = null)
-            }
-            if (showDivider) {
-                Divider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.18f))
-            }
-        }
-    }
-
-    @Composable
-    fun AboutSettingsContent() {
+    fun AboutSettingsContent(page: SettingsDetailPage?) {
         val configuration = LocalConfiguration.current
         val isPortrait = configuration.orientation != Configuration.ORIENTATION_LANDSCAPE
         val packageInfo = remember(context) {
@@ -1012,6 +1032,68 @@ fun SettingsScreen(
                 toast(context, "无法打开官网")
             }
         }
+        if (page == SettingsDetailPage.Contributors) {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Md2StaggeredFloatIn(index = 0) {
+                    Md2SettingsCard(title = null) {
+                        if (isPortrait) {
+                            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                AboutContributorItem(
+                                    avatarRes = R.drawable.avatar_lht,
+                                    name = "LHT",
+                                    homepage = "https://space.bilibili.com/87244951",
+                                    modifier = Modifier.fillMaxWidth(),
+                                    avatarSize = 60.dp
+                                )
+                                AboutContributorItem(
+                                    avatarRes = R.drawable.avatar_yuilu,
+                                    name = "Yui Lu",
+                                    homepage = "https://space.bilibili.com/23208863",
+                                    modifier = Modifier.fillMaxWidth(),
+                                    avatarSize = 60.dp
+                                )
+                                AboutContributorItem(
+                                    avatarRes = R.drawable.avatar_huajiang,
+                                    name = "花酱",
+                                    homepage = "https://space.bilibili.com/573842321",
+                                    modifier = Modifier.fillMaxWidth(),
+                                    avatarSize = 60.dp
+                                )
+                            }
+                        } else {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                AboutContributorItem(
+                                    avatarRes = R.drawable.avatar_lht,
+                                    name = "LHT",
+                                    homepage = "https://space.bilibili.com/87244951",
+                                    modifier = Modifier.weight(1f),
+                                    avatarSize = 48.dp
+                                )
+                                AboutContributorItem(
+                                    avatarRes = R.drawable.avatar_yuilu,
+                                    name = "Yui Lu",
+                                    homepage = "https://space.bilibili.com/23208863",
+                                    modifier = Modifier.weight(1f),
+                                    avatarSize = 48.dp
+                                )
+                                AboutContributorItem(
+                                    avatarRes = R.drawable.avatar_huajiang,
+                                    name = "花酱",
+                                    homepage = "https://space.bilibili.com/573842321",
+                                    modifier = Modifier.weight(1f),
+                                    avatarSize = 48.dp
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+            return
+        }
+
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Md2StaggeredFloatIn(index = 0) {
                 Card(
@@ -1051,101 +1133,142 @@ fun SettingsScreen(
                 }
             }
 
-            Md2StaggeredFloatIn(index = 1) {
-                Md2SettingsCard(title = "软件制作") {
-                    if (isPortrait) {
-                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                            AboutContributorItem(
-                                avatarRes = R.drawable.avatar_lht,
-                                name = "LHT",
-                                homepage = "https://space.bilibili.com/87244951",
-                                modifier = Modifier.fillMaxWidth(),
-                                avatarSize = 60.dp
-                            )
-                            AboutContributorItem(
-                                avatarRes = R.drawable.avatar_yuilu,
-                                name = "Yui Lu",
-                                homepage = "https://space.bilibili.com/23208863",
-                                modifier = Modifier.fillMaxWidth(),
-                                avatarSize = 60.dp
-                            )
-                            AboutContributorItem(
-                                avatarRes = R.drawable.avatar_huajiang,
-                                name = "花酱",
-                                homepage = "https://space.bilibili.com/573842321",
-                                modifier = Modifier.fillMaxWidth(),
-                                avatarSize = 60.dp
-                            )
-                        }
-                    } else {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            AboutContributorItem(
-                                avatarRes = R.drawable.avatar_lht,
-                                name = "LHT",
-                                homepage = "https://space.bilibili.com/87244951",
-                                modifier = Modifier.weight(1f),
-                                avatarSize = 48.dp
-                            )
-                            AboutContributorItem(
-                                avatarRes = R.drawable.avatar_yuilu,
-                                name = "Yui Lu",
-                                homepage = "https://space.bilibili.com/23208863",
-                                modifier = Modifier.weight(1f),
-                                avatarSize = 48.dp
-                            )
-                            AboutContributorItem(
-                                avatarRes = R.drawable.avatar_huajiang,
-                                name = "花酱",
-                                homepage = "https://space.bilibili.com/573842321",
-                                modifier = Modifier.weight(1f),
-                                avatarSize = 48.dp
-                            )
-                        }
-                    }
-                }
-            }
-
             Md2StaggeredFloatIn(index = 2) {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(UiTokens.Radius),
-                    backgroundColor = md2CardContainerColor(),
-                    elevation = UiTokens.CardElevation
-                ) {
-                    Column(
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                        verticalArrangement = Arrangement.spacedBy(2.dp)
-                    ) {
-                        AboutDocumentRow(
+                SettingsEntryCards(
+                    entries = listOf(
+                        SettingsEntrySpec(
+                            title = SettingsDetailPage.Contributors.title,
+                            icon = SettingsDetailPage.Contributors.icon,
+                            summary = SettingsDetailPage.Contributors.summary,
+                            onClick = { onOpenDetail(SettingsDetailPage.Contributors) }
+                        ),
+                        SettingsEntrySpec(
                             title = "开源许可证",
-                            onClick = onOpenLicenses,
-                            showDivider = false
-                        )
-                        AboutDocumentRow(
+                            icon = "license",
+                            summary = "查看应用使用的开源软件及许可证",
+                            onClick = onOpenLicenses
+                        ),
+                        SettingsEntrySpec(
                             title = "隐私政策",
-                            onClick = onOpenPrivacy,
-                            showDivider = false
-                        )
-                        AboutDocumentRow(
+                            icon = "privacy_tip",
+                            summary = "查看应用如何处理权限与数据",
+                            onClick = onOpenPrivacy
+                        ),
+                        SettingsEntrySpec(
                             title = "用户协议",
-                            onClick = onOpenAgreement,
-                            showDivider = false
+                            icon = "description",
+                            summary = "查看使用 KIGTTS 时适用的条款",
+                            onClick = onOpenAgreement
                         )
-                    }
-                }
+                    )
+                )
             }
         }
     }
 
     @Composable
-    fun RecognitionSettingsContent() {
+    fun RecognitionSettingsContent(page: SettingsDetailPage?) {
         var showMicrophoneResetConfirmation by rememberSaveable { mutableStateOf(false) }
+        if (page == null) {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Md2StaggeredFloatIn(index = 0) {
+                    Md2SettingsCard(title = null) {
+                        Md2SettingDropdownRow(
+                            title = "语音识别按钮操作模式",
+                            icon = "mic",
+                            value = SpeechButtonActionMode.label(state.speechButtonActionMode),
+                            expanded = speechButtonActionModeExpanded,
+                            onExpandedChange = { speechButtonActionModeExpanded = it },
+                            supportingText = SpeechButtonActionMode.description(state.speechButtonActionMode)
+                        ) {
+                            speechButtonActionModeOptions.forEach { (mode, label) ->
+                                M2DropdownMenuItem(
+                                    onClick = {
+                                        performSpeechButtonModeHaptic()
+                                        speechButtonActionModeExpanded = false
+                                        viewModel.setSpeechButtonActionMode(mode)
+                                    }
+                                ) { Text(label) }
+                            }
+                        }
+                        Md2SettingDropdownRow(
+                            title = "识别语言",
+                            icon = "translate",
+                            value = AsrRecognitionLanguage.label(state.asrRecognitionLanguage),
+                            expanded = recognitionLanguageExpanded,
+                            onExpandedChange = { recognitionLanguageExpanded = it },
+                            supportingText = AsrRecognitionLanguage.description(state.asrRecognitionLanguage)
+                        ) {
+                            AsrRecognitionLanguage.entries.forEach { language ->
+                                M2DropdownMenuItem(
+                                    onClick = {
+                                        performRecognitionLanguageHaptic()
+                                        recognitionLanguageExpanded = false
+                                        viewModel.setAsrRecognitionLanguage(language)
+                                    }
+                                ) { Text(AsrRecognitionLanguage.label(language)) }
+                            }
+                        }
+                        Md2SettingSwitchRow(
+                            title = "自动显示识别结果",
+                            icon = "subtitles",
+                            checked = state.asrSendToQuickSubtitle,
+                            onCheckedChange = { viewModel.setAsrSendToQuickSubtitle(it) },
+                            supportingText = "识别完成后，自动更新便捷字幕的大字幕内容。"
+                        )
+                        Md2SettingSwitchRow(
+                            title = "播放时暂停识别",
+                            icon = "pause_circle",
+                            checked = state.muteWhilePlaying,
+                            onCheckedChange = { viewModel.setMuteWhilePlaying(it) },
+                            supportingText = "朗读或播放音效期间暂时停止语音识别。"
+                        )
+                    }
+                }
+                Md2StaggeredFloatIn(index = 1) {
+                    SettingsEntryCards(
+                        entries = listOf(
+                            SettingsEntrySpec(
+                                title = SettingsDetailPage.RecognitionResources.title,
+                                icon = SettingsDetailPage.RecognitionResources.icon,
+                                summary = SettingsDetailPage.RecognitionResources.summary,
+                                onClick = { onOpenDetail(SettingsDetailPage.RecognitionResources) }
+                            ),
+                            SettingsEntrySpec(
+                                title = SettingsDetailPage.RecognitionBehavior.title,
+                                icon = SettingsDetailPage.RecognitionBehavior.icon,
+                                summary = "按钮操作、识别语言、断句与降噪增强",
+                                onClick = { onOpenDetail(SettingsDetailPage.RecognitionBehavior) }
+                            ),
+                            SettingsEntrySpec(
+                                title = "聆听模式",
+                                icon = "hearing",
+                                summary = "独立设置环境字幕的语言和收音",
+                                onClick = onOpenListeningSettings
+                            ),
+                            SettingsEntrySpec(
+                                title = SettingsDetailPage.SpeakerProfile.title,
+                                icon = SettingsDetailPage.SpeakerProfile.icon,
+                                summary = "仅响应我的声音与声音容错度",
+                                onClick = { onOpenDetail(SettingsDetailPage.SpeakerProfile) }
+                            ),
+                            SettingsEntrySpec(
+                                title = SettingsDetailPage.Microphone.title,
+                                icon = SettingsDetailPage.Microphone.icon,
+                                summary = "设备状态、回声处理和设备选择",
+                                onClick = { onOpenDetail(SettingsDetailPage.Microphone) }
+                            )
+                        )
+                    )
+                }
+            }
+            return
+        }
+
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            if (page == SettingsDetailPage.RecognitionResources) {
             Md2StaggeredFloatIn(index = 0) {
-                Md2SettingsCard(title = "语音识别资源包") {
+                Md2SettingsCard(title = null) {
                     Text(
                         text = state.recognitionResourceStatus,
                         style = MaterialTheme.typography.bodyMedium
@@ -1213,9 +1336,11 @@ fun SettingsScreen(
                     }
                 }
             }
+            }
 
+            if (page == SettingsDetailPage.RecognitionBehavior) {
             Md2StaggeredFloatIn(index = 1) {
-                Md2SettingsCard(title = "识别行为") {
+                Md2SettingsCard(title = null) {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -1246,12 +1371,14 @@ fun SettingsScreen(
                     }
                     Md2SettingSwitchRow(
                         title = "自动显示识别结果",
+                        icon = "subtitles",
                         checked = state.asrSendToQuickSubtitle,
                         onCheckedChange = { viewModel.setAsrSendToQuickSubtitle(it) },
                         supportingText = "识别完成后，自动更新便捷字幕的大字幕内容。"
                     )
                     Md2SettingDropdownRow(
                         title = "语音识别按钮操作模式",
+                        icon = "mic",
                         value = SpeechButtonActionMode.label(state.speechButtonActionMode),
                         expanded = speechButtonActionModeExpanded,
                         onExpandedChange = { speechButtonActionModeExpanded = it },
@@ -1278,6 +1405,7 @@ fun SettingsScreen(
                     }
                     Md2SettingDropdownRow(
                         title = "识别语言",
+                        icon = "translate",
                         value = AsrRecognitionLanguage.label(state.asrRecognitionLanguage),
                         expanded = recognitionLanguageExpanded,
                         onExpandedChange = { recognitionLanguageExpanded = it },
@@ -1306,18 +1434,21 @@ fun SettingsScreen(
                     }
                     Md2SettingSwitchRow(
                         title = "快捷文本联动音效板",
+                        icon = "link",
                         checked = state.allowQuickTextTriggerSoundboard,
                         onCheckedChange = { viewModel.setAllowQuickTextTriggerSoundboard(it) },
                         supportingText = "快捷文本中包含音效触发词时，同时播放对应音效。"
                     )
                     Md2SettingSwitchRow(
                         title = "新快捷文本优先朗读",
+                        icon = "priority_high",
                         checked = state.quickSubtitleInterruptQueue,
                         onCheckedChange = { viewModel.setQuickSubtitleInterruptQueue(it) },
                         supportingText = "点击新条目时停止当前朗读并立即播放。"
                     )
                     Md2SettingSwitchRow(
                         title = "播放时暂停识别",
+                        icon = "pause_circle",
                         checked = state.muteWhilePlaying,
                         onCheckedChange = { viewModel.setMuteWhilePlaying(it) },
                         supportingText = "朗读或播放音效期间暂时停止语音识别。"
@@ -1342,6 +1473,7 @@ fun SettingsScreen(
                     )
                     Md2SettingDropdownRow(
                         title = "语音降噪增强",
+                        icon = "noise_control_off",
                         value = SpeechEnhancementMode.labelOf(state.speechEnhancementMode),
                         expanded = speechEnhancementExpanded,
                         onExpandedChange = { speechEnhancementExpanded = it },
@@ -1365,6 +1497,7 @@ fun SettingsScreen(
                     val currentVadMode = VadMode.fromFlags(state.classicVadEnabled, state.sileroVadEnabled)
                     Md2SettingDropdownRow(
                         title = "自动识别说话与停顿",
+                        icon = "graphic_eq",
                         value = VadMode.labelOf(currentVadMode),
                         expanded = vadModeExpanded,
                         onExpandedChange = { vadModeExpanded = it },
@@ -1461,9 +1594,11 @@ fun SettingsScreen(
                     )
                 }
             }
+            }
 
+            if (page == SettingsDetailPage.SpeakerProfile) {
             Md2StaggeredFloatIn(index = 2) {
-                Md2SettingsCard(title = "本人声纹") {
+                Md2SettingsCard(title = null) {
                     val savedTolerance = SpeakerVerificationTolerance.fromIndex(
                         state.speakerVerifyToleranceLevel
                     )
@@ -1476,6 +1611,7 @@ fun SettingsScreen(
                     val performToleranceHaptic = rememberKigttsKeyHaptic()
                     Md2SettingSwitchRow(
                         title = "仅响应我的声音",
+                        icon = "record_voice_over",
                         checked = state.speakerVerifyEnabled,
                         onCheckedChange = { enabled ->
                             if (!enabled) {
@@ -1587,6 +1723,8 @@ fun SettingsScreen(
                     }
                 }
             }
+            }
+            if (page == SettingsDetailPage.Microphone) {
             Md2StaggeredFloatIn(index = 3) {
                 Md2SettingsCard(title = "音频设备状态") {
                     val realtimeInputLevel = viewModel.realtimeInputLevel
@@ -1606,24 +1744,28 @@ fun SettingsScreen(
                 Md2SettingsCard(title = "回声与降噪") {
                     Md2SettingSwitchRow(
                         title = "系统回声抑制",
+                        icon = "settings_input_component",
                         checked = state.echoSuppression,
                         onCheckedChange = { viewModel.setEchoSuppression(it) },
                         supportingText = "使用设备提供的回声和噪声抑制能力，效果因设备而异。"
                     )
                     Md2SettingSwitchRow(
                         title = "增强通话降噪",
+                        icon = "phone_in_talk",
                         checked = state.communicationMode,
                         onCheckedChange = { viewModel.setCommunicationMode(it) },
                         supportingText = "使用系统通话模式改善麦克风收音。"
                     )
                     Md2SettingSwitchRow(
                         title = "增强回声消除（AEC3）",
+                        icon = "hearing",
                         checked = state.aec3Enabled,
                         onCheckedChange = { viewModel.setAec3Enabled(it) },
                         supportingText = "减少外放声音被麦克风再次识别；出现声音异常时可关闭此项。"
                     )
                     Md2SettingDropdownRow(
                         title = "降噪方式",
+                        icon = "noise_control_off",
                         value = denoiserModeOptions.firstOrNull { it.first == state.denoiserMode }?.second
                             ?: denoiserModeOptions.first().second,
                         expanded = denoiserModeExpanded,
@@ -1655,6 +1797,7 @@ fun SettingsScreen(
                 Md2SettingsCard(title = "音频设备选择") {
                     Md2SettingDropdownRow(
                         title = "首选麦克风",
+                        icon = "mic",
                         value = inputTypeOptions.firstOrNull { it.first == state.preferredInputType }?.second
                             ?: inputTypeOptions.first().second,
                         expanded = inputTypeExpanded,
@@ -1672,6 +1815,7 @@ fun SettingsScreen(
                     }
                     Md2SettingDropdownRow(
                         title = "首选播放设备",
+                        icon = "volume_up",
                         value = outputTypeOptions.firstOrNull { it.first == state.preferredOutputType }?.second
                             ?: outputTypeOptions.first().second,
                         expanded = outputTypeExpanded,
@@ -1755,8 +1899,9 @@ fun SettingsScreen(
                     )
                 }
             }
+            }
         }
-        if (showMicrophoneResetConfirmation) {
+        if (page == SettingsDetailPage.Microphone && showMicrophoneResetConfirmation) {
             KigttsAlertDialog(
                 onDismissRequest = { showMicrophoneResetConfirmation = false },
                 title = { Text("恢复麦克风设置") },
@@ -1781,12 +1926,12 @@ fun SettingsScreen(
     }
 
     @Composable
-    fun AudioSettingsContent() {
+    fun AudioSettingsContent(page: SettingsDetailPage?) {
         var showTtsResetConfirmation by rememberSaveable { mutableStateOf(false) }
-        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        var ttsSettingsExpanded by rememberSaveable { mutableStateOf(false) }
 
-            Md2StaggeredFloatIn(index = 0) {
-                Md2SettingsCard(title = "语音合成与播放") {
+        @Composable
+        fun TtsParameterControls() {
                     Text(
                         "当前语音合成引擎：${when {
                             isSystemTtsSelected -> SYSTEM_TTS_DEFAULT_LABEL
@@ -1795,18 +1940,6 @@ fun SettingsScreen(
                         }}",
                         style = MaterialTheme.typography.bodySmall
                     )
-                    Md2SettingSwitchRow(
-                        title = "关闭语音朗读",
-                        checked = state.ttsDisabled,
-                        onCheckedChange = { viewModel.setTtsDisabled(it) },
-                        supportingText = "开启后只显示字幕，不再朗读；音效板仍可使用。"
-                    )
-                    Md2SettingSwitchRow(
-                        title = "新播放打断当前音效",
-                        checked = state.soundboardInterruptOnNewPlayback,
-                        onCheckedChange = viewModel::setSoundboardInterruptOnNewPlayback,
-                        supportingText = "播放新的音效或开始朗读时，停止正在播放的音效。"
-                    )
                     Text("朗读与音效音量：${state.playbackGainPercent}%", style = MaterialTheme.typography.bodySmall)
                     Slider(
                         value = state.playbackGainPercent.toFloat(),
@@ -1814,25 +1947,6 @@ fun SettingsScreen(
                         valueRange = 0f..1000f
                     )
                     Text("100% 为原始音量，拖动接近 100% 时会自动吸附。", style = MaterialTheme.typography.bodySmall)
-                    Md2SettingDropdownRow(
-                        title = "播放时如何处理其他应用的声音",
-                        value = audioFocusAvoidanceOptions
-                            .firstOrNull { it.first == state.audioFocusAvoidanceMode }
-                            ?.second
-                            ?: "无",
-                        expanded = audioFocusAvoidanceExpanded,
-                        onExpandedChange = { audioFocusAvoidanceExpanded = it },
-                        supportingText = "朗读或播放音效时，可降低、静音或暂停其他应用的声音。"
-                    ) {
-                        audioFocusAvoidanceOptions.forEach { (value, label) ->
-                            M2DropdownMenuItem(
-                                onClick = {
-                                    audioFocusAvoidanceExpanded = false
-                                    viewModel.setAudioFocusAvoidanceMode(value)
-                                }
-                            ) { Text(label) }
-                        }
-                    }
                     if (isSystemTtsSelected) {
                         Text(
                             "系统语音合成使用设备已安装的引擎和音色；部分语音包专属参数不会生效。",
@@ -1911,11 +2025,12 @@ fun SettingsScreen(
                         Spacer(Modifier.width(8.dp))
                         Text("恢复默认值")
                     }
-                }
-            }
+        }
 
-            Md2StaggeredFloatIn(index = 1) {
-                Md2SettingsCard(title = "Kokoro 离线朗读") {
+        if (page == SettingsDetailPage.Kokoro) {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Md2StaggeredFloatIn(index = 0) {
+                Md2SettingsCard(title = null) {
                     Text(
                         text = state.kokoroStatus,
                         style = MaterialTheme.typography.bodyMedium
@@ -1968,12 +2083,73 @@ fun SettingsScreen(
                     }
                 }
             }
+            }
+            return
+        }
 
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Md2StaggeredFloatIn(index = 0) {
+                SettingsConnectedEntryAndExpandableCard(
+                    entry = SettingsEntrySpec(
+                        title = "语音包",
+                        icon = "record_voice_over",
+                        summary = "选择、导入和管理朗读使用的语音包",
+                        onClick = onOpenVoicePacks
+                    ),
+                    expanded = ttsSettingsExpanded,
+                    onExpandedChange = { ttsSettingsExpanded = it },
+                    expandedTitle = "语音合成设置",
+                    expandedIcon = "spatial_audio_off",
+                    expandedSummary = "调整当前语音合成引擎的朗读参数"
+                ) {
+                    TtsParameterControls()
+                }
+            }
+
+            Md2StaggeredFloatIn(index = 1) {
+                Md2SettingsCard(title = "朗读与播放") {
+                    Md2SettingSwitchRow(
+                        title = "关闭语音朗读",
+                        icon = "graphic_eq_off",
+                        checked = state.ttsDisabled,
+                        onCheckedChange = { viewModel.setTtsDisabled(it) },
+                        supportingText = "开启后只显示字幕，不再朗读；音效板仍可使用。"
+                    )
+                    Md2SettingSwitchRow(
+                        title = "新播放打断当前音效",
+                        icon = "stop_circle",
+                        checked = state.soundboardInterruptOnNewPlayback,
+                        onCheckedChange = viewModel::setSoundboardInterruptOnNewPlayback,
+                        supportingText = "播放新的音效或开始朗读时，停止正在播放的音效。"
+                    )
+                    Md2SettingDropdownRow(
+                        title = "播放时如何处理其他应用的声音",
+                        icon = "hearing",
+                        value = audioFocusAvoidanceOptions
+                            .firstOrNull { it.first == state.audioFocusAvoidanceMode }
+                            ?.second
+                            ?: "无",
+                        expanded = audioFocusAvoidanceExpanded,
+                        onExpandedChange = { audioFocusAvoidanceExpanded = it },
+                        supportingText = "朗读或播放音效时，可降低、静音或暂停其他应用的声音。"
+                    ) {
+                        audioFocusAvoidanceOptions.forEach { (value, label) ->
+                            M2DropdownMenuItem(
+                                onClick = {
+                                    audioFocusAvoidanceExpanded = false
+                                    viewModel.setAudioFocusAvoidanceMode(value)
+                                }
+                            ) { Text(label) }
+                        }
+                    }
+                }
+            }
 
             Md2StaggeredFloatIn(index = 2) {
                 Md2SettingsCard(title = "音频设备选择") {
                     Md2SettingDropdownRow(
                         title = "首选麦克风",
+                        icon = "mic",
                         value = inputTypeOptions.firstOrNull { it.first == state.preferredInputType }?.second
                             ?: inputTypeOptions.first().second,
                         expanded = inputTypeExpanded,
@@ -1991,6 +2167,7 @@ fun SettingsScreen(
                     }
                     Md2SettingDropdownRow(
                         title = "首选播放设备",
+                        icon = "volume_up",
                         value = outputTypeOptions.firstOrNull { it.first == state.preferredOutputType }?.second
                             ?: outputTypeOptions.first().second,
                         expanded = outputTypeExpanded,
@@ -2009,6 +2186,18 @@ fun SettingsScreen(
                 }
             }
 
+            Md2StaggeredFloatIn(index = 3) {
+                SettingsEntryCards(
+                    entries = listOf(
+                        SettingsEntrySpec(
+                            title = SettingsDetailPage.Kokoro.title,
+                            icon = SettingsDetailPage.Kokoro.icon,
+                            summary = "资源状态、下载和本地安装",
+                            onClick = { onOpenDetail(SettingsDetailPage.Kokoro) }
+                        )
+                    )
+                )
+            }
         }
         if (showTtsResetConfirmation) {
             KigttsAlertDialog(
@@ -2033,12 +2222,95 @@ fun SettingsScreen(
     }
 
     @Composable
-    fun SystemSettingsContent() {
+    fun SystemSettingsContent(page: SettingsDetailPage?) {
+        if (page == null) {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Md2StaggeredFloatIn(index = 0) {
+                    Md2SettingsCard(title = null) {
+                        Md2SettingDropdownRow(
+                            title = "主题模式",
+                            icon = "contrast",
+                            value = themeModeOptions.firstOrNull { it.first == state.themeMode }?.second
+                                ?: themeModeOptions.first().second,
+                            expanded = themeModeExpanded,
+                            onExpandedChange = { themeModeExpanded = it },
+                            supportingText = "默认跟随系统，仅影响主软件界面。"
+                        ) {
+                            themeModeOptions.forEach { (value, label) ->
+                                M2DropdownMenuItem(
+                                    onClick = {
+                                        themeModeExpanded = false
+                                        viewModel.setThemeMode(value)
+                                    }
+                                ) { Text(label) }
+                            }
+                        }
+                        ThemeColorSettingRow(
+                            colorArgb = state.themeColorArgb,
+                            onClick = { themeColorPickerVisible = true }
+                        )
+                        Md2SettingSwitchRow(
+                            title = "触感反馈",
+                            icon = "vibration",
+                            checked = state.hapticFeedbackEnabled,
+                            onCheckedChange = { viewModel.setHapticFeedbackEnabled(it) },
+                            supportingText = "操作按钮或切换快捷字幕分组时提供轻微振动。"
+                        )
+                    }
+                }
+                Md2StaggeredFloatIn(index = 1) {
+                    SettingsEntryCards(
+                        entries = listOf(
+                            SettingsEntrySpec(
+                                title = SettingsDetailPage.Appearance.title,
+                                icon = SettingsDetailPage.Appearance.icon,
+                                summary = SettingsDetailPage.Appearance.summary,
+                                onClick = { onOpenDetail(SettingsDetailPage.Appearance) }
+                            ),
+                            SettingsEntrySpec(
+                                title = SettingsDetailPage.Layout.title,
+                                icon = SettingsDetailPage.Layout.icon,
+                                summary = SettingsDetailPage.Layout.summary,
+                                onClick = { onOpenDetail(SettingsDetailPage.Layout) }
+                            ),
+                            SettingsEntrySpec(
+                                title = SettingsDetailPage.QuickSubtitleDisplay.title,
+                                icon = SettingsDetailPage.QuickSubtitleDisplay.icon,
+                                summary = SettingsDetailPage.QuickSubtitleDisplay.summary,
+                                onClick = { onOpenDetail(SettingsDetailPage.QuickSubtitleDisplay) }
+                            ),
+                            SettingsEntrySpec(
+                                title = SettingsDetailPage.Files.title,
+                                icon = SettingsDetailPage.Files.icon,
+                                summary = SettingsDetailPage.Files.summary,
+                                onClick = { onOpenDetail(SettingsDetailPage.Files) }
+                            ),
+                            SettingsEntrySpec(
+                                title = SettingsDetailPage.AppBehavior.title,
+                                icon = SettingsDetailPage.AppBehavior.icon,
+                                summary = SettingsDetailPage.AppBehavior.summary,
+                                onClick = { onOpenDetail(SettingsDetailPage.AppBehavior) }
+                            ),
+                            SettingsEntrySpec(
+                                title = SettingsDetailPage.Backup.title,
+                                icon = SettingsDetailPage.Backup.icon,
+                                summary = SettingsDetailPage.Backup.summary,
+                                onClick = { onOpenDetail(SettingsDetailPage.Backup) }
+                            )
+                        )
+                    )
+                }
+            }
+            return
+        }
+
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            if (page == SettingsDetailPage.Appearance) {
             Md2StaggeredFloatIn(index = 0) {
-                Md2SettingsCard(title = "显示与主题") {
+                Md2SettingsCard(title = null) {
                     Md2SettingDropdownRow(
                         title = "主题模式",
+                        icon = "contrast",
                         value = themeModeOptions.firstOrNull { it.first == state.themeMode }?.second
                             ?: themeModeOptions.first().second,
                         expanded = themeModeExpanded,
@@ -2064,24 +2336,28 @@ fun SettingsScreen(
                     )
                     Md2SettingSwitchRow(
                         title = "使用系统文本编辑菜单",
+                        icon = "text_select_start",
                         checked = state.useSystemTextToolbar,
                         onCheckedChange = { viewModel.setUseSystemTextToolbar(it) },
                         supportingText = "复制、粘贴等操作使用 Android 默认样式；弹窗始终使用系统菜单。"
                     )
                     Md2SettingSwitchRow(
                         title = "悬浮窗使用默认字体",
+                        icon = "picture_in_picture",
                         checked = state.floatingOverlayUseSystemFont,
                         onCheckedChange = { viewModel.setFloatingOverlayUseSystemFont(it) },
                         supportingText = "开启后，悬浮窗不再使用应用内选择的自定义字体。"
                     )
                     Md2SettingSwitchRow(
                         title = "自动优化主题色",
+                        icon = "auto_fix_high",
                         checked = state.themeToneCorrectionEnabled,
                         onCheckedChange = { viewModel.setThemeToneCorrectionEnabled(it) },
                         supportingText = "自动调整过亮或过暗的颜色，让文字和按钮保持清晰。"
                     )
                     Md2SettingDropdownRow(
                         title = "悬浮窗外观",
+                        icon = "picture_in_picture",
                         value = themeModeOptions.firstOrNull { it.first == state.overlayThemeMode }?.second
                             ?: themeModeOptions.first().second,
                         expanded = overlayThemeModeExpanded,
@@ -2099,6 +2375,7 @@ fun SettingsScreen(
                     }
                     Md2SettingDropdownRow(
                         title = "字体与图标缩放",
+                        icon = "format_size",
                         value = fontScaleBlockModeOptions
                             .firstOrNull { it.first == state.fontScaleBlockMode }?.second
                             ?: fontScaleBlockModeOptions[1].second,
@@ -2117,22 +2394,27 @@ fun SettingsScreen(
                     }
                     Md2SettingSwitchRow(
                         title = "使用主题色顶栏",
+                        icon = "web_asset",
                         checked = state.solidTopBar,
                         onCheckedChange = { viewModel.setSolidTopBar(it) },
                         supportingText = "让顶栏和状态栏使用当前主题配色。"
                     )
                 }
             }
+            }
+            if (page == SettingsDetailPage.Layout) {
             Md2StaggeredFloatIn(index = 1) {
-                Md2SettingsCard(title = "布局与交互") {
+                Md2SettingsCard(title = null) {
                     Md2SettingSwitchRow(
                         title = "触感反馈",
+                        icon = "vibration",
                         checked = state.hapticFeedbackEnabled,
                         onCheckedChange = { viewModel.setHapticFeedbackEnabled(it) },
                         supportingText = "操作按钮或切换快捷字幕分组时提供轻微振动。"
                     )
                     Md2SettingDropdownRow(
                         title = "横屏侧栏样式",
+                        icon = "thumbnail_bar",
                         value = drawerModeOptions.firstOrNull { it.first == state.landscapeDrawerMode }?.second
                             ?: drawerModeOptions.first().second,
                         expanded = drawerModeExpanded,
@@ -2150,20 +2432,24 @@ fun SettingsScreen(
                     }
                     Md2SettingSwitchRow(
                         title = "横屏显示完整分组名称",
+                        icon = "label",
                         checked = state.forceFullWidthTabsOnPhone,
                         onCheckedChange = { viewModel.setForceFullWidthTabsOnPhone(it) },
                         supportingText = "在手机横屏时，便捷字幕和音效板的分组同时显示图标与名称。"
                     )
                     Md2SettingSwitchRow(
                         title = "音效板网格铺满屏幕",
+                        icon = "grid_view",
                         checked = state.soundboardGridFullWidth,
                         onCheckedChange = { viewModel.setSoundboardGridFullWidth(it) },
                         supportingText = "网格模式使用全部可用宽度；列表模式不受影响。"
                     )
                 }
             }
+            }
+            if (page == SettingsDetailPage.QuickSubtitleDisplay) {
             Md2StaggeredFloatIn(index = 3) {
-                Md2SettingsCard(title = "便捷字幕显示") {
+                Md2SettingsCard(title = null) {
                     QuickSubtitleGuideSettingsEntry(onClick = onOpenQuickSubtitleGuide)
                     val openClearedPlaceholderEditor = rememberKigttsHapticClick {
                         clearedPlaceholderDraft = state.quickSubtitleClearedPlaceholderText
@@ -2204,6 +2490,7 @@ fun SettingsScreen(
                     }
                     Md2SettingSwitchRow(
                         title = "启动时保持上次触发的文本",
+                        icon = "history",
                         checked = state.quickSubtitleRestoreLastTextOnLaunch,
                         onCheckedChange = {
                             viewModel.setQuickSubtitleRestoreLastTextOnLaunch(it)
@@ -2248,24 +2535,28 @@ fun SettingsScreen(
                     }
                     Md2SettingSwitchRow(
                         title = "文字过多时自动缩小",
+                        icon = "fit_screen",
                         checked = state.quickSubtitleAutoFit,
                         onCheckedChange = { viewModel.setQuickSubtitleAutoFit(it) },
                         supportingText = "内容较多时自动缩小大字幕和预览文字，尽量完整显示。"
                     )
                     Md2SettingSwitchRow(
                         title = "开放超大字幕字号",
+                        icon = "format_size",
                         checked = state.quickSubtitleAllowLargeFont,
                         onCheckedChange = { viewModel.setQuickSubtitleAllowLargeFont(it) },
                         supportingText = "允许将便捷字幕调到更大的尺寸；关闭后使用常规字号范围。"
                     )
                     Md2SettingSwitchRow(
                         title = "紧凑快捷文本布局",
+                        icon = "view_compact",
                         checked = state.quickSubtitleCompactControls,
                         onCheckedChange = { viewModel.setQuickSubtitleCompactControls(it) },
                         supportingText = "缩小快捷文本区域，并将编辑入口移到顶栏。"
                     )
                     Md2SettingSwitchRow(
                         title = "快捷文本区域手势",
+                        icon = "swipe",
                         checked = state.quickSubtitlePanelGesturesEnabled,
                         onCheckedChange = { viewModel.setQuickSubtitlePanelGesturesEnabled(it) },
                         supportingText = "竖屏上滑打开候选列表、下滑输入文本；横屏对应左滑和右滑。"
@@ -2273,6 +2564,7 @@ fun SettingsScreen(
                     if (state.quickSubtitlePanelGesturesEnabled) {
                         Md2SettingSwitchRow(
                             title = "翻转快捷文本手势",
+                            icon = "swap_vert",
                             checked = state.quickSubtitlePanelGesturesReversed,
                             onCheckedChange = { viewModel.setQuickSubtitlePanelGesturesReversed(it) },
                             supportingText = "交换打开候选列表与输入文本的手势方向。"
@@ -2280,18 +2572,22 @@ fun SettingsScreen(
                     }
                     Md2SettingSwitchRow(
                         title = "收起键盘后保留输入预览",
+                        icon = "keyboard_hide",
                         checked = state.quickSubtitleKeepInputPreview,
                         onCheckedChange = { viewModel.setQuickSubtitleKeepInputPreview(it) },
                         supportingText = "键盘收起后，大字幕继续显示尚未发送的输入内容。"
                     )
                 }
             }
+            }
+            if (page == SettingsDetailPage.Files) {
             Md2StaggeredFloatIn(index = 4) {
-                Md2SettingsCard(title = "文件与保存") {
+                Md2SettingsCard(title = null) {
                     Text("画板保存路径（相册）", fontWeight = FontWeight.Bold)
                     Text(state.drawingSaveRelativePath, style = MaterialTheme.typography.bodySmall)
                     Md2SettingSwitchRow(
                         title = "旋转设备时保持画布朝向",
+                        icon = "screen_rotation",
                         checked = state.drawingKeepCanvasOrientationToDevice,
                         onCheckedChange = { viewModel.setDrawingKeepCanvasOrientationToDevice(it) },
                         supportingText = "设备旋转时自动调整画布，保持原有观看方向；手动旋转仍会保留。"
@@ -2313,36 +2609,46 @@ fun SettingsScreen(
                     Text("通过系统文件管理器选择目录（建议内部存储）", style = MaterialTheme.typography.bodySmall)
                 }
             }
+            }
+            if (page == SettingsDetailPage.AppBehavior) {
             Md2StaggeredFloatIn(index = 6) {
                 Md2SettingsCard(title = "名片编辑") {
                     Md2SettingSwitchRow(
                         title = "退出名片编辑时自动保存",
+                        icon = "save",
                         checked = state.quickCardAutoSaveOnExit,
                         onCheckedChange = { viewModel.setQuickCardAutoSaveOnExit(it) },
                         supportingText = "关闭时将弹窗询问“是否保存名片”"
                     )
                 }
             }
+            }
+            if (page == SettingsDetailPage.Files) {
             Md2StaggeredFloatIn(index = 7) {
                 Md2SettingsCard(title = "文件选择") {
                     Md2SettingSwitchRow(
                         title = "使用应用内文件管理器",
+                        icon = "folder_open",
                         checked = state.useBuiltinFileManager,
                         onCheckedChange = { viewModel.setUseBuiltinFileManager(it) },
                         supportingText = "关闭后改用系统文件选择器。"
                     )
                     Md2SettingSwitchRow(
                         title = "使用应用内图库",
+                        icon = "photo_library",
                         checked = state.useBuiltinGallery,
                         onCheckedChange = { viewModel.setUseBuiltinGallery(it) },
                         supportingText = "关闭后改用系统图库选择器。"
                     )
                 }
             }
+            }
+            if (page == SettingsDetailPage.AppBehavior) {
             Md2StaggeredFloatIn(index = 8) {
                 Md2SettingsCard(title = "常用应用快捷操作") {
                     Md2SettingSwitchRow(
                         title = "补全常用应用快捷操作",
+                        icon = "add_link",
                         checked = state.floatingOverlayHardcodedShortcutSupplement,
                         onCheckedChange = { viewModel.setFloatingOverlayHardcodedShortcutSupplement(it) },
                         supportingText = "为悬浮窗启动器补充扫一扫等常用操作。"
@@ -2353,26 +2659,65 @@ fun SettingsScreen(
                     )
                 }
             }
+            }
+            if (page == SettingsDetailPage.Backup) {
             Md2StaggeredFloatIn(index = 9) {
                 AppConfigBackupSettingsCard(
                     viewModel = viewModel,
                     state = state
                 )
             }
+            }
         }
     }
 
     @Composable
     fun SettingsCategoryContent(category: SettingsCategory) {
-        when (category) {
-            SettingsCategory.About -> AboutSettingsContent()
-            SettingsCategory.Recognition -> RecognitionSettingsContent()
-            SettingsCategory.Audio -> AudioSettingsContent()
-            SettingsCategory.System -> SystemSettingsContent()
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            SettingsPageIntroduction(
+                title = category.title,
+                description = category.description
+            )
+            when (category) {
+                SettingsCategory.About -> AboutSettingsContent(page = null)
+                SettingsCategory.Recognition -> RecognitionSettingsContent(page = null)
+                SettingsCategory.Audio -> AudioSettingsContent(page = null)
+                SettingsCategory.System -> SystemSettingsContent(page = null)
+            }
+        }
+    }
+
+    @Composable
+    fun SettingsDetailContent(page: SettingsDetailPage) {
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            SettingsPageIntroduction(
+                title = page.title,
+                description = page.summary
+            )
+            when (page.category) {
+                SettingsCategory.About -> AboutSettingsContent(page)
+                SettingsCategory.Recognition -> RecognitionSettingsContent(page)
+                SettingsCategory.Audio -> AudioSettingsContent(page)
+                SettingsCategory.System -> SystemSettingsContent(page)
+            }
         }
     }
 
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+        if (detailPage != null) {
+            val horizontalInset = if (maxWidth >= 1100.dp) 24.dp else 16.dp
+            CenteredPageColumn(
+                maxWidth = UiTokens.WideContentMaxWidth,
+                scroll = scroll,
+                horizontalPadding = horizontalInset
+            ) {
+                Spacer(Modifier.height(UiTokens.PageTopBlank))
+                CompositionLocalProvider(LocalSuppressStaggeredFloatIn provides true) {
+                    SettingsDetailContent(detailPage)
+                }
+                Spacer(Modifier.height(pageBottomBlankPadding()))
+            }
+        } else {
         val compactTabs = maxWidth < 600.dp
         val wideLayout = maxWidth >= 1100.dp
         val horizontalInset = if (wideLayout) 24.dp else 16.dp
@@ -2477,6 +2822,7 @@ fun SettingsScreen(
                     }
                 }
             }
+        }
         }
     }
 
@@ -2661,7 +3007,7 @@ fun SettingsScreen(
 
 @Composable
 internal fun Md2SettingsCard(
-    title: String,
+    title: String?,
     content: @Composable ColumnScope.() -> Unit
 ) {
     Card(
@@ -2674,7 +3020,9 @@ internal fun Md2SettingsCard(
             modifier = Modifier.padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
             content = {
-                Md2CardTitleText(title)
+                if (!title.isNullOrBlank()) {
+                    Md2CardTitleText(title)
+                }
                 content()
             }
         )

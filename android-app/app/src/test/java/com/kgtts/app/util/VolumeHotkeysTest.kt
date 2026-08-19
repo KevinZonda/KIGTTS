@@ -1,10 +1,29 @@
 package com.lhtstudio.kigtts.app.util
 
+import com.lhtstudio.kigtts.app.data.UserPrefs
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class VolumeHotkeysTest {
+    @Test
+    fun masterSwitch_defaultsOnToPreserveExistingHotkeys() {
+        assertTrue(UserPrefs.AppSettings().volumeHotkeysEnabled)
+    }
+
+    @Test
+    fun masterSwitch_gatesConfiguredSequences() {
+        val enabled = UserPrefs.AppSettings(
+            volumeHotkeysEnabled = true,
+            volumeHotkeyUpDownEnabled = true
+        )
+        val disabled = enabled.copy(volumeHotkeysEnabled = false)
+
+        assertTrue(VolumeHotkeyActionExecutor.hasEnabledHotkeys(enabled))
+        assertFalse(VolumeHotkeyActionExecutor.hasEnabledHotkeys(disabled))
+    }
+
     @Test
     fun configuredTextAction_roundTripsText() {
         val action = VolumeHotkeyActionSpec(

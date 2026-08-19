@@ -42,9 +42,12 @@ import kotlinx.coroutines.withContext
 
 internal enum class OverlaySettingsPage {
     Main,
+    FloatingOverlay,
+    LockScreen,
     QuickTextGestures,
     KeyboardHotkeys,
-    LockScreen,
+    VolumeHotkeys,
+    LanCast,
     ClockFont
 }
 
@@ -53,53 +56,22 @@ internal fun LockScreenSettingsEntryCard(
     enabled: Boolean,
     hasWallpaper: Boolean,
     onEnabledChange: (Boolean) -> Unit,
-    onOpen: () -> Unit,
-    permissionEntryLabel: String?,
-    onOpenPermissionGuide: () -> Unit
+    onOpen: () -> Unit
 ) {
-    val hapticOnOpen = rememberKigttsHapticClick(onOpen)
-    Md2SettingsCard(title = "自定义锁屏") {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Md2Switch(checked = enabled, onCheckedChange = onEnabledChange)
-            Text("启用自定义锁屏")
-        }
-        Text(
-            if (enabled) {
-                "已开启${if (hasWallpaper) " · 自定义壁纸" else " · 系统锁屏壁纸"}"
-            } else {
-                "在锁屏上查看时间、日期，并使用常用快捷功能。"
-            },
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable(onClick = hapticOnOpen)
-                .padding(vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            MsIcon("lock", contentDescription = null)
-            Column(modifier = Modifier.weight(1f)) {
-                Text("锁屏外观", fontWeight = FontWeight.SemiBold)
-                Text(
-                    "壁纸、时钟、日期与电量",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-            MsIcon("chevron_right", contentDescription = "打开锁屏设置")
-        }
-        if (permissionEntryLabel != null) {
-            Md2OutlinedButton(onClick = onOpenPermissionGuide) {
-                Text(permissionEntryLabel)
-            }
-        }
-    }
+    OverlaySettingsEntryCard(
+        iconName = "lock",
+        title = "自定义锁屏",
+        status = when {
+            !enabled -> "已关闭"
+            hasWallpaper -> "已开启 · 自定义壁纸"
+            else -> "已开启 · 系统锁屏壁纸"
+        },
+        switchLabel = "使用自定义锁屏",
+        checked = enabled,
+        supportingText = "在锁屏上查看时间、日期，并使用常用快捷功能。",
+        onCheckedChange = onEnabledChange,
+        onOpen = onOpen
+    )
 }
 
 @Composable
@@ -171,29 +143,30 @@ internal fun LockScreenSettingsScreen(
                 ?: clockFontFallbackName(settings)
         }
     }
-    val hapticOpenClockFontSettings = rememberKigttsHapticClick(onOpenClockFontSettings)
-
     CenteredPageColumn(maxWidth = UiTokens.WideContentMaxWidth, scroll = scroll) {
         Spacer(Modifier.height(UiTokens.PageTopBlank))
 
-        Md2SettingsCard(title = "自定义锁屏") {
+        Md2SettingsCard(title = null) {
             Md2SettingSwitchRow(
                 title = "启用自定义锁屏",
+                icon = "lock",
                 checked = state.floatingOverlayShowOnLockScreen,
                 onCheckedChange = { enabled ->
                     viewModel.setFloatingOverlayShowOnLockScreen(enabled)
                     if (enabled && requiresVendorPermission) permissionGuideOpen = true
-                }
+                },
+                supportingText = "在锁屏上查看时间、日期，并使用快捷字幕、名片等常用功能。"
             )
-            Text(
-                "在锁屏上查看时间、日期，并使用快捷字幕、名片等常用功能。",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            if (requiresVendorPermission) {
-                Md2OutlinedButton(onClick = { permissionGuideOpen = true }) {
-                    Text(permissionLabel)
-                }
+        }
+
+        if (requiresVendorPermission) {
+            Md2SettingsCard(title = "设备权限") {
+                Md2SettingActionRow(
+                    title = permissionLabel,
+                    icon = "security",
+                    supportingText = "查看设备所需的锁屏显示与后台显示权限。",
+                    onClick = { permissionGuideOpen = true }
+                )
             }
         }
 
@@ -220,6 +193,7 @@ internal fun LockScreenSettingsScreen(
         Md2SettingsCard(title = "时间与日期") {
             Md2SettingSwitchRow(
                 title = "时间和日期靠左",
+                icon = "format_align_left",
                 checked = settings.timeAndDateAlignedStart,
                 onCheckedChange = { enabled ->
                     viewModel.updateLockScreenSettings {
@@ -229,15 +203,12 @@ internal fun LockScreenSettingsScreen(
             )
             Md2SettingSwitchRow(
                 title = "显示农历日期",
+                icon = "calendar_month",
                 checked = settings.showLunarDate,
                 onCheckedChange = { enabled ->
                     viewModel.updateLockScreenSettings { it.copy(showLunarDate = enabled) }
-                }
-            )
-            Text(
-                "农历会显示在日期后面，例如“7月26日 星期日 · 农历六月十三”。",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                },
+                supportingText = "农历会显示在日期后面，例如“7月26日 星期日 · 农历六月十三”。"
             )
         }
 
@@ -251,50 +222,30 @@ internal fun LockScreenSettingsScreen(
         Md2SettingsCard(title = "锁屏字体") {
             Md2SettingSwitchRow(
                 title = "使用系统字体",
+                icon = "font_download_off",
                 checked = settings.useSystemFont,
                 onCheckedChange = { enabled ->
                     viewModel.updateLockScreenSettings { it.copy(useSystemFont = enabled) }
-                }
+                },
+                supportingText = "时间、日期、电量和解锁提示使用系统字体；快捷功能面板保持原样。"
             )
-            Text(
-                "时间、日期、电量和解锁提示将使用系统字体；快捷功能面板保持原样。",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Spacer(Modifier.height(6.dp))
             Md2SettingSwitchRow(
                 title = "单独设置时钟字体",
+                icon = "schedule",
                 checked = settings.useSeparateClockFont,
                 onCheckedChange = { enabled ->
                     viewModel.updateLockScreenSettings { it.copy(useSeparateClockFont = enabled) }
                     if (enabled) onOpenClockFontSettings()
-                }
-            )
-            Text(
-                "仅更改时间数字的字体，日期和其它文字不会变化。",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                },
+                supportingText = "仅更改时间数字的字体，日期和其它文字不会变化。"
             )
             if (settings.useSeparateClockFont) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable(onClick = hapticOpenClockFontSettings)
-                        .padding(vertical = 9.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    MsIcon("schedule", contentDescription = null)
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text("时钟字体", fontWeight = FontWeight.SemiBold)
-                        Text(
-                            selectedClockFontName,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    MsIcon("chevron_right", contentDescription = "选择时钟字体")
-                }
+                Md2SettingActionRow(
+                    title = "时钟字体",
+                    icon = "schedule",
+                    trailingText = selectedClockFontName,
+                    onClick = onOpenClockFontSettings
+                )
             }
         }
     }

@@ -31,8 +31,30 @@ internal fun ThemeColorSettingRow(
     colorArgb: Int,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
+) = ColorPickerSettingRow(
+    title = "主题色",
+    colorArgb = colorArgb,
+    onClick = onClick,
+    modifier = modifier
+)
+
+@Composable
+internal fun ColorPickerSettingRow(
+    title: String,
+    colorArgb: Int,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    supportingText: String = formatColorHexAndNameZhCn(colorArgb),
+    iconTint: Color? = null,
+    contentColor: Color? = null,
+    supportingColor: Color? = null,
+    outlineColor: Color? = null
 ) {
     val hapticOnClick = rememberKigttsHapticClick(onClick)
+    val resolvedContentColor = contentColor ?: MaterialTheme.colorScheme.onSurface
+    val resolvedSupportingColor = supportingColor ?: MaterialTheme.colorScheme.onSurfaceVariant
+    val resolvedOutlineColor = outlineColor ?: MaterialTheme.colorScheme.outline
+    val resolvedIconTint = iconTint ?: MaterialTheme.colorScheme.accentText
     Row(
         modifier = modifier
             .fillMaxWidth()
@@ -43,31 +65,32 @@ internal fun ThemeColorSettingRow(
                 onClick = hapticOnClick
             )
             .padding(horizontal = 2.dp, vertical = 4.dp)
-            .heightIn(min = 56.dp),
+            .heightIn(min = 64.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
+        MsIcon(
+            name = "palette",
+            contentDescription = null,
+            tint = resolvedIconTint
+        )
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodyLarge,
+                color = resolvedContentColor
+            )
+            Text(
+                text = supportingText,
+                style = MaterialTheme.typography.bodySmall,
+                color = resolvedSupportingColor
+            )
+        }
         Box(
             modifier = Modifier
                 .size(34.dp)
                 .background(Color(colorArgb), CircleShape)
-                .border(1.dp, MaterialTheme.colorScheme.outline, CircleShape)
-        )
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = "主题色",
-                style = MaterialTheme.typography.bodyLarge
-            )
-            Text(
-                text = formatColorHexAndNameZhCn(colorArgb),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-        MsIcon(
-            name = "palette",
-            contentDescription = "选择主题色",
-            tint = MaterialTheme.colorScheme.accentText
+                .border(1.dp, resolvedOutlineColor, CircleShape)
         )
     }
 }

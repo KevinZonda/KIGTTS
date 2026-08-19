@@ -117,7 +117,7 @@ internal fun ClockFontSettingsScreen(
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             item(key = "clock-font-download") {
-                Md2SettingsCard(title = "时钟字体") {
+                Md2SettingsCard(title = null) {
                     Text(
                         "所选字体只用于锁屏上的数字时间。已安装的中文字体也可以直接选择。",
                         style = MaterialTheme.typography.bodySmall,

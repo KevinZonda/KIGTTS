@@ -104,7 +104,7 @@ internal fun AppConfigBackupSettingsCard(
         )
     }
 
-    Md2SettingsCard(title = "备份与恢复") {
+    Md2SettingsCard(title = null) {
         AppConfigCommandRow(
             iconName = "backup",
             title = "备份应用数据",

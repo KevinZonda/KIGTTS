@@ -975,12 +975,17 @@ internal object QuickCardRoutes {
 
 internal object SettingsRoutes {
     const val Main = "settings/main"
+    const val DetailArg = "page"
+    const val Detail = "settings/detail/{$DetailArg}"
+    const val VoicePacks = "settings/voice_packs"
     const val Fonts = "settings/fonts"
     const val Listening = "settings/listening"
     const val Log = "settings/log"
     const val Licenses = "settings/licenses"
     const val Privacy = "settings/privacy"
     const val Agreement = "settings/agreement"
+
+    fun detail(page: SettingsDetailPage): String = "settings/detail/${page.routeId}"
 }
 
 internal val SoundboardAudioFileExtensions = setOf(

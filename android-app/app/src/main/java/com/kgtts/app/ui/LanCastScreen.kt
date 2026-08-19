@@ -1,9 +1,5 @@
 package com.lhtstudio.kigtts.app.ui
 
-import android.Manifest
-import android.os.Build
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -99,20 +95,9 @@ internal fun LanCastScreen(
 ) {
     val context = LocalContext.current
     val status by LanCastRuntime.statusFlow().collectAsState()
-    var notificationPurposeOpen by remember { mutableStateOf(false) }
     var backgroundPurposeOpen by rememberSaveable { mutableStateOf(false) }
     var dismissBackgroundReminder by rememberSaveable { mutableStateOf(false) }
     var displaySettingsOpen by remember { mutableStateOf(false) }
-    val notificationPermissionLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { granted ->
-        if (granted) {
-            viewModel.setLiveSubtitleNotificationEnabled(true)
-        } else {
-            toast(context, "未授予通知权限，实时通知无法显示")
-        }
-    }
-
     LaunchedEffect(Unit) {
         viewModel.refreshLanCastAddresses()
     }
@@ -155,28 +140,10 @@ internal fun LanCastScreen(
         }
         LanCastDisplaySettingsCard(onOpen = { displaySettingsOpen = true })
         LanCastAudioCard(viewModel = viewModel, state = state)
-        LanCastExternalSubtitleCard(
-            viewModel = viewModel,
-            state = state,
-            onNotificationPermissionRequired = { notificationPurposeOpen = true }
-        )
         Spacer(
             Modifier.height(
                 WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 8.dp
             )
-        )
-    }
-
-    if (notificationPurposeOpen) {
-        PermissionPurposeDialog(
-            info = notificationPermissionPurpose(),
-            onConfirm = {
-                notificationPurposeOpen = false
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                    notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-                }
-            },
-            onDismiss = { notificationPurposeOpen = false }
         )
     }
 
@@ -214,7 +181,7 @@ internal fun LanCastScreen(
     }
 }
 
-private fun lanCastBackgroundPermissionPurpose(): PermissionPurposeInfo = PermissionPurposeInfo(
+internal fun lanCastBackgroundPermissionPurpose(): PermissionPurposeInfo = PermissionPurposeInfo(
     title = "需要允许后台运行",
     iconName = "battery_saver",
     summary = "建议允许后台持续运行，以防止熄屏后投屏和网页遥控无法连接设备。",
