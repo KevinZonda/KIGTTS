@@ -3845,33 +3845,11 @@ internal fun QuickCardEditorScreen(
         }
 
         Md2SettingsCard("主题色") {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(UiTokens.Radius))
-                    .clickable {
-                        showThemeColorDialog = true
-                    }
-                    .padding(horizontal = 4.dp, vertical = 6.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(34.dp)
-                        .clip(CircleShape)
-                        .background(quickCardThemeColor(draft.themeColor))
-                )
-                Column(modifier = Modifier.weight(1f)) {
-                    Text("当前主题色", fontWeight = FontWeight.SemiBold)
-                    Text(
-                        formatColorHexAndNameZhCn(quickCardThemeColor(draft.themeColor).toArgb()),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                MsIcon("palette", contentDescription = "打开名片主题色")
-            }
+            ColorPickerSettingRow(
+                title = "当前主题色",
+                colorArgb = quickCardThemeColor(draft.themeColor).toArgb(),
+                onClick = { showThemeColorDialog = true }
+            )
         }
 
         Md2SettingsCard("背景图片") {

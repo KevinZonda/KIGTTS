@@ -507,6 +507,12 @@ fun VoicePackScreen(viewModel: MainViewModel, state: UiState) {
         maxWidth = UiTokens.WideListMaxWidth,
         contentSpacing = 0.dp
     ) {
+            Spacer(Modifier.height(UiTokens.PageTopBlank))
+            SettingsPageIntroduction(
+                title = "语音包",
+                description = "管理朗读使用的语音包"
+            )
+            Spacer(Modifier.height(8.dp))
             if (state.voicePacks.isEmpty()) {
                 Box(
                     modifier = Modifier
@@ -517,7 +523,6 @@ fun VoicePackScreen(viewModel: MainViewModel, state: UiState) {
                     Column(
                         modifier = Modifier.fillMaxSize()
                     ) {
-                        Spacer(Modifier.height(UiTokens.PageTopBlank))
                         Text("还没有语音包。点击右上角的导入按钮添加。")
                         Spacer(Modifier.height(pageBottomBlankPadding()))
                     }
@@ -529,7 +534,7 @@ fun VoicePackScreen(viewModel: MainViewModel, state: UiState) {
                         .fillMaxWidth(),
                     packs = state.voicePacks,
                     currentVoicePath = state.voiceDir?.absolutePath,
-                    topBlankHeight = UiTokens.PageTopBlank,
+                    topBlankHeight = 0.dp,
                     bottomBlankHeight = pageBottomBlankPadding(),
                     onSelect = { viewModel.selectVoice(it.dir) },
                     onTogglePin = { viewModel.toggleVoicePin(it) },

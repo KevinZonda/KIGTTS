@@ -228,20 +228,11 @@ private fun CastSettingsSection(title: String) {
 
 @Composable
 private fun CastColorRow(label: String, argb: Int, onClick: () -> Unit) {
-    val hapticOnClick = rememberKigttsHapticClick(onClick)
-    Row(
-        modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp).clickable(onClick = hapticOnClick),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(label, modifier = Modifier.weight(1f))
-        Box(
-            Modifier.size(30.dp).background(Color(argb), CircleShape).border(
-                1.dp,
-                MaterialTheme.colorScheme.outline,
-                CircleShape
-            )
-        )
-    }
+    ColorPickerSettingRow(
+        title = label,
+        colorArgb = argb,
+        onClick = onClick
+    )
 }
 
 @Composable

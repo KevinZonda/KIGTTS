@@ -110,7 +110,7 @@ class VolumeHotkeyAccessibilityService : AccessibilityService() {
         settingsJob = scope.launch {
             UserPrefs.observeSettings(this@VolumeHotkeyAccessibilityService).collectLatest { next ->
                 settings = next
-                if (!next.volumeHotkeyAccessibilityEnabled) {
+                if (!next.volumeHotkeyAccessibilityEnabled || !next.volumeHotkeysEnabled) {
                     sequenceDetector.reset()
                 }
             }

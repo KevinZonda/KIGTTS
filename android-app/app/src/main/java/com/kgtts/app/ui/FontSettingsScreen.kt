@@ -122,6 +122,12 @@ internal fun FontSettingsScreen(
             ),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
+            item(key = "font-page-introduction") {
+                SettingsPageIntroduction(
+                    title = "字体",
+                    description = "管理应用使用的字体"
+                )
+            }
             if (state.refreshing) {
                 item(key = "font-loading") {
                     LinearProgressIndicator(modifier = Modifier.fillMaxWidth())

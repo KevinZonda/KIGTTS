@@ -379,18 +379,23 @@ fun RealtimeScreen(viewModel: MainViewModel) {
 }
 
 @Composable
-fun FloatingOverlayScreen(
+internal fun FloatingOverlayScreen(
     viewModel: MainViewModel,
     state: UiState,
+    contentPage: OverlaySettingsPage,
+    scroll: ScrollState,
+    suppressMainCardEntrance: Boolean,
     onOpenMainSettings: () -> Unit,
+    onOpenFloatingOverlaySettings: () -> Unit,
     onOpenQuickTextGestureSettings: () -> Unit,
     onOpenKeyboardHotkeySettings: () -> Unit,
-    onOpenLockScreenSettings: () -> Unit
+    onOpenLockScreenSettings: () -> Unit,
+    onOpenVolumeHotkeySettings: () -> Unit,
+    onOpenLanCastSettings: () -> Unit
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val scope = rememberCoroutineScope()
-    val scroll = rememberScrollState()
     val overlayPermissionGranted = remember { mutableStateOf(FloatingOverlayService.canDrawOverlays(context)) }
     val accessibilityPermissionGranted =
         remember { mutableStateOf(VolumeHotkeyAccessibilityService.isEnabled(context)) }
@@ -413,9 +418,6 @@ fun FloatingOverlayScreen(
     }
     val requiresBackgroundPopupPermission =
         backgroundPermissionVendor != LockScreenBackgroundPermissionVendor.NONE
-    val backgroundPermissionEntryLabel = remember(backgroundPermissionVendor) {
-        LockScreenBackgroundPermissionPolicy.copyFor(backgroundPermissionVendor).settingsEntryLabel
-    }
     var backgroundPopupPermissionGuideOpen by rememberSaveable { mutableStateOf(false) }
     val overlayPermissionLauncher =
         rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
@@ -585,99 +587,97 @@ fun FloatingOverlayScreen(
     ) {
         Spacer(Modifier.height(UiTokens.PageTopBlank))
 
-        Md2StaggeredFloatIn(index = 0) {
-            Md2SettingsCard(title = "悬浮窗状态") {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Md2Switch(
-                        checked = state.floatingOverlayEnabled,
-                        onCheckedChange = { enabled ->
-                            if (!enabled) {
-                                pendingOverlayPermissionEnable = false
-                                viewModel.setFloatingOverlayEnabled(false)
-                                FloatingOverlayService.stop(context)
-                            } else if (overlayPermissionGranted.value) {
-                                viewModel.setFloatingOverlayEnabled(true)
-                                FloatingOverlayService.start(context)
-                            } else {
-                                pendingOverlayPermissionEnable = true
-                                overlayPermissionPurposeOpen = true
-                            }
-                        }
-                    )
-                    Text("启用悬浮窗")
-                }
-                Text(
-                    "权限状态：${if (overlayPermissionGranted.value) "已授权" else "未授权"}",
-                    style = MaterialTheme.typography.bodySmall
-                )
-                Text(
-                    "运行状态：${if (state.floatingOverlayEnabled && overlayPermissionGranted.value) "已启用" else "未启用"}",
-                    style = MaterialTheme.typography.bodySmall
-                )
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Md2OutlinedButton(
-                        onClick = {
+        if (contentPage == OverlaySettingsPage.Main) {
+            Md2StaggeredFloatIn(index = 0, enabled = !suppressMainCardEntrance) {
+                FloatingOverlayEntryCard(
+                    enabled = state.floatingOverlayEnabled,
+                    onEnabledChange = { enabled ->
+                        if (!enabled) {
                             pendingOverlayPermissionEnable = false
+                            viewModel.setFloatingOverlayEnabled(false)
+                            FloatingOverlayService.stop(context)
+                        } else if (overlayPermissionGranted.value) {
+                            viewModel.setFloatingOverlayEnabled(true)
+                            FloatingOverlayService.start(context)
+                        } else {
+                            pendingOverlayPermissionEnable = true
                             overlayPermissionPurposeOpen = true
                         }
-                    ) {
-                        Text("打开权限设置")
-                    }
-                    Md2TextButton(
-                        onClick = { FloatingOverlayService.refresh(context) },
-                        enabled = state.floatingOverlayEnabled && overlayPermissionGranted.value
-                    ) {
-                        Text("刷新悬浮窗")
-                    }
-                }
-                Text(
-                    "悬浮窗可吸附到屏幕边缘，并可在软件外直接打开快捷字幕、快捷名片、画板和音效板。",
-                    style = MaterialTheme.typography.bodySmall
+                    },
+                    onOpen = onOpenFloatingOverlaySettings
                 )
-                Spacer(Modifier.height(8.dp))
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Md2Switch(
-                        checked = state.floatingOverlayAutoDock,
-                        onCheckedChange = { viewModel.setFloatingOverlayAutoDock(it) }
-                    )
-                    Text("长时间不操作自动贴边")
-                }
-                Text(
-                    "3 秒无操作后收至屏幕边缘，仅露出半边并降低透明度。",
-                    style = MaterialTheme.typography.bodySmall
-                )
-                Spacer(Modifier.height(8.dp))
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Md2Switch(
-                        checked = state.floatingOverlayFabPrefersKeyboard,
-                        onCheckedChange = { viewModel.setFloatingOverlayFabPrefersKeyboard(it) }
-                    )
-                    Text("悬浮按钮优先打开键盘")
-                }
-                Text(
-                    "悬浮按钮显示键盘图标。点按打开输入；长按用于切换语音识别或按住说话。",
-                    style = MaterialTheme.typography.bodySmall
-                )
-                Spacer(Modifier.height(8.dp))
-                Md2OutlinedButton(onClick = onOpenMainSettings) {
-                    Text("前往主设置页")
-                }
             }
         }
 
+        if (contentPage == OverlaySettingsPage.FloatingOverlay) {
+        Md2StaggeredFloatIn(index = 0) {
+            Md2SettingsCard(title = null) {
+                Md2SettingSwitchRow(
+                    title = "启用悬浮窗",
+                    icon = "picture_in_picture",
+                    checked = state.floatingOverlayEnabled,
+                    onCheckedChange = { enabled ->
+                        if (!enabled) {
+                            pendingOverlayPermissionEnable = false
+                            viewModel.setFloatingOverlayEnabled(false)
+                            FloatingOverlayService.stop(context)
+                        } else if (overlayPermissionGranted.value) {
+                            viewModel.setFloatingOverlayEnabled(true)
+                            FloatingOverlayService.start(context)
+                        } else {
+                            pendingOverlayPermissionEnable = true
+                            overlayPermissionPurposeOpen = true
+                        }
+                    },
+                    supportingText = "在软件外使用快捷字幕、快捷名片、画板和音效板。"
+                )
+            }
+        }
         Md2StaggeredFloatIn(index = 1) {
+            Md2SettingsCard(title = "悬浮窗设置") {
+                Md2SettingActionRow(
+                    title = "悬浮窗权限",
+                    icon = "security",
+                    trailingText = if (overlayPermissionGranted.value) "已授权" else "未授权",
+                    supportingText = "允许 KIGTTS 显示在其它应用上层。",
+                    onClick = {
+                        pendingOverlayPermissionEnable = false
+                        overlayPermissionPurposeOpen = true
+                    }
+                )
+                Md2SettingActionRow(
+                    title = "刷新悬浮窗",
+                    icon = "refresh",
+                    enabled = state.floatingOverlayEnabled && overlayPermissionGranted.value,
+                    supportingText = "悬浮窗显示异常时重新载入界面。",
+                    onClick = { FloatingOverlayService.refresh(context) }
+                )
+                Md2SettingSwitchRow(
+                    title = "长时间不操作自动贴边",
+                    icon = "push_pin",
+                    checked = state.floatingOverlayAutoDock,
+                    onCheckedChange = viewModel::setFloatingOverlayAutoDock,
+                    supportingText = "3 秒无操作后收至屏幕边缘，并降低透明度。"
+                )
+                Md2SettingSwitchRow(
+                    title = "悬浮按钮优先打开键盘",
+                    icon = "keyboard",
+                    checked = state.floatingOverlayFabPrefersKeyboard,
+                    onCheckedChange = viewModel::setFloatingOverlayFabPrefersKeyboard,
+                    supportingText = "点按打开输入；长按用于切换语音识别或按住说话。"
+                )
+                Md2SettingActionRow(
+                    title = "主设置页",
+                    icon = "settings",
+                    supportingText = "调整字体、主题、语音识别和其它应用设置。",
+                    onClick = onOpenMainSettings
+                )
+            }
+        }
+        }
+
+        if (contentPage == OverlaySettingsPage.Main) {
+        Md2StaggeredFloatIn(index = 1, enabled = !suppressMainCardEntrance) {
             LockScreenSettingsEntryCard(
                 enabled = state.floatingOverlayShowOnLockScreen,
                 hasWallpaper = state.lockScreenSettings.wallpaperPath.isNotBlank(),
@@ -687,14 +687,11 @@ fun FloatingOverlayScreen(
                         backgroundPopupPermissionGuideOpen = true
                     }
                 },
-                onOpen = onOpenLockScreenSettings,
-                permissionEntryLabel = backgroundPermissionEntryLabel
-                    .takeIf { requiresBackgroundPopupPermission },
-                onOpenPermissionGuide = { backgroundPopupPermissionGuideOpen = true }
+                onOpen = onOpenLockScreenSettings
             )
         }
 
-        Md2StaggeredFloatIn(index = 2) {
+        Md2StaggeredFloatIn(index = 2, enabled = !suppressMainCardEntrance) {
             QuickTextGestureEntryCard(
                 settings = state.quickTextGestureSettings,
                 onMasterEnabledChange = viewModel::setQuickTextGestureMasterEnabled,
@@ -702,7 +699,7 @@ fun FloatingOverlayScreen(
             )
         }
 
-        Md2StaggeredFloatIn(index = 3) {
+        Md2StaggeredFloatIn(index = 3, enabled = !suppressMainCardEntrance) {
             KeyboardHotkeyEntryCard(
                 entries = state.keyboardHotkeys,
                 masterEnabled = state.keyboardHotkeysEnabled,
@@ -711,70 +708,93 @@ fun FloatingOverlayScreen(
             )
         }
 
-        Md2StaggeredFloatIn(index = 4) {
-            Md2SettingsCard(title = "音量热键") {
+        Md2StaggeredFloatIn(index = 4, enabled = !suppressMainCardEntrance) {
+            VolumeHotkeyEntryCard(
+                masterEnabled = state.volumeHotkeysEnabled,
+                upDownEnabled = state.volumeHotkeyUpDownEnabled,
+                downUpEnabled = state.volumeHotkeyDownUpEnabled,
+                onMasterEnabledChange = viewModel::setVolumeHotkeysMasterEnabled,
+                onOpen = onOpenVolumeHotkeySettings
+            )
+        }
+
+        Md2StaggeredFloatIn(index = 5, enabled = !suppressMainCardEntrance) {
+            LanCastEntryCard(
+                viewModel = viewModel,
+                state = state,
+                onOpen = onOpenLanCastSettings
+            )
+        }
+
+        Md2StaggeredFloatIn(index = 6, enabled = !suppressMainCardEntrance) {
+            ExternalSubtitleEntryCards(
+                viewModel = viewModel,
+                state = state
+            )
+        }
+        }
+
+        if (contentPage == OverlaySettingsPage.VolumeHotkeys) {
+        Md2StaggeredFloatIn(index = 0) {
+            Md2SettingsCard(title = null) {
+                Md2SettingSwitchRow(
+                    title = "使用音量热键",
+                    icon = "volume_up",
+                    checked = state.volumeHotkeysEnabled,
+                    onCheckedChange = viewModel::setVolumeHotkeysMasterEnabled,
+                    supportingText = "关闭后，已设置的按键顺序会保留，但不会再触发快捷操作。"
+                )
+            }
+        }
+        Md2StaggeredFloatIn(index = 1) {
+            Md2SettingsCard(title = "按键设置") {
                 Text(
                     "开启后，在应用外按下设定的音量键顺序，也能执行对应的快捷操作。",
                     style = MaterialTheme.typography.bodySmall
                 )
-                Spacer(Modifier.height(8.dp))
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Md2Switch(
-                        checked = state.volumeHotkeyAccessibilityEnabled,
-                        onCheckedChange = { enabled ->
-                            if (!enabled) {
-                                viewModel.setVolumeHotkeyAccessibilityEnabled(false)
-                                VolumeHotkeyAccessibilityGuideService.stop(context)
-                                scope.launch {
-                                    VolumeHotkeyService.syncWithSettings(context)
-                                }
-                            } else if (accessibilityPermissionGranted.value) {
-                                viewModel.setVolumeHotkeyAccessibilityEnabled(true)
-                                scope.launch {
-                                    VolumeHotkeyService.syncWithSettings(context)
-                                }
-                            } else {
-                                accessibilityExplainDialogOpen = true
+                Md2SettingSwitchRow(
+                    title = "提高音量热键响应稳定性",
+                    icon = "accessibility_new",
+                    checked = state.volumeHotkeyAccessibilityEnabled,
+                    onCheckedChange = { enabled ->
+                        if (!enabled) {
+                            viewModel.setVolumeHotkeyAccessibilityEnabled(false)
+                            VolumeHotkeyAccessibilityGuideService.stop(context)
+                            scope.launch {
+                                VolumeHotkeyService.syncWithSettings(context)
                             }
+                        } else if (accessibilityPermissionGranted.value) {
+                            viewModel.setVolumeHotkeyAccessibilityEnabled(true)
+                            scope.launch {
+                                VolumeHotkeyService.syncWithSettings(context)
+                            }
+                        } else {
+                            accessibilityExplainDialogOpen = true
                         }
+                    },
+                    supportingText =
+                        "权限${if (accessibilityPermissionGranted.value) "已开启" else "未开启"} · $hotkeyMonitorModeLabel"
+                )
+                Md2SettingActionRow(
+                    title = "无障碍设置",
+                    icon = "settings_accessibility",
+                    supportingText = "管理用于稳定监听实体音量键的系统权限。",
+                    onClick = {
+                        if (!accessibilityPermissionGranted.value) {
+                            accessibilityExplainDialogOpen = true
+                        } else {
+                            accessibilitySettingsLauncher.launch(
+                                VolumeHotkeyAccessibilityService.buildSettingsIntent()
+                            )
+                        }
+                    }
+                )
+                if (!accessibilityPermissionGranted.value && overlayPermissionGranted.value) {
+                    Md2SettingActionRow(
+                        title = "关闭权限引导",
+                        icon = "close",
+                        onClick = { VolumeHotkeyAccessibilityGuideService.stop(context) }
                     )
-                    Text("提高音量热键响应稳定性")
-                }
-                Text(
-                    "权限状态：${if (accessibilityPermissionGranted.value) "已开启" else "未开启"}",
-                    style = MaterialTheme.typography.bodySmall
-                )
-                Text(
-                    "当前监听方式：$hotkeyMonitorModeLabel",
-                    style = MaterialTheme.typography.bodySmall
-                )
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Md2OutlinedButton(
-                        onClick = {
-                            if (!accessibilityPermissionGranted.value) {
-                                accessibilityExplainDialogOpen = true
-                            } else {
-                                accessibilitySettingsLauncher.launch(
-                                    VolumeHotkeyAccessibilityService.buildSettingsIntent()
-                                )
-                            }
-                        }
-                    ) {
-                        Text("打开无障碍设置")
-                    }
-                    if (!accessibilityPermissionGranted.value && overlayPermissionGranted.value) {
-                        Md2TextButton(
-                            onClick = { VolumeHotkeyAccessibilityGuideService.stop(context) }
-                        ) {
-                            Text("关闭引导悬浮窗")
-                        }
-                    }
                 }
                 Divider(
                     modifier = Modifier.padding(vertical = 10.dp),
@@ -803,6 +823,7 @@ fun FloatingOverlayScreen(
                 Spacer(Modifier.height(8.dp))
                 VolumeHotkeySettingRow(
                     title = "音量加后减",
+                    icon = "volume_up",
                     enabled = state.volumeHotkeyUpDownEnabled,
                     actionLabel = VolumeHotkeyActions.labelOf(state.volumeHotkeyUpDownAction),
                     supportingText = "先按音量加，再在设定时间内按音量减。",
@@ -817,6 +838,7 @@ fun FloatingOverlayScreen(
                 )
                 VolumeHotkeySettingRow(
                     title = "音量减后加",
+                    icon = "volume_down",
                     enabled = state.volumeHotkeyDownUpEnabled,
                     actionLabel = VolumeHotkeyActions.labelOf(state.volumeHotkeyDownUpAction),
                     supportingText = "先按音量减，再在设定时间内按音量加。",
@@ -826,6 +848,7 @@ fun FloatingOverlayScreen(
                     onPickAction = { hotkeyActionPickerSequence = VolumeHotkeySequence.DownUp }
                 )
             }
+        }
         }
 
         Spacer(Modifier.height(pageBottomBlankPadding()))
@@ -1211,6 +1234,7 @@ internal fun ExternalShortcutChoiceIcon(
 @Composable
 internal fun VolumeHotkeySettingRow(
     title: String,
+    icon: String,
     enabled: Boolean,
     actionLabel: String,
     supportingText: String,
@@ -1218,37 +1242,20 @@ internal fun VolumeHotkeySettingRow(
     onPickAction: () -> Unit
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Md2Switch(
-                checked = enabled,
-                onCheckedChange = onEnabledChange
-            )
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(2.dp)
-            ) {
-                Text(title, fontWeight = FontWeight.Bold)
-                Text(
-                    supportingText,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colors.onSurface.copy(alpha = 0.68f)
-                )
-            }
-        }
-        Text(
-            "当前功能：$actionLabel",
-            style = MaterialTheme.typography.bodySmall
+        Md2SettingSwitchRow(
+            title = title,
+            icon = icon,
+            checked = enabled,
+            onCheckedChange = onEnabledChange,
+            supportingText = supportingText
         )
-        Md2OutlinedButton(
+        Md2SettingActionRow(
+            title = "快捷操作",
+            icon = "bolt",
+            trailingText = actionLabel,
             onClick = onPickAction,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Text("选择快捷操作")
-        }
+            supportingText = "选择按完这组音量键后执行的操作。"
+        )
     }
 }
 

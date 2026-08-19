@@ -141,20 +141,29 @@ internal fun KeyboardHotkeySettingsScreen(
 
     CenteredPageColumn(maxWidth = UiTokens.WideListMaxWidth, contentSpacing = 0.dp) {
         Spacer(Modifier.height(UiTokens.PageTopBlank))
-        Card(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 2.dp, vertical = 4.dp),
-            shape = RoundedCornerShape(UiTokens.Radius),
-            backgroundColor = md2CardContainerColor(),
-            elevation = UiTokens.CardElevation
-        ) {
-            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(
-                    if (selectionMode) {
-                        "已选择 ${selectedIds.size} 项。调整其中一项的开关，会同步应用到所选内容。"
-                    } else {
-                        "为常用内容分配按键。长按一项可以选择多项；输入文字时不会触发。"
-                    }
+        Box(Modifier.fillMaxWidth().padding(horizontal = 2.dp, vertical = 4.dp)) {
+            Md2SettingsCard(title = null) {
+                Md2SettingSwitchRow(
+                    title = "启用键盘热键",
+                    icon = "keyboard",
+                    checked = state.keyboardHotkeysEnabled,
+                    onCheckedChange = viewModel::setKeyboardHotkeysMasterEnabled,
+                    supportingText = "关闭后保留已设置的按键和内容，但不会再触发。"
                 )
+            }
+        }
+        if (selectionMode) {
+            Card(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 2.dp, vertical = 4.dp),
+                shape = RoundedCornerShape(UiTokens.Radius),
+                backgroundColor = md2CardContainerColor(),
+                elevation = UiTokens.CardElevation
+            ) {
+                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        "已选择 ${selectedIds.size} 项。调整其中一项的开关，会同步应用到所选内容。"
+                    )
+                }
             }
         }
 

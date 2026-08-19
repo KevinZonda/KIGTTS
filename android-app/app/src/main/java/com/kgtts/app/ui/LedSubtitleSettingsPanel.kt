@@ -317,22 +317,15 @@ private fun LedSettingsSectionTitle(text: String) {
 
 @Composable
 private fun LedColorSettingRow(label: String, color: Color, onClick: () -> Unit) {
-    val hapticOnClick = rememberKigttsHapticClick(onClick)
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(48.dp)
-            .clickable(onClick = hapticOnClick),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(label, modifier = Modifier.weight(1f))
-        Box(
-            modifier = Modifier
-                .size(30.dp)
-                .background(color, CircleShape)
-                .border(1.dp, LedSettingsOutline, CircleShape)
-        )
-    }
+    ColorPickerSettingRow(
+        title = label,
+        colorArgb = color.toArgb(),
+        onClick = onClick,
+        iconTint = LedSettingsContent,
+        contentColor = LedSettingsContent,
+        supportingColor = LedSettingsSecondary,
+        outlineColor = LedSettingsOutline
+    )
 }
 
 @Composable

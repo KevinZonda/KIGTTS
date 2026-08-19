@@ -32,15 +32,12 @@ internal fun LockScreenBatterySettingsCard(
     Md2SettingsCard(title = "电量状态") {
         Md2SettingSwitchRow(
             title = "显示电量和充电状态",
+            icon = "battery_android_5",
             checked = settings.showBatteryStatus,
             onCheckedChange = { enabled ->
                 onSettingsChange(settings.copy(showBatteryStatus = enabled))
-            }
-        )
-        Text(
-            "电量会显示在时间和日期下方。",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+            },
+            supportingText = "电量会显示在时间和日期下方。"
         )
         if (settings.showBatteryStatus) {
             Text(
@@ -83,6 +80,7 @@ internal fun LockScreenBatterySettingsCard(
             )
             Md2SettingSwitchRow(
                 title = "仅在需要时显示",
+                icon = "battery_alert",
                 checked = settings.batteryOnlyWhenChargingOrLow,
                 onCheckedChange = { enabled ->
                     onSettingsChange(

@@ -140,6 +140,7 @@ class VolumeHotkeyService : Service() {
             .build()
 
     private fun activeHotkeySummary(): String {
+        if (!settings.volumeHotkeysEnabled) return "音量热键已关闭"
         val labels = buildList {
             if (settings.volumeHotkeyUpDownEnabled) {
                 add("音量加后减 -> ${VolumeHotkeyActions.labelOf(settings.volumeHotkeyUpDownAction)}")

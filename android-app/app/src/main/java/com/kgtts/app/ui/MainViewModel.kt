@@ -958,6 +958,7 @@ class MainViewModel(
             floatingOverlayHardcodedShortcutSupplement =
                 settings.floatingOverlayHardcodedShortcutSupplement,
             quickTextGestureSettings = settings.quickTextGestureSettings,
+            volumeHotkeysEnabled = settings.volumeHotkeysEnabled,
             volumeHotkeyUpDownEnabled = settings.volumeHotkeyUpDownEnabled,
             volumeHotkeyDownUpEnabled = settings.volumeHotkeyDownUpEnabled,
             volumeHotkeyWindowMs = settings.volumeHotkeyWindowMs,
@@ -4303,6 +4304,15 @@ class MainViewModel(
         }
         viewModelScope.launch {
             UserPrefs.setVolumeHotkeyEnabled(appContext, sequence, enabled)
+        }
+    }
+
+    fun setVolumeHotkeysMasterEnabled(enabled: Boolean) {
+        if (uiState.volumeHotkeysEnabled == enabled) return
+        uiState = uiState.copy(volumeHotkeysEnabled = enabled)
+        viewModelScope.launch {
+            UserPrefs.setVolumeHotkeysMasterEnabled(appContext, enabled)
+            VolumeHotkeyService.syncWithSettings(appContext)
         }
     }
 

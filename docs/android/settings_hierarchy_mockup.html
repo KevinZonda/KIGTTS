@@ -1,0 +1,1512 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>KIGTTS 设置层级交互原型</title>
+    <link rel="icon" href="data:,">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,400,0,0&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            color-scheme: light;
+            --primary: #038387;
+            --primary-strong: #00696c;
+            --primary-soft: #d4eff0;
+            --accent: #f2a900;
+            --background: #f4f6f7;
+            --surface: #ffffff;
+            --surface-raised: #ffffff;
+            --surface-muted: #eef2f3;
+            --text: #1b1f20;
+            --text-secondary: #5f686a;
+            --divider: #dce2e3;
+            --scrim: rgba(0, 0, 0, 0.45);
+            --shadow-1: 0 1px 3px rgba(20, 31, 32, 0.18), 0 1px 2px rgba(20, 31, 32, 0.08);
+            --shadow-2: 0 5px 16px rgba(20, 31, 32, 0.2), 0 2px 5px rgba(20, 31, 32, 0.1);
+            --appbar-height: 64px;
+            --tabs-height: 56px;
+            --content-width: 920px;
+            --radius: 6px;
+        }
+
+        html[data-theme="dark"] {
+            color-scheme: dark;
+            --primary: #62dce0;
+            --primary-strong: #8de9ec;
+            --primary-soft: #173d3f;
+            --accent: #ffd54f;
+            --background: #111415;
+            --surface: #1b1f20;
+            --surface-raised: #222728;
+            --surface-muted: #292f30;
+            --text: #edf2f2;
+            --text-secondary: #b4bdbf;
+            --divider: #394143;
+            --scrim: rgba(0, 0, 0, 0.66);
+            --shadow-1: 0 2px 5px rgba(0, 0, 0, 0.45);
+            --shadow-2: 0 7px 20px rgba(0, 0, 0, 0.55);
+        }
+
+        * { box-sizing: border-box; }
+
+        html, body { min-height: 100%; }
+
+        body {
+            margin: 0;
+            background: var(--background);
+            color: var(--text);
+            font-family: system-ui, -apple-system, "Segoe UI", "Microsoft YaHei UI", sans-serif;
+            letter-spacing: 0;
+        }
+
+        button, input, select { font: inherit; }
+
+        button { letter-spacing: 0; }
+
+        .material-symbols-rounded {
+            font-variation-settings: "FILL" 0, "wght" 400, "GRAD" 0, "opsz" 24;
+            line-height: 1;
+            user-select: none;
+        }
+
+        .app-bar {
+            position: sticky;
+            top: 0;
+            z-index: 30;
+            height: var(--appbar-height);
+            display: flex;
+            align-items: center;
+            background: var(--surface-raised);
+            box-shadow: var(--shadow-1);
+        }
+
+        .app-bar__inner {
+            width: min(100%, calc(var(--content-width) + 48px));
+            height: 100%;
+            margin: 0 auto;
+            padding: 0 12px;
+            display: grid;
+            grid-template-columns: 48px minmax(0, 1fr) auto;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .app-title {
+            min-width: 0;
+            font-size: 20px;
+            font-weight: 600;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .icon-button {
+            position: relative;
+            overflow: hidden;
+            width: 44px;
+            height: 44px;
+            padding: 0;
+            border: 0;
+            border-radius: 50%;
+            background: transparent;
+            color: var(--text);
+            display: inline-grid;
+            place-items: center;
+            cursor: pointer;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        .icon-button:hover { background: color-mix(in srgb, var(--text) 8%, transparent); }
+        .icon-button:focus-visible { outline: 3px solid color-mix(in srgb, var(--primary) 40%, transparent); }
+
+        .tabs-wrap {
+            position: sticky;
+            top: var(--appbar-height);
+            z-index: 20;
+            height: var(--tabs-height);
+            background: var(--surface);
+            border-bottom: 1px solid var(--divider);
+            transition: height 180ms ease, opacity 140ms ease;
+        }
+
+        .tabs-wrap[hidden] {
+            display: block;
+            height: 0;
+            opacity: 0;
+            overflow: hidden;
+            pointer-events: none;
+        }
+
+        .tabs {
+            width: min(100%, var(--content-width));
+            height: 100%;
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: repeat(4, minmax(88px, 1fr));
+            overflow-x: auto;
+            scrollbar-width: none;
+        }
+
+        .tabs::-webkit-scrollbar { display: none; }
+
+        .tab {
+            position: relative;
+            overflow: hidden;
+            min-width: 88px;
+            border: 0;
+            background: transparent;
+            color: var(--text-secondary);
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+        }
+
+        .tab::after {
+            content: "";
+            position: absolute;
+            left: 18%;
+            right: 18%;
+            bottom: 0;
+            height: 3px;
+            background: var(--primary);
+            transform: scaleX(0);
+            transition: transform 180ms ease;
+        }
+
+        .tab[aria-selected="true"] { color: var(--primary-strong); }
+        .tab[aria-selected="true"]::after { transform: scaleX(1); }
+
+        main {
+            width: min(100%, var(--content-width));
+            margin: 0 auto;
+            padding: 22px 16px calc(52px + env(safe-area-inset-bottom));
+        }
+
+        .screen {
+            animation: screen-in 190ms cubic-bezier(.2, .75, .25, 1);
+        }
+
+        @keyframes screen-in {
+            from { opacity: 0; transform: translateX(10px); }
+            to { opacity: 1; transform: translateX(0); }
+        }
+
+        .page-heading {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 18px;
+            margin: 2px 4px 18px;
+        }
+
+        .page-heading h1 {
+            margin: 0;
+            font-size: 26px;
+            line-height: 1.25;
+            font-weight: 650;
+        }
+
+        .page-heading p {
+            max-width: 580px;
+            margin: 7px 0 0;
+            color: var(--text-secondary);
+            font-size: 14px;
+            line-height: 1.6;
+        }
+
+        .status-label {
+            flex: 0 0 auto;
+            padding-top: 6px;
+            color: var(--primary-strong);
+            font-size: 13px;
+            font-weight: 600;
+        }
+
+        .section-title {
+            margin: 24px 4px 10px;
+            color: var(--text-secondary);
+            font-size: 13px;
+            font-weight: 650;
+        }
+
+        .card {
+            background: var(--surface-raised);
+            border-radius: var(--radius);
+            box-shadow: var(--shadow-1);
+            overflow: hidden;
+        }
+
+        .about-card {
+            position: relative;
+            overflow: hidden;
+            width: 100%;
+            min-height: 112px;
+            padding: 16px 18px;
+            border: 0;
+            border-radius: var(--radius);
+            background: var(--surface-raised);
+            color: var(--text);
+            box-shadow: var(--shadow-1);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            cursor: pointer;
+        }
+
+        .about-logo {
+            width: min(82%, 520px);
+            height: 50px;
+            object-fit: contain;
+        }
+
+        .about-logo--dark { display: none; }
+        html[data-theme="dark"] .about-logo--light { display: none; }
+        html[data-theme="dark"] .about-logo--dark { display: block; }
+
+        .about-version {
+            color: var(--text-secondary);
+            font-size: 14px;
+        }
+
+        .entry-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 12px;
+        }
+
+        .entry-grid--lead { grid-template-columns: minmax(0, 1fr); }
+        .entry-grid--pages { margin-top: 14px; }
+
+        .connected-card-group {
+            border-radius: var(--radius);
+            box-shadow: var(--shadow-1);
+            overflow: hidden;
+        }
+
+        .connected-card-group .entry-card {
+            width: 100%;
+            border-radius: 0;
+            box-shadow: none;
+        }
+
+        .connected-card-group .entry-card:hover {
+            box-shadow: none;
+            transform: none;
+        }
+
+        .entry-card {
+            position: relative;
+            overflow: hidden;
+            min-height: 96px;
+            padding: 17px 50px 17px 18px;
+            border: 0;
+            border-radius: var(--radius);
+            background: var(--surface-raised);
+            color: var(--text);
+            text-align: left;
+            box-shadow: var(--shadow-1);
+            cursor: pointer;
+            transition: box-shadow 150ms ease, transform 150ms ease;
+        }
+
+        .entry-card:hover {
+            box-shadow: var(--shadow-2);
+            transform: translateY(-1px);
+        }
+
+        .entry-card__head {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 8px;
+        }
+
+        .entry-card__head .material-symbols-rounded {
+            color: var(--primary-strong);
+            font-size: 25px;
+        }
+
+        .entry-card__title {
+            min-width: 0;
+            font-size: 16px;
+            font-weight: 650;
+        }
+
+        .entry-card__summary {
+            color: var(--text-secondary);
+            font-size: 13px;
+            line-height: 1.5;
+        }
+
+        .entry-card__arrow {
+            position: absolute;
+            right: 15px;
+            top: 50%;
+            color: var(--text-secondary);
+            transform: translateY(-50%);
+        }
+
+        .collapsible-card {
+            margin-top: 14px;
+            overflow: hidden;
+        }
+
+        .connected-card-group .collapsible-card {
+            margin-top: 0;
+            border-top: 1px solid var(--divider);
+            border-radius: 0;
+            box-shadow: none;
+        }
+
+        .collapsible-card summary {
+            position: relative;
+            overflow: hidden;
+            min-height: 76px;
+            padding: 14px 16px;
+            display: grid;
+            grid-template-columns: 34px minmax(0, 1fr) auto;
+            align-items: center;
+            gap: 12px;
+            cursor: pointer;
+            list-style: none;
+        }
+
+        .collapsible-card summary::-webkit-details-marker { display: none; }
+
+        .collapsible-card summary > .material-symbols-rounded:first-child {
+            color: var(--primary-strong);
+            font-size: 25px;
+        }
+
+        .collapsible-card__copy { min-width: 0; }
+
+        .collapsible-card__title {
+            display: block;
+            font-size: 16px;
+            font-weight: 650;
+        }
+
+        .collapsible-card__summary {
+            display: block;
+            margin-top: 4px;
+            color: var(--text-secondary);
+            font-size: 13px;
+            line-height: 1.45;
+        }
+
+        .collapsible-card__chevron {
+            color: var(--text-secondary);
+            transition: transform 180ms cubic-bezier(.2, .75, .25, 1);
+        }
+
+        .collapsible-card[open] .collapsible-card__chevron { transform: rotate(180deg); }
+
+        .collapsible-content { border-top: 1px solid var(--divider); }
+
+        .setting-list { padding: 0; }
+
+        .setting-row {
+            min-height: 72px;
+            padding: 12px 16px;
+            display: grid;
+            grid-template-columns: 34px minmax(0, 1fr) auto;
+            align-items: center;
+            gap: 12px;
+            border-bottom: 1px solid var(--divider);
+        }
+
+        .setting-row:last-child { border-bottom: 0; }
+
+        .setting-row > .material-symbols-rounded {
+            color: var(--text-secondary);
+            font-size: 23px;
+        }
+
+        .setting-copy { min-width: 0; }
+
+        .setting-title {
+            font-size: 15px;
+            font-weight: 560;
+            line-height: 1.35;
+        }
+
+        .setting-subtitle {
+            margin-top: 4px;
+            color: var(--text-secondary);
+            font-size: 12.5px;
+            line-height: 1.45;
+        }
+
+        .value-button,
+        .text-button {
+            position: relative;
+            overflow: hidden;
+            border: 0;
+            background: transparent;
+            color: var(--primary-strong);
+            cursor: pointer;
+            font-weight: 650;
+        }
+
+        .value-button {
+            max-width: 190px;
+            padding: 10px 6px;
+            text-align: right;
+            font-size: 13px;
+        }
+
+        .text-button {
+            min-width: 68px;
+            padding: 10px 12px;
+            border-radius: 3px;
+            font-size: 14px;
+        }
+
+        .switch {
+            position: relative;
+            width: 42px;
+            height: 24px;
+            border: 0;
+            padding: 0;
+            border-radius: 12px;
+            background: #8d9698;
+            cursor: pointer;
+            transition: background 150ms ease;
+        }
+
+        .switch::after {
+            content: "";
+            position: absolute;
+            width: 20px;
+            height: 20px;
+            top: 2px;
+            left: 2px;
+            border-radius: 50%;
+            background: #ffffff;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+            transition: transform 170ms cubic-bezier(.2, .75, .25, 1), background 150ms ease;
+        }
+
+        .switch[aria-checked="true"] { background: var(--primary); }
+        .switch[aria-checked="true"]::after { transform: translateX(18px); }
+
+        .slider-row {
+            padding: 15px 16px 17px;
+            border-bottom: 1px solid var(--divider);
+        }
+
+        .slider-row:last-child { border-bottom: 0; }
+
+        .slider-label {
+            display: flex;
+            justify-content: space-between;
+            gap: 16px;
+            margin-bottom: 12px;
+            font-size: 14px;
+        }
+
+        .slider-label span:last-child {
+            color: var(--primary-strong);
+            font-weight: 650;
+        }
+
+        input[type="range"] {
+            width: 100%;
+            height: 28px;
+            margin: 0;
+            accent-color: var(--primary);
+            cursor: pointer;
+        }
+
+        .detail-banner {
+            margin-bottom: 14px;
+            padding: 17px 18px;
+            display: grid;
+            grid-template-columns: 42px minmax(0, 1fr);
+            align-items: center;
+            gap: 14px;
+            background: var(--primary-soft);
+            border-radius: var(--radius);
+            color: var(--text);
+        }
+
+        .detail-banner > .material-symbols-rounded {
+            color: var(--primary-strong);
+            font-size: 31px;
+        }
+
+        .detail-banner strong {
+            display: block;
+            margin-bottom: 4px;
+            font-size: 16px;
+        }
+
+        .detail-banner span {
+            color: var(--text-secondary);
+            font-size: 13px;
+            line-height: 1.45;
+        }
+
+        .action-row {
+            display: flex;
+            justify-content: flex-end;
+            gap: 8px;
+            padding: 10px 12px;
+            border-top: 1px solid var(--divider);
+        }
+
+        .drawer-scrim {
+            position: fixed;
+            inset: 0;
+            z-index: 60;
+            background: var(--scrim);
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 180ms ease;
+        }
+
+        .drawer-scrim[data-open="true"] {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        .drawer {
+            position: absolute;
+            inset: 0 auto 0 0;
+            width: min(330px, calc(100vw - 48px));
+            padding: max(18px, env(safe-area-inset-top)) 0 24px;
+            background: var(--surface-raised);
+            box-shadow: var(--shadow-2);
+            transform: translateX(-102%);
+            transition: transform 210ms cubic-bezier(.2, .75, .25, 1);
+        }
+
+        .drawer-scrim[data-open="true"] .drawer { transform: translateX(0); }
+
+        .brand {
+            min-height: 88px;
+            padding: 10px 22px 18px;
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-end;
+            border-bottom: 1px solid var(--divider);
+        }
+
+        .brand strong { font-size: 24px; letter-spacing: 0; }
+        .brand span { margin-top: 4px; color: var(--text-secondary); font-size: 12px; }
+
+        .drawer-nav { padding: 10px 8px; }
+
+        .drawer-item {
+            width: 100%;
+            min-height: 50px;
+            padding: 0 14px;
+            border: 0;
+            border-radius: 4px;
+            background: transparent;
+            color: var(--text);
+            display: grid;
+            grid-template-columns: 34px 1fr;
+            align-items: center;
+            gap: 10px;
+            text-align: left;
+            cursor: pointer;
+        }
+
+        .drawer-item[data-active="true"] {
+            background: var(--primary-soft);
+            color: var(--primary-strong);
+            font-weight: 650;
+        }
+
+        .dialog-scrim {
+            position: fixed;
+            inset: 0;
+            z-index: 80;
+            padding: 24px;
+            display: grid;
+            place-items: center;
+            background: var(--scrim);
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 160ms ease;
+        }
+
+        .dialog-scrim[data-open="true"] {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        .dialog {
+            width: min(440px, 100%);
+            max-height: min(620px, calc(100vh - 48px));
+            overflow: auto;
+            background: var(--surface-raised);
+            border-radius: var(--radius);
+            box-shadow: var(--shadow-2);
+            transform: translateY(12px) scale(.98);
+            transition: transform 180ms cubic-bezier(.2, .75, .25, 1);
+        }
+
+        .dialog-scrim[data-open="true"] .dialog { transform: translateY(0) scale(1); }
+
+        .dialog h2 {
+            margin: 0;
+            padding: 20px 20px 10px;
+            font-size: 20px;
+        }
+
+        .dialog-options { padding: 6px 0 10px; }
+
+        .dialog-option {
+            width: 100%;
+            min-height: 54px;
+            padding: 0 20px;
+            border: 0;
+            background: transparent;
+            color: var(--text);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 14px;
+            text-align: left;
+            cursor: pointer;
+        }
+
+        .dialog-option:hover { background: var(--surface-muted); }
+        .dialog-option .material-symbols-rounded { color: var(--primary-strong); }
+
+        .snackbar {
+            position: fixed;
+            z-index: 100;
+            left: 50%;
+            bottom: calc(22px + env(safe-area-inset-bottom));
+            min-width: min(420px, calc(100vw - 32px));
+            max-width: calc(100vw - 32px);
+            padding: 14px 18px;
+            border-radius: 4px;
+            background: #263238;
+            color: #ffffff;
+            box-shadow: var(--shadow-2);
+            opacity: 0;
+            pointer-events: none;
+            transform: translate(-50%, 16px);
+            transition: opacity 160ms ease, transform 160ms ease;
+            font-size: 14px;
+        }
+
+        .snackbar[data-open="true"] {
+            opacity: 1;
+            transform: translate(-50%, 0);
+        }
+
+        .ripple {
+            position: absolute;
+            border-radius: 50%;
+            background: currentColor;
+            opacity: 0.14;
+            pointer-events: none;
+            transform: scale(0);
+            animation: ripple 480ms ease-out;
+        }
+
+        @keyframes ripple { to { opacity: 0; transform: scale(1); } }
+
+        @media (max-width: 680px) {
+            :root { --appbar-height: 58px; --tabs-height: 52px; }
+            .app-bar__inner { padding: 0 6px; }
+            .app-title { font-size: 19px; }
+            main { padding: 18px 12px calc(40px + env(safe-area-inset-bottom)); }
+            .page-heading { margin-left: 3px; margin-right: 3px; }
+            .page-heading h1 { font-size: 23px; }
+            .page-heading p { font-size: 13px; }
+            .status-label { display: none; }
+            .entry-grid { grid-template-columns: 1fr; gap: 10px; }
+            .entry-card { min-height: 88px; }
+            .setting-row { padding-left: 14px; padding-right: 14px; }
+            .value-button { max-width: 132px; }
+        }
+
+        @media (max-width: 400px) {
+            .tabs { grid-template-columns: repeat(4, minmax(82px, 1fr)); }
+            .setting-row { grid-template-columns: 30px minmax(0, 1fr) auto; gap: 9px; }
+            .setting-subtitle { font-size: 12px; }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after {
+                animation-duration: 1ms !important;
+                transition-duration: 1ms !important;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header class="app-bar">
+        <div class="app-bar__inner">
+            <button class="icon-button" id="navButton" type="button" aria-label="打开菜单" data-ripple>
+                <span class="material-symbols-rounded" id="navIcon">menu</span>
+            </button>
+            <div class="app-title" id="appTitle">设置</div>
+            <button class="icon-button" id="themeButton" type="button" aria-label="切换深色主题" data-ripple>
+                <span class="material-symbols-rounded" id="themeIcon">dark_mode</span>
+            </button>
+        </div>
+    </header>
+
+    <div class="tabs-wrap" id="tabsWrap">
+        <nav class="tabs" id="categoryTabs" aria-label="设置分类"></nav>
+    </div>
+
+    <main id="mainContent"></main>
+
+    <div class="drawer-scrim" id="drawerScrim" data-open="false">
+        <aside class="drawer" aria-label="应用导航">
+            <div class="brand">
+                <strong>KIGTTS</strong>
+                <span>让表达更直接</span>
+            </div>
+            <nav class="drawer-nav">
+                <button class="drawer-item" type="button"><span class="material-symbols-rounded">subtitles</span><span>便捷字幕</span></button>
+                <button class="drawer-item" type="button"><span class="material-symbols-rounded">badge</span><span>快捷名片</span></button>
+                <button class="drawer-item" type="button"><span class="material-symbols-rounded">draw</span><span>画板</span></button>
+                <button class="drawer-item" type="button"><span class="material-symbols-rounded">library_music</span><span>音效板</span></button>
+                <button class="drawer-item" type="button"><span class="material-symbols-rounded">bolt</span><span>快捷功能</span></button>
+                <button class="drawer-item" type="button" data-active="true"><span class="material-symbols-rounded">tune</span><span>设置</span></button>
+            </nav>
+        </aside>
+    </div>
+
+    <div class="dialog-scrim" id="dialogScrim" data-open="false">
+        <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="dialogTitle">
+            <h2 id="dialogTitle">选择项目</h2>
+            <div class="dialog-options" id="dialogOptions"></div>
+            <div class="action-row">
+                <button class="text-button" id="dialogCancel" type="button" data-ripple>取消</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="snackbar" id="snackbar" role="status" aria-live="polite"></div>
+
+    <script>
+        const categories = [
+            {
+                id: "audio",
+                label: "音频",
+                icon: "volume_up",
+                description: "管理语音合成、语音包、Kokoro 和播放设备。",
+                quick: [],
+                leadPages: [{
+                    id: "voicepacks", title: "语音包", icon: "interpreter_mode", summary: "选择、导入和管理朗读语音包",
+                    banner: "选择用于朗读的语音包，也可以导入或下载新的语音包。",
+                    controls: [
+                        { type: "engine-select", icon: "settings_voice", title: "当前语音合成引擎", options: ["语音包", "系统语音合成", "Kokoro"] },
+                        { type: "action", icon: "folder_open", title: "本地安装", value: "导入" },
+                        { type: "action", icon: "download", title: "下载语音包", value: "下载" }
+                    ]
+                }],
+                collapsibleCards: [{
+                    title: "语音合成与播放", icon: "spatial_audio_off", summary: "朗读、音效和语音合成参数",
+                    controls: [
+                        { type: "engine-info", icon: "settings_voice", title: "当前语音合成引擎" },
+                        { type: "slider", title: "朗读与音效音量", value: 100, min: 0, max: 1000, step: 10, suffix: "%" },
+                        { type: "info", icon: "info", title: "使用系统语音合成", subtitle: "使用设备已安装的引擎和音色；部分语音包专属参数不会生效", visibleFor: ["system"] },
+                        { type: "action", icon: "settings", title: "打开系统语音合成设置", value: "打开", visibleFor: ["system"] },
+                        { type: "info", icon: "info", title: "使用 Kokoro", subtitle: "Kokoro 使用独立的声音编号；部分语音包专属参数不会生效", visibleFor: ["kokoro"] },
+                        { type: "info", icon: "record_voice_over", title: "当前 Kokoro 声音编号", subtitle: "3", visibleFor: ["kokoro"] },
+                        { type: "action", icon: "record_voice_over", title: "选择 Kokoro 音色", value: "选择", visibleFor: ["kokoro"] },
+                        { type: "slider", title: "语调起伏", value: 0.667, min: 0, max: 2, step: 0.001, decimals: 3, visibleFor: ["voicepack"] },
+                        { type: "slider", title: "语调力度", value: 0.8, min: 0.3, max: 1.5, step: 0.001, decimals: 3, visibleFor: ["voicepack"] },
+                        { type: "slider", title: "语速（数值越大越慢）", value: 1, min: 0.5, max: 2, step: 0.05, decimals: 2 },
+                        { type: "slider", title: "句末停顿", value: 0.2, min: 0, max: 2, step: 0.05, decimals: 2, suffix: " 秒" },
+                        { type: "action", icon: "restart_alt", title: "恢复默认值", value: "恢复", modal: true, modalControls: [
+                            { type: "info", icon: "info", title: "恢复语音合成设置", subtitle: "将朗读、播放和语音合成参数恢复为默认值" },
+                            { type: "action", icon: "restart_alt", title: "确认恢复", value: "恢复" }
+                        ] }
+                    ]
+                }],
+                directCards: [
+                    {
+                        title: "朗读与播放",
+                        controls: [
+                            { type: "switch", icon: "graphic_eq_off", title: "关闭语音朗读", subtitle: "开启后只显示字幕，不再朗读；音效板仍可使用", checked: false },
+                            { type: "switch", icon: "stop_circle", title: "新播放打断当前音效", checked: true },
+                            { type: "select", icon: "hearing", title: "播放时如何处理其他应用的声音", value: "压低音量", options: ["压低音量", "静音音乐播放器", "暂停播放", "无"] }
+                        ]
+                    },
+                    {
+                        title: "音频设备选择",
+                        controls: [
+                            { type: "select", icon: "mic", title: "首选麦克风", value: "自动", options: ["自动", "内置麦克风/话筒", "USB 麦克风", "蓝牙麦克风", "有线麦克风"] },
+                            { type: "select", icon: "speaker", title: "首选播放设备", value: "自动", options: ["自动", "扬声器", "听筒", "蓝牙音频", "USB 音频", "有线耳机/线路"] }
+                        ]
+                    }
+                ],
+                pages: [
+                    {
+                        id: "kokoro", title: "Kokoro 离线朗读", icon: "neurology", summary: "资源状态、下载和本地安装",
+                        banner: "下载、安装并管理 Kokoro 离线朗读资源。",
+                        controls: [
+                            { type: "info", icon: "deployed_code", title: "Kokoro 资源状态", subtitle: "未安装" },
+                            { type: "action", icon: "download", title: "下载 Kokoro", value: "下载" },
+                            { type: "action", icon: "folder_open", title: "本地安装", value: "导入" },
+                            { type: "action", icon: "dns", title: "下载源设置", value: "打开", modal: true, modalControls: [
+                                { type: "select", icon: "swap_horiz", title: "下载源", value: "魔搭", options: ["魔搭", "Hugging Face"] },
+                                { type: "action", icon: "edit", title: "管理下载地址", value: "管理" }
+                            ] }
+                        ]
+                    }
+                ]
+            },
+            {
+                id: "recognition",
+                label: "识别",
+                icon: "graphic_eq",
+                description: "调整识别行为、收音处理、声纹和聆听模式。",
+                quick: [
+                    { type: "select", icon: "mic", title: "语音识别按钮操作模式", value: "按住并确认", options: ["开关模式", "按住开启", "按住并确认"] },
+                    { type: "select", icon: "translate", title: "识别语言", value: "中文（普通话）", options: ["中文（普通话）", "粤语", "英语", "日语", "韩语"] },
+                    { type: "switch", icon: "subtitles", title: "自动显示识别结果", checked: true },
+                    { type: "switch", icon: "pause_circle", title: "播放时暂停识别", checked: false }
+                ],
+                pages: [
+                    {
+                        id: "recognition-resources", title: "语音识别资源包", icon: "deployed_code", summary: "安装、更新或更换离线识别资源",
+                        banner: "安装完成即可使用语音识别功能。",
+                        controls: [
+                            { type: "info", icon: "info", title: "当前状态", subtitle: "未安装" },
+                            { type: "action", icon: "download", title: "下载资源包", value: "下载" },
+                            { type: "action", icon: "folder_open", title: "本地安装", value: "导入" },
+                            { type: "action", icon: "dns", title: "管理下载源", value: "打开", modal: true, modalControls: [
+                                { type: "select", icon: "swap_horiz", title: "下载源", value: "魔搭", options: ["魔搭", "Hugging Face"] },
+                                { type: "action", icon: "edit", title: "管理下载地址", value: "管理" }
+                            ] }
+                        ]
+                    },
+                    {
+                        id: "recognition-behavior", title: "识别行为", icon: "tune", summary: "按钮操作、识别语言、断句与降噪增强",
+                        banner: "调整识别语言、按钮操作、断句和降噪方式。",
+                        controls: [
+                            { type: "switch", icon: "subtitles", title: "自动显示识别结果", subtitle: "识别完成后自动更新便捷字幕的大字幕内容", checked: true },
+                            { type: "select", icon: "mic", title: "语音识别按钮操作模式", value: "按住并确认", options: ["开关模式", "按住开启", "按住并确认"] },
+                            { type: "select", icon: "translate", title: "识别语言", value: "中文（普通话）", options: ["中文（普通话）", "粤语", "英语", "日语", "韩语"] },
+                            { type: "switch", icon: "link", title: "快捷文本联动音效板", checked: true },
+                            { type: "switch", icon: "priority_high", title: "新快捷文本优先朗读", checked: true },
+                            { type: "switch", icon: "pause_circle", title: "播放时暂停识别", checked: false },
+                            { type: "slider", title: "恢复识别延迟", value: 0.5, min: 0, max: 3, step: 0.1, decimals: 1, suffix: " 秒" },
+                            { type: "slider", title: "最低识别音量", value: 10, min: 0, max: 100, step: 1, suffix: "%" },
+                            { type: "select", icon: "noise_control_off", title: "语音降噪增强", value: "无额外增强", options: ["无额外增强", "GTCRN 离线", "GTCRN 流式", "DPDFNet2 流式", "DPDFNet4 流式"] },
+                            { type: "select", icon: "graphic_eq", title: "自动识别说话与停顿", value: "智能断句", options: ["经典断句", "Silero VAD", "智能断句"] },
+                            { type: "slider", title: "收音灵敏度", value: 0.4, min: 0.1, max: 0.9, step: 0.05, decimals: 2 },
+                            { type: "slider", title: "保留开头声音", value: 300, min: 0, max: 1000, step: 50, suffix: " 毫秒" }
+                        ]
+                    },
+                    {
+                        id: "listening", title: "聆听模式", icon: "hearing", summary: "独立设置环境字幕的语言和收音",
+                        banner: "调整聆听模式使用的语言、麦克风和声音处理。",
+                        controls: [
+                            { type: "switch", icon: "keyboard", title: "输入模式下隐藏聆听字幕", checked: true },
+                            { type: "select", icon: "translate", title: "聆听语言", value: "中文（普通话）", options: ["中文（普通话）", "粤语", "英语", "日语", "韩语"] },
+                            { type: "select", icon: "mic", title: "聆听麦克风", value: "内置麦克风", options: ["内置麦克风", "USB 麦克风", "蓝牙麦克风", "有线麦克风"] },
+                            { type: "select", icon: "hearing", title: "语音增强", value: "关闭", options: ["关闭", "GTCRN 离线", "GTCRN 流式", "DPDFNet2 流式", "DPDFNet4 流式"] },
+                            { type: "select", icon: "noise_control_off", title: "兼容降噪", value: "关闭", options: ["关闭", "智能语音降噪", "兼容降噪"] },
+                            { type: "select", icon: "graphic_eq", title: "断句方式", value: "智能断句", options: ["经典断句", "Silero VAD", "智能断句"] },
+                            { type: "slider", title: "最低收音音量", value: 10, min: 0, max: 100, step: 1, suffix: "%" },
+                            { type: "slider", title: "智能断句灵敏度", value: 40, min: 0, max: 100, step: 1, suffix: "%" }
+                        ]
+                    },
+                    {
+                        id: "speaker-profile", title: "本人声纹", icon: "record_voice_over", summary: "仅响应我的声音与声音容错度",
+                        banner: "录制本人声纹，并调整不同环境下的识别容错度。",
+                        controls: [
+                            { type: "switch", icon: "record_voice_over", title: "仅响应我的声音", checked: false },
+                            { type: "select", icon: "social_distance", title: "声音容错度", value: "智能", options: ["智能", "宽松", "较宽", "中等", "较严", "严格"] },
+                            { type: "action", icon: "mic", title: "录制声纹", value: "录制", modal: true, modalControls: [
+                                { type: "info", icon: "record_voice_over", title: "录制本人声纹", subtitle: "按引导自然朗读三句话" },
+                                { type: "action", icon: "arrow_forward", title: "开始录制", value: "下一步" }
+                            ] },
+                            { type: "action", icon: "delete", title: "删除声纹", value: "删除", modal: true, modalControls: [
+                                { type: "info", icon: "warning", title: "删除本人声纹", subtitle: "删除后需要重新录制才能继续使用仅响应我的声音" },
+                                { type: "action", icon: "delete", title: "确认删除", value: "删除" }
+                            ] }
+                        ]
+                    },
+                    {
+                        id: "microphone", title: "麦克风与降噪", icon: "mic_external_on", summary: "设备状态、回声处理和设备选择",
+                        banner: "查看音频设备状态，并调整回声处理、降噪和设备选择。",
+                        controls: [
+                            { type: "info", icon: "graphic_eq", title: "输入音量", subtitle: "实时显示" },
+                            { type: "info", icon: "mic", title: "当前麦克风", subtitle: "内置麦克风" },
+                            { type: "info", icon: "speaker", title: "当前播放设备", subtitle: "扬声器" },
+                            { type: "switch", icon: "settings_input_component", title: "系统回声抑制", checked: true },
+                            { type: "switch", icon: "phone_in_talk", title: "增强通话降噪", checked: false },
+                            { type: "switch", icon: "hearing", title: "增强回声消除（AEC3）", checked: true },
+                            { type: "select", icon: "noise_control_off", title: "降噪方式", value: "智能语音降噪", options: ["关闭", "智能语音降噪", "兼容降噪"] },
+                            { type: "select", icon: "mic", title: "首选麦克风", value: "自动", options: ["自动", "内置麦克风/话筒", "USB 麦克风", "蓝牙麦克风", "有线麦克风"] },
+                            { type: "select", icon: "speaker", title: "首选播放设备", value: "自动", options: ["自动", "扬声器", "听筒", "蓝牙音频", "USB 音频", "有线耳机/线路"] },
+                            { type: "action", icon: "restart_alt", title: "恢复默认值", value: "恢复", modal: true, modalControls: [
+                                { type: "info", icon: "info", title: "恢复麦克风设置", subtitle: "将首选麦克风、回声处理和降噪方式恢复为默认值" },
+                                { type: "action", icon: "restart_alt", title: "确认恢复", value: "恢复" }
+                            ] }
+                        ],
+                        cards: [{
+                            title: "音频测试",
+                            controls: [
+                                { type: "info", icon: "info", title: "当前状态", subtitle: "尚未录制" },
+                                { type: "action", icon: "fiber_manual_record", title: "开始录音", value: "开始" },
+                                { type: "action", icon: "play_arrow", title: "回放测试", value: "回放" },
+                                { type: "action", icon: "delete", title: "清空录音", value: "清空" }
+                            ]
+                        }]
+                    }
+                ]
+            },
+            {
+                id: "system",
+                label: "系统",
+                icon: "tune",
+                description: "调整显示、布局、便捷字幕、文件与应用数据。",
+                quick: [
+                    { type: "select", icon: "contrast", title: "主题模式", value: "跟随系统", options: ["跟随系统", "亮色", "暗色"] },
+                    { type: "action", icon: "palette", title: "应用主题色", subtitle: "#038387 · 深青色", value: "修改", modal: true, modalControls: [
+                        { type: "info", icon: "palette", title: "颜色选取器", subtitle: "选择并预览应用主题色" },
+                        { type: "action", icon: "check", title: "应用颜色", value: "应用" }
+                    ] },
+                    { type: "switch", icon: "vibration", title: "触感反馈", checked: true }
+                ],
+                pages: [
+                    {
+                        id: "appearance", title: "显示与主题", icon: "palette", summary: "主题、字体、缩放和悬浮窗外观",
+                        banner: "调整应用主题、字体、缩放和悬浮窗外观。",
+                        controls: [
+                            { type: "select", icon: "contrast", title: "主题模式", value: "跟随系统", options: ["跟随系统", "亮色", "暗色"] },
+                            { type: "action", icon: "palette", title: "应用主题色", subtitle: "#038387 · 深青色", value: "修改", modal: true, modalControls: [
+                                { type: "info", icon: "palette", title: "颜色选取器", subtitle: "选择并预览应用主题色" },
+                                { type: "action", icon: "check", title: "应用颜色", value: "应用" }
+                            ] },
+                            { type: "switch", icon: "text_select_start", title: "使用系统文本编辑菜单", checked: false },
+                            { type: "switch", icon: "picture_in_picture", title: "悬浮窗使用默认字体", checked: false },
+                            { type: "switch", icon: "auto_fix_high", title: "自动优化主题色", checked: false },
+                            { type: "select", icon: "picture_in_picture", title: "悬浮窗外观", value: "跟随系统", options: ["跟随系统", "亮色", "暗色"] },
+                            { type: "select", icon: "format_size", title: "字体与图标缩放", value: "字体和图标跟随系统", options: ["字体和图标跟随系统", "固定图标大小", "固定字体和图标大小"] },
+                            { type: "switch", icon: "web_asset", title: "使用主题色顶栏", checked: false }
+                        ],
+                        children: [{
+                            id: "fonts", title: "字体", icon: "font_download", summary: "导入、下载并选择应用字体",
+                            controls: [
+                                { type: "info", icon: "font_download", title: "当前字体", subtitle: "系统字体" },
+                                { type: "action", icon: "folder_open", title: "导入字体", value: "导入" },
+                                { type: "action", icon: "download", title: "下载字体", value: "下载" }
+                            ]
+                        }]
+                    },
+                    {
+                        id: "layout", title: "布局与交互", icon: "dashboard_customize", summary: "触感反馈、横屏侧栏和音效板网格",
+                        banner: "调整页面布局和常用操作反馈。",
+                        controls: [
+                            { type: "switch", icon: "vibration", title: "触感反馈", checked: true },
+                            { type: "select", icon: "view_sidebar", title: "横屏侧栏样式", value: "隐藏式抽屉", options: ["隐藏式抽屉", "常驻可折叠"] },
+                            { type: "switch", icon: "label", title: "横屏显示完整分组名称", checked: false },
+                            { type: "switch", icon: "grid_view", title: "音效板网格铺满屏幕", checked: false }
+                        ]
+                    },
+                    {
+                        id: "subtitle-display", title: "便捷字幕显示", icon: "subtitles", summary: "占位文本、字号、布局与快捷文本手势",
+                        banner: "调整便捷字幕的文字、字号、布局和快捷文本操作。",
+                        controls: [
+                            { type: "action", icon: "help", title: "使用说明", subtitle: "重新查看便捷字幕的主要操作和按键说明", value: "查看" },
+                            { type: "action", icon: "edit_note", title: "清空状态占位文本", subtitle: "你好呀~", value: "修改", modal: true, modalControls: [
+                                { type: "info", icon: "edit_note", title: "占位文本", subtitle: "你好呀~" },
+                                { type: "action", icon: "save", title: "保存占位文本", value: "保存" }
+                            ] },
+                            { type: "switch", icon: "history", title: "启动时保持上次触发的文本", checked: false },
+                            { type: "action", icon: "restore", title: "恢复文本预设分组", value: "选择", modal: true, modalControls: [
+                                { type: "info", icon: "checklist", title: "选择预设分组", subtitle: "勾选需要重新添加的内置分组" },
+                                { type: "action", icon: "library_add", title: "添加所选分组", value: "添加" }
+                            ] },
+                            { type: "switch", icon: "fit_screen", title: "文字过多时自动缩小", checked: true },
+                            { type: "switch", icon: "format_size", title: "开放超大字幕字号", checked: false },
+                            { type: "switch", icon: "view_compact", title: "紧凑快捷文本布局", checked: false },
+                            { type: "switch", icon: "swipe_vertical", title: "快捷文本区域手势", checked: true },
+                            { type: "switch", icon: "swap_vert", title: "翻转快捷文本手势", checked: false },
+                            { type: "switch", icon: "preview", title: "收起键盘后保留输入预览", checked: true }
+                        ]
+                    },
+                    {
+                        id: "files", title: "文件与保存", icon: "folder", summary: "画板保存路径和文件选择方式",
+                        banner: "设置画板保存位置，以及文件和图片的选择方式。",
+                        controls: [
+                            { type: "action", icon: "save", title: "画板保存路径（相册）", subtitle: "Pictures/KIGTTS", value: "选择目录" },
+                            { type: "switch", icon: "screen_rotation", title: "旋转设备时保持画布朝向", checked: true },
+                            { type: "action", icon: "restart_alt", title: "恢复默认路径", value: "恢复" },
+                            { type: "switch", icon: "folder_special", title: "使用应用内文件管理器", checked: false },
+                            { type: "switch", icon: "photo_library", title: "使用应用内图库", checked: false }
+                        ]
+                    },
+                    {
+                        id: "app-behavior", title: "应用行为", icon: "apps", summary: "名片自动保存和常用应用快捷操作",
+                        banner: "调整名片保存和常用应用快捷操作。",
+                        controls: [
+                            { type: "switch", icon: "badge", title: "退出名片编辑时自动保存", subtitle: "关闭时将弹窗询问是否保存名片", checked: true },
+                            { type: "switch", icon: "app_shortcut", title: "补全常用应用快捷操作", subtitle: "为悬浮窗启动器补充扫一扫等常用操作", checked: true }
+                        ]
+                    },
+                    {
+                        id: "backup", title: "备份与恢复", icon: "settings_backup_restore", summary: "备份或恢复应用设置与本地资源",
+                        banner: "备份或恢复应用设置、快捷文本、名片和其它本地内容。",
+                        controls: [
+                            { type: "action", icon: "backup", title: "备份应用数据", subtitle: "保存应用设置、快捷名片和锁屏壁纸，可按需包含其它本地内容", value: "备份", modal: true, modalControls: [
+                                { type: "switch", icon: "quick_phrases", title: "快捷文本预设", checked: true },
+                                { type: "switch", icon: "badge", title: "快捷名片图片", checked: true },
+                                { type: "switch", icon: "font_download", title: "当前使用的字体文件（含时钟字体）", checked: true },
+                                { type: "switch", icon: "library_music", title: "音效板预设与音频文件", checked: false },
+                                { type: "switch", icon: "interpreter_mode", title: "已安装的本地语音包", checked: false },
+                                { type: "action", icon: "backup", title: "开始备份", value: "备份" }
+                            ] },
+                            { type: "action", icon: "settings_backup_restore", title: "恢复应用数据", subtitle: "从 .kigconfig 备份文件恢复设置与资源", value: "恢复", modal: true, modalControls: [
+                                { type: "info", icon: "warning", title: "恢复应用数据", subtitle: "恢复前会先选择备份文件，并再次确认覆盖范围" },
+                                { type: "action", icon: "folder_open", title: "选择备份文件", value: "选择" }
+                            ] }
+                        ]
+                    }
+                ]
+            },
+            {
+                id: "about",
+                label: "关于",
+                icon: "info",
+                description: "查看版本、制作人员、开源许可证和协议。",
+                quick: [],
+                aboutHero: { version: "版本 0.1.8" },
+                pages: [
+                    {
+                        id: "contributors", title: "软件制作", icon: "groups", summary: "查看参与 KIGTTS 制作的人员",
+                        banner: "查看参与 KIGTTS 制作的成员。",
+                        controls: [
+                            { type: "info", icon: "person", title: "LHT", subtitle: "项目开发" },
+                            { type: "info", icon: "person", title: "Yui Lu", subtitle: "参与制作" },
+                            { type: "info", icon: "person", title: "花酱", subtitle: "参与制作" }
+                        ]
+                    },
+                    { id: "licenses", title: "开源许可证", icon: "license", summary: "查看应用使用的开源许可", banner: "查看 KIGTTS 使用的第三方开源项目及许可证。", controls: [
+                        { type: "action", icon: "license", title: "开源许可证", value: "查看" }
+                    ] },
+                    { id: "privacy", title: "隐私政策", icon: "privacy_tip", summary: "查看 KIGTTS 隐私政策", banner: "了解 KIGTTS 如何处理和保护你的数据。", controls: [
+                        { type: "action", icon: "privacy_tip", title: "隐私政策", value: "查看" }
+                    ] },
+                    { id: "agreement", title: "用户协议", icon: "gavel", summary: "查看 KIGTTS 用户协议", banner: "查看使用 KIGTTS 时适用的条款。", controls: [
+                        { type: "action", icon: "gavel", title: "用户协议", value: "查看" }
+                    ] }
+                ]
+            }
+        ];
+
+        const state = {
+            categoryId: "audio",
+            stack: [],
+            synthesisEngine: "voicepack",
+            theme: localStorage.getItem("kigtts-settings-prototype-theme") || "light"
+        };
+
+        const mainContent = document.getElementById("mainContent");
+        const appTitle = document.getElementById("appTitle");
+        const navButton = document.getElementById("navButton");
+        const navIcon = document.getElementById("navIcon");
+        const tabsWrap = document.getElementById("tabsWrap");
+        const categoryTabs = document.getElementById("categoryTabs");
+        const drawerScrim = document.getElementById("drawerScrim");
+        const themeButton = document.getElementById("themeButton");
+        const themeIcon = document.getElementById("themeIcon");
+        const dialogScrim = document.getElementById("dialogScrim");
+        const dialogTitle = document.getElementById("dialogTitle");
+        const dialogOptions = document.getElementById("dialogOptions");
+        const dialogCancel = document.getElementById("dialogCancel");
+        const snackbar = document.getElementById("snackbar");
+        let snackbarTimer;
+
+        function category() {
+            return categories.find(item => item.id === state.categoryId) || categories[0];
+        }
+
+        function currentPage() {
+            if (!state.stack.length) return null;
+            const top = state.stack[state.stack.length - 1];
+            const rootPages = [...(category().leadPages || []), ...(category().pages || [])];
+            const root = rootPages.find(item => item.id === top.rootId);
+            if (!root) return null;
+            if (!top.childId) return root;
+            return (root.children || []).find(item => item.id === top.childId) || root;
+        }
+
+        function applyTheme() {
+            document.documentElement.dataset.theme = state.theme;
+            themeIcon.textContent = state.theme === "dark" ? "light_mode" : "dark_mode";
+            themeButton.setAttribute("aria-label", state.theme === "dark" ? "切换亮色主题" : "切换深色主题");
+        }
+
+        function renderTabs() {
+            categoryTabs.innerHTML = categories.map(item => `
+                <button class="tab" type="button" role="tab" aria-selected="${item.id === state.categoryId}" data-category="${item.id}" data-ripple>
+                    ${item.label}
+                </button>
+            `).join("");
+        }
+
+        function renderControl(control) {
+            if (control.visibleFor && !control.visibleFor.includes(state.synthesisEngine)) return "";
+
+            const engineLabels = {
+                voicepack: "语音包",
+                system: "系统语音合成",
+                kokoro: "Kokoro"
+            };
+            if (control.type === "engine-info") {
+                control = { ...control, type: "info", subtitle: engineLabels[state.synthesisEngine] };
+            }
+
+            if (control.type === "slider") {
+                const id = `slider-${Math.random().toString(36).slice(2)}`;
+                const decimals = control.decimals ?? 0;
+                const displayValue = Number(control.value).toFixed(decimals);
+                return `
+                    <div class="slider-row">
+                        <label class="slider-label" for="${id}"><span>${control.title}</span><span data-slider-value>${displayValue}${control.suffix || ""}</span></label>
+                        <input id="${id}" type="range" min="${control.min ?? 0}" max="${control.max ?? 100}" step="${control.step ?? 1}" value="${control.value}" data-decimals="${decimals}" data-suffix="${control.suffix || ""}">
+                    </div>
+                `;
+            }
+
+            const modalPayload = control.modal
+                ? JSON.stringify({ title: control.title, controls: control.modalControls || [] }).replaceAll("'", "&#39;")
+                : "";
+            const action = control.type === "switch"
+                ? `<button class="switch" type="button" role="switch" aria-checked="${Boolean(control.checked)}" aria-label="${control.title}" data-ripple></button>`
+                : control.type === "engine-select"
+                    ? `<button class="value-button" type="button" data-engine-options='${JSON.stringify(control.options || []).replaceAll("'", "&#39;")}' data-title="${control.title}" data-ripple>${engineLabels[state.synthesisEngine]}</button>`
+                : control.type === "select"
+                    ? `<button class="value-button" type="button" data-options='${JSON.stringify(control.options || []).replaceAll("'", "&#39;")}' data-title="${control.title}" data-ripple>${control.value}</button>`
+                : control.type === "action"
+                        ? control.modal
+                            ? `<button class="text-button" type="button" data-modal-control='${modalPayload}' data-ripple>${control.value || "打开"}</button>`
+                            : `<button class="text-button" type="button" data-action="${control.title}" data-ripple>${control.value || "打开"}</button>`
+                        : "";
+
+            return `
+                <div class="setting-row">
+                    <span class="material-symbols-rounded">${control.icon || "settings"}</span>
+                    <div class="setting-copy">
+                        <div class="setting-title">${control.title}</div>
+                        ${control.subtitle ? `<div class="setting-subtitle">${control.subtitle}</div>` : ""}
+                    </div>
+                    ${action}
+                </div>
+            `;
+        }
+
+        function renderCategory() {
+            const item = category();
+            const renderEntry = page => `
+                <button class="entry-card" type="button" data-page="${page.id}" data-ripple>
+                    <span class="entry-card__head">
+                        <span class="material-symbols-rounded">${page.icon}</span>
+                        <span class="entry-card__title">${page.title}</span>
+                    </span>
+                    <span class="entry-card__summary">${page.summary}</span>
+                    <span class="material-symbols-rounded entry-card__arrow">chevron_right</span>
+                </button>
+            `;
+            return `
+                <section class="screen" data-screen="category">
+                    <div class="page-heading">
+                        <div>
+                            <h1>${item.label}</h1>
+                            <p>${item.description}</p>
+                        </div>
+                        ${item.quick?.length ? `<span class="status-label">常用设置</span>` : ""}
+                    </div>
+                    ${item.quick?.length ? `
+                        <div class="card setting-list">
+                            ${item.quick.map(renderControl).join("")}
+                        </div>
+                    ` : ""}
+                    ${item.aboutHero ? `
+                        <button class="about-card" type="button" data-action="官方网站" data-ripple>
+                            <img class="about-logo about-logo--light" src="../../ARTS/LOGOBlack.svg" alt="KIGTTS Logo">
+                            <img class="about-logo about-logo--dark" src="../../ARTS/LOGOWhite.svg" alt="">
+                            <span class="about-version">${item.aboutHero.version}</span>
+                        </button>
+                    ` : ""}
+                    ${(item.leadPages || []).length || (item.collapsibleCards || []).length ? `
+                        <div class="connected-card-group">
+                            ${(item.leadPages || []).map(renderEntry).join("")}
+                            ${(item.collapsibleCards || []).map(card => `
+                                <details class="card collapsible-card">
+                                    <summary data-ripple>
+                                        <span class="material-symbols-rounded">${card.icon}</span>
+                                        <span class="collapsible-card__copy">
+                                            <span class="collapsible-card__title">${card.title}</span>
+                                            <span class="collapsible-card__summary">${card.summary}</span>
+                                        </span>
+                                        <span class="material-symbols-rounded collapsible-card__chevron">expand_more</span>
+                                    </summary>
+                                    <div class="setting-list collapsible-content">
+                                        ${card.controls.map(renderControl).join("")}
+                                    </div>
+                                </details>
+                            `).join("")}
+                        </div>
+                    ` : ""}
+                    ${(item.directCards || []).map(card => `
+                        <div class="section-title">${card.title}</div>
+                        <div class="card setting-list">
+                            ${card.controls.map(renderControl).join("")}
+                        </div>
+                    `).join("")}
+                    ${item.pages?.length ? `
+                        <div class="entry-grid entry-grid--pages">
+                            ${item.pages.map(renderEntry).join("")}
+                        </div>
+                    ` : ""}
+                </section>
+            `;
+        }
+
+        function renderDetail(page) {
+            const top = state.stack[state.stack.length - 1];
+            const isTertiary = Boolean(top.childId);
+            return `
+                <section class="screen" data-screen="detail">
+                    <div class="page-heading">
+                        <div>
+                            <h1>${page.title}</h1>
+                            <p>${isTertiary ? "高级设置与资源管理" : page.banner || page.summary}</p>
+                        </div>
+                        <span class="status-label">${isTertiary ? "三级页面" : "二级页面"}</span>
+                    </div>
+                    <div class="detail-banner">
+                        <span class="material-symbols-rounded">${page.icon}</span>
+                        <div><strong>${page.title}</strong><span>${page.banner || page.summary}</span></div>
+                    </div>
+                    <div class="card setting-list">
+                        ${(page.controls || []).map(renderControl).join("")}
+                    </div>
+                    ${(page.cards || []).map(card => `
+                        <div class="section-title">${card.title}</div>
+                        <div class="card setting-list">
+                            ${card.controls.map(renderControl).join("")}
+                        </div>
+                    `).join("")}
+                    ${!isTertiary && page.children?.length ? `
+                        <div class="section-title">高级设置与资源管理</div>
+                        <div class="entry-grid">
+                            ${page.children.map(child => `
+                                <button class="entry-card" type="button" data-child="${child.id}" data-ripple>
+                                    <span class="entry-card__head">
+                                        <span class="material-symbols-rounded">${child.icon}</span>
+                                        <span class="entry-card__title">${child.title}</span>
+                                    </span>
+                                    <span class="entry-card__summary">${child.summary}</span>
+                                    <span class="material-symbols-rounded entry-card__arrow">chevron_right</span>
+                                </button>
+                            `).join("")}
+                        </div>
+                    ` : ""}
+                </section>
+            `;
+        }
+
+        function render() {
+            const page = currentPage();
+            appTitle.textContent = page ? page.title : "设置";
+            navIcon.textContent = page ? "arrow_back" : "menu";
+            navButton.setAttribute("aria-label", page ? "返回" : "打开菜单");
+            tabsWrap.hidden = Boolean(page);
+            renderTabs();
+            mainContent.innerHTML = page ? renderDetail(page) : renderCategory();
+            bindDynamicEvents();
+            window.scrollTo({ top: 0, behavior: "instant" });
+        }
+
+        function bindDynamicEvents() {
+            document.querySelectorAll("[data-category]").forEach(button => {
+                button.addEventListener("click", () => {
+                    state.categoryId = button.dataset.category;
+                    state.stack = [];
+                    render();
+                });
+            });
+
+            document.querySelectorAll("[data-page]").forEach(button => {
+                button.addEventListener("click", () => {
+                    state.stack.push({ rootId: button.dataset.page, childId: null });
+                    render();
+                });
+            });
+
+            document.querySelectorAll("[data-child]").forEach(button => {
+                button.addEventListener("click", () => {
+                    const rootId = state.stack[state.stack.length - 1].rootId;
+                    state.stack.push({ rootId, childId: button.dataset.child });
+                    render();
+                });
+            });
+
+            bindControlEvents(document);
+            bindRipples();
+        }
+
+        function bindControlEvents(scope) {
+            scope.querySelectorAll(".switch:not([data-control-bound])").forEach(button => {
+                button.dataset.controlBound = "true";
+                button.addEventListener("click", () => {
+                    const next = button.getAttribute("aria-checked") !== "true";
+                    button.setAttribute("aria-checked", String(next));
+                });
+            });
+
+            scope.querySelectorAll("input[type='range']:not([data-control-bound])").forEach(input => {
+                input.dataset.controlBound = "true";
+                input.addEventListener("input", () => {
+                    const label = input.closest(".slider-row").querySelector("[data-slider-value]");
+                    const decimals = Number(input.dataset.decimals || 0);
+                    label.textContent = `${Number(input.value).toFixed(decimals)}${input.dataset.suffix || ""}`;
+                });
+            });
+
+            scope.querySelectorAll("[data-options]:not([data-control-bound])").forEach(button => {
+                button.dataset.controlBound = "true";
+                button.addEventListener("click", () => {
+                    const options = JSON.parse(button.dataset.options || "[]");
+                    openDialog(button.dataset.title, options, button.textContent.trim(), value => {
+                        button.textContent = value;
+                    });
+                });
+            });
+
+            scope.querySelectorAll("[data-engine-options]:not([data-control-bound])").forEach(button => {
+                button.dataset.controlBound = "true";
+                button.addEventListener("click", () => {
+                    const options = JSON.parse(button.dataset.engineOptions || "[]");
+                    openDialog(button.dataset.title, options, button.textContent.trim(), value => {
+                        state.synthesisEngine = value === "系统语音合成"
+                            ? "system"
+                            : value === "Kokoro" ? "kokoro" : "voicepack";
+                        render();
+                    });
+                });
+            });
+
+            scope.querySelectorAll("[data-modal-control]:not([data-control-bound])").forEach(button => {
+                button.dataset.controlBound = "true";
+                button.addEventListener("click", () => {
+                    openSettingsDialog(JSON.parse(button.dataset.modalControl));
+                });
+            });
+
+            scope.querySelectorAll("[data-action]:not([data-control-bound])").forEach(button => {
+                button.dataset.controlBound = "true";
+                button.addEventListener("click", () => showSnackbar(`${button.dataset.action}：原型中不执行实际操作`));
+            });
+        }
+
+        function openDialog(title, options, selectedValue, onSelect) {
+            dialogTitle.textContent = title;
+            dialogOptions.innerHTML = options.map(option => `
+                <button class="dialog-option" type="button" data-dialog-value="${option}" data-ripple>
+                    <span>${option}</span>${option === selectedValue ? '<span class="material-symbols-rounded">check</span>' : ""}
+                </button>
+            `).join("");
+            dialogOptions.querySelectorAll("[data-dialog-value]").forEach(button => {
+                button.addEventListener("click", () => {
+                    onSelect(button.dataset.dialogValue);
+                    closeDialog();
+                });
+            });
+            bindRipples();
+            dialogScrim.dataset.open = "true";
+        }
+
+        function openSettingsDialog(config) {
+            dialogTitle.textContent = config.title;
+            dialogOptions.innerHTML = (config.controls || []).map(renderControl).join("");
+            bindControlEvents(dialogOptions);
+            bindRipples();
+            dialogScrim.dataset.open = "true";
+        }
+
+        function closeDialog() { dialogScrim.dataset.open = "false"; }
+
+        function showSnackbar(message) {
+            window.clearTimeout(snackbarTimer);
+            snackbar.textContent = message;
+            snackbar.dataset.open = "true";
+            snackbarTimer = window.setTimeout(() => snackbar.dataset.open = "false", 2200);
+        }
+
+        function bindRipples() {
+            document.querySelectorAll("[data-ripple]:not([data-ripple-bound])").forEach(element => {
+                element.dataset.rippleBound = "true";
+                element.addEventListener("pointerdown", event => {
+                    const rect = element.getBoundingClientRect();
+                    const size = Math.max(rect.width, rect.height) * 2;
+                    const ripple = document.createElement("span");
+                    ripple.className = "ripple";
+                    ripple.style.width = `${size}px`;
+                    ripple.style.height = `${size}px`;
+                    ripple.style.left = `${event.clientX - rect.left - size / 2}px`;
+                    ripple.style.top = `${event.clientY - rect.top - size / 2}px`;
+                    element.appendChild(ripple);
+                    ripple.addEventListener("animationend", () => ripple.remove(), { once: true });
+                });
+            });
+        }
+
+        navButton.addEventListener("click", () => {
+            if (state.stack.length) {
+                state.stack.pop();
+                render();
+            } else {
+                drawerScrim.dataset.open = "true";
+            }
+        });
+
+        drawerScrim.addEventListener("click", event => {
+            if (event.target === drawerScrim) drawerScrim.dataset.open = "false";
+        });
+
+        document.querySelectorAll(".drawer-item").forEach(item => {
+            item.addEventListener("click", () => {
+                drawerScrim.dataset.open = "false";
+                if (!item.dataset.active) showSnackbar("该入口仅用于展示抽屉结构");
+            });
+        });
+
+        themeButton.addEventListener("click", () => {
+            state.theme = state.theme === "dark" ? "light" : "dark";
+            localStorage.setItem("kigtts-settings-prototype-theme", state.theme);
+            applyTheme();
+        });
+
+        dialogCancel.addEventListener("click", closeDialog);
+        dialogScrim.addEventListener("click", event => {
+            if (event.target === dialogScrim) closeDialog();
+        });
+
+        window.addEventListener("keydown", event => {
+            if (event.key !== "Escape") return;
+            if (dialogScrim.dataset.open === "true") closeDialog();
+            else if (drawerScrim.dataset.open === "true") drawerScrim.dataset.open = "false";
+            else if (state.stack.length) { state.stack.pop(); render(); }
+        });
+
+        applyTheme();
+        render();
+        bindRipples();
+    </script>
+</body>
+</html>

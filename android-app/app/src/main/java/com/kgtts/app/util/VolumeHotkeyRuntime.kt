@@ -21,6 +21,10 @@ class VolumeHotkeySequenceDetector {
         settings: UserPrefs.AppSettings,
         onTrigger: (VolumeHotkeyActionSpec) -> Unit
     ) {
+        if (!settings.volumeHotkeysEnabled) {
+            reset()
+            return
+        }
         val now = SystemClock.uptimeMillis()
         val previousDirection = pendingDirection
         val windowMs = settings.volumeHotkeyWindowMs.toLong()
@@ -46,7 +50,8 @@ class VolumeHotkeySequenceDetector {
 
 object VolumeHotkeyActionExecutor {
     fun hasEnabledHotkeys(settings: UserPrefs.AppSettings): Boolean {
-        return settings.volumeHotkeyUpDownEnabled || settings.volumeHotkeyDownUpEnabled
+        return settings.volumeHotkeysEnabled &&
+            (settings.volumeHotkeyUpDownEnabled || settings.volumeHotkeyDownUpEnabled)
     }
 
     fun execute(context: Context, action: VolumeHotkeyActionSpec) {

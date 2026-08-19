@@ -70,7 +70,11 @@ internal fun QuickTextGestureEntryCard(
                 Column(modifier = Modifier.weight(1f)) {
                     Text("快捷文本手势", style = MaterialTheme.typography.bodyLarge)
                     Text(
-                        text = if (activeCount == 0) "尚未设置" else "已启用 $activeCount 个手势",
+                        text = when {
+                            !settings.enabled -> "已关闭"
+                            activeCount == 0 -> "尚未设置"
+                            else -> "已启用 $activeCount 个手势"
+                        },
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -120,17 +124,14 @@ internal fun QuickTextGestureSettingsScreen(
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             item(key = "gesture-master") {
-                Md2SettingsCard(title = "手势设置") {
+                Md2SettingsCard(title = null) {
                     Md2SettingSwitchRow(
                         title = "启用快捷文本手势",
+                        icon = "gesture",
                         checked = settings.enabled,
                         onCheckedChange = viewModel::setQuickTextGestureMasterEnabled,
-                        supportingText = "在大字幕区域画出手势，即可发送对应的快捷文本。点按预览和长按复制不受影响。"
-                    )
-                    Text(
-                        "每个手势均需一笔完成；画得太小可能无法识别。",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        supportingText =
+                            "在大字幕区域一笔画出手势，即可发送对应内容；点按预览和长按复制不受影响。"
                     )
                 }
             }

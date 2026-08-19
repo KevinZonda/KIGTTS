@@ -1043,11 +1043,12 @@ internal fun Md2SettingSwitchRow(
     onCheckedChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
-    supportingText: String? = null
+    supportingText: String? = null,
+    icon: String? = null
 ) {
     val contentAlpha = if (enabled) 1f else 0.56f
     val hapticToggle = rememberKigttsHapticClick { onCheckedChange(!checked) }
-    Column(
+    Row(
         modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(4.dp))
@@ -1056,35 +1057,107 @@ internal fun Md2SettingSwitchRow(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = rememberRipple(bounded = true)
             ) { hapticToggle() }
-            .padding(horizontal = 2.dp, vertical = 4.dp),
-        verticalArrangement = Arrangement.spacedBy(4.dp)
+            .padding(horizontal = 2.dp, vertical = 4.dp)
+            .heightIn(min = if (icon == null) 48.dp else 64.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(min = 48.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        if (icon != null) {
+            MsIcon(
+                name = icon,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.accentText.copy(alpha = contentAlpha)
+            )
+        }
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             Text(
                 text = title,
-                modifier = Modifier.weight(1f),
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = contentAlpha)
             )
-            Md2Switch(
-                checked = checked,
-                onCheckedChange = onCheckedChange,
-                enabled = enabled
+            if (!supportingText.isNullOrBlank()) {
+                Text(
+                    text = supportingText,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = contentAlpha)
+                )
+            }
+        }
+        Md2Switch(
+            checked = checked,
+            onCheckedChange = onCheckedChange,
+            enabled = enabled
+        )
+    }
+}
+
+@Composable
+internal fun Md2SettingActionRow(
+    title: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    supportingText: String? = null,
+    icon: String? = null,
+    trailingText: String? = null
+) {
+    val contentAlpha = if (enabled) 1f else 0.56f
+    val hapticClick = rememberKigttsHapticClick(onClick)
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(4.dp))
+            .clickable(
+                enabled = enabled,
+                interactionSource = remember { MutableInteractionSource() },
+                indication = rememberRipple(bounded = true)
+            ) { hapticClick() }
+            .padding(horizontal = 2.dp, vertical = 4.dp)
+            .heightIn(min = if (icon == null) 48.dp else 64.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        if (icon != null) {
+            MsIcon(
+                name = icon,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.accentText.copy(alpha = contentAlpha)
             )
         }
-        if (!supportingText.isNullOrBlank()) {
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
             Text(
-                text = supportingText,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = contentAlpha)
+                text = title,
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = contentAlpha)
+            )
+            if (!supportingText.isNullOrBlank()) {
+                Text(
+                    text = supportingText,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = contentAlpha)
+                )
+            }
+        }
+        if (!trailingText.isNullOrBlank()) {
+            Text(
+                text = trailingText,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = contentAlpha),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
             )
         }
+        MsIcon(
+            name = "chevron_right",
+            contentDescription = title,
+            tint = MaterialTheme.colorScheme.onSurface.copy(alpha = contentAlpha)
+        )
     }
 }
 
@@ -1097,12 +1170,13 @@ internal fun Md2SettingDropdownRow(
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
     supportingText: String? = null,
+    icon: String? = null,
     menuContent: @Composable ColumnScope.() -> Unit
 ) {
     val contentAlpha = if (enabled) 1f else 0.56f
     val hapticExpand = rememberKigttsHapticClick { onExpandedChange(true) }
     Box(modifier = modifier.fillMaxWidth()) {
-        Column(
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(4.dp))
@@ -1111,42 +1185,47 @@ internal fun Md2SettingDropdownRow(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = rememberRipple(bounded = true)
                 ) { hapticExpand() }
-                .padding(horizontal = 2.dp, vertical = 4.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp)
+                .padding(horizontal = 2.dp, vertical = 4.dp)
+                .heightIn(min = if (icon == null) 48.dp else 64.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(min = 48.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            if (icon != null) {
+                MsIcon(
+                    name = icon,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.accentText.copy(alpha = contentAlpha)
+                )
+            }
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 Text(
                     text = title,
-                    modifier = Modifier.weight(1f),
                     style = MaterialTheme.typography.bodyLarge,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = contentAlpha)
                 )
-                Text(
-                    text = value,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = contentAlpha),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                MsIcon(
-                    name = if (expanded) "expand_less" else "expand_more",
-                    contentDescription = title,
-                    tint = MaterialTheme.colorScheme.onSurface.copy(alpha = contentAlpha)
-                )
+                if (!supportingText.isNullOrBlank()) {
+                    Text(
+                        text = supportingText,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = contentAlpha)
+                    )
+                }
             }
-            if (!supportingText.isNullOrBlank()) {
-                Text(
-                    text = supportingText,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = contentAlpha)
-                )
-            }
+            Text(
+                text = value,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = contentAlpha),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            MsIcon(
+                name = if (expanded) "expand_less" else "expand_more",
+                contentDescription = title,
+                tint = MaterialTheme.colorScheme.onSurface.copy(alpha = contentAlpha)
+            )
         }
         Md2AnimatedOptionMenu(
             expanded = expanded,
@@ -1157,11 +1236,15 @@ internal fun Md2SettingDropdownRow(
     }
 }
 
-enum class SettingsCategory(val title: String, val icon: String) {
-    Audio("音频", "volume_up"),
-    Recognition("识别", "graphic_eq"),
-    System("系统", "tune"),
-    About("关于", "info")
+enum class SettingsCategory(
+    val title: String,
+    val icon: String,
+    val description: String
+) {
+    Audio("音频", "volume_up", "管理语音合成、语音包和播放设备。"),
+    Recognition("识别", "graphic_eq", "调整语音识别、环境字幕、本人声纹和麦克风。"),
+    System("系统", "tune", "调整显示、布局、便捷字幕、文件与应用数据。"),
+    About("关于", "info", "关于KIGTTS")
 }
 
 @Composable

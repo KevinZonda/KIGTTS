@@ -229,6 +229,7 @@ object UserPrefs {
         booleanPreferencesKey("floating_overlay_hardcoded_shortcut_supplement")
     private val KEY_QUICK_TEXT_GESTURE_SETTINGS =
         stringPreferencesKey("quick_text_gesture_settings")
+    private val KEY_VOLUME_HOTKEYS_ENABLED = booleanPreferencesKey("volume_hotkeys_enabled")
     private val KEY_VOLUME_HOTKEY_UP_DOWN_ENABLED = booleanPreferencesKey("volume_hotkey_up_down_enabled")
     private val KEY_VOLUME_HOTKEY_DOWN_UP_ENABLED = booleanPreferencesKey("volume_hotkey_down_up_enabled")
     private val KEY_VOLUME_HOTKEY_UP_DOWN_ACTION = stringPreferencesKey("volume_hotkey_up_down_action")
@@ -387,6 +388,7 @@ object UserPrefs {
         val floatingOverlayFabInputGuideShown: Boolean = false,
         val floatingOverlayHardcodedShortcutSupplement: Boolean = false,
         val quickTextGestureSettings: QuickTextGestureSettings = QuickTextGestureSettings(),
+        val volumeHotkeysEnabled: Boolean = true,
         val volumeHotkeyUpDownEnabled: Boolean = false,
         val volumeHotkeyDownUpEnabled: Boolean = false,
         val volumeHotkeyWindowMs: Int = VOLUME_HOTKEY_DEFAULT_WINDOW_MS,
@@ -831,6 +833,7 @@ object UserPrefs {
             quickTextGestureSettings = decodeQuickTextGestureSettings(
                 this[KEY_QUICK_TEXT_GESTURE_SETTINGS]
             ),
+            volumeHotkeysEnabled = this[KEY_VOLUME_HOTKEYS_ENABLED] ?: true,
             volumeHotkeyUpDownEnabled = this[KEY_VOLUME_HOTKEY_UP_DOWN_ENABLED] ?: false,
             volumeHotkeyDownUpEnabled = this[KEY_VOLUME_HOTKEY_DOWN_UP_ENABLED] ?: false,
             volumeHotkeyWindowMs = (this[KEY_VOLUME_HOTKEY_WINDOW_MS] ?: VOLUME_HOTKEY_DEFAULT_WINDOW_MS)
@@ -1425,6 +1428,12 @@ object UserPrefs {
                 VolumeHotkeySequence.UpDown -> prefs[KEY_VOLUME_HOTKEY_UP_DOWN_ENABLED] = enabled
                 VolumeHotkeySequence.DownUp -> prefs[KEY_VOLUME_HOTKEY_DOWN_UP_ENABLED] = enabled
             }
+        }
+    }
+
+    suspend fun setVolumeHotkeysMasterEnabled(context: Context, enabled: Boolean) {
+        context.dataStore.edit { prefs ->
+            prefs[KEY_VOLUME_HOTKEYS_ENABLED] = enabled
         }
     }
 

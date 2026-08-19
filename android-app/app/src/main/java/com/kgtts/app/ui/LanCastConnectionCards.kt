@@ -42,6 +42,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.lhtstudio.kigtts.app.lan.LanCastStatus
 import com.lhtstudio.kigtts.app.util.QuickCardRenderCache
@@ -56,9 +57,10 @@ internal fun LanCastServiceCard(
     onBackgroundSettingsRequested: () -> Unit
 ) {
     Md2StaggeredFloatIn(index = 0) {
-        Md2SettingsCard(title = "局域网投屏") {
+        Md2SettingsCard(title = null) {
             Md2SettingSwitchRow(
                 title = "启用投屏与网页遥控",
+                icon = "cast",
                 checked = status.running,
                 onCheckedChange = { enabled ->
                     if (enabled) onEnableRequested() else viewModel.stopLanCast()
@@ -69,6 +71,11 @@ internal fun LanCastServiceCard(
                     "默认关闭。首次开启时会引导设置后台运行，以保持锁屏后的投屏连接。"
                 }
             )
+        }
+    }
+    if (status.running || status.error != null) {
+        Md2StaggeredFloatIn(index = 1) {
+            Md2SettingsCard(title = "连接状态") {
             if (status.running) {
                 val connected = status.displayClients + status.remoteClients
                 Text(
@@ -76,14 +83,16 @@ internal fun LanCastServiceCard(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-                Md2TextButton(onClick = onBackgroundSettingsRequested) {
-                    MsIcon("battery_saver", contentDescription = null)
-                    Spacer(Modifier.size(6.dp))
-                    Text("保持后台连接")
-                }
+                Md2SettingActionRow(
+                    title = "保持后台连接",
+                    icon = "battery_saver",
+                    supportingText = "允许熄屏后继续使用投屏和网页遥控。",
+                    onClick = onBackgroundSettingsRequested
+                )
             }
             status.error?.let { error ->
                 Text(error, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colors.error)
+            }
             }
         }
     }
@@ -139,6 +148,18 @@ internal fun LanCastAddressCard(viewModel: MainViewModel, status: LanCastStatus)
 
 @Composable
 internal fun LanCastQrCard(status: LanCastStatus) {
+    Md2StaggeredFloatIn(index = 2) {
+        Md2SettingsCard(title = "连接二维码") {
+            LanCastQrContent(status = status)
+        }
+    }
+}
+
+@Composable
+internal fun LanCastQrContent(
+    status: LanCastStatus,
+    qrSize: Dp = 228.dp
+) {
     val context = LocalContext.current
     val clipboard = LocalClipboardManager.current
     var qrTab by rememberSaveable { mutableStateOf(LanCastQrTab.Display) }
@@ -151,84 +172,87 @@ internal fun LanCastQrCard(status: LanCastStatus) {
         }
     }
 
-    Md2StaggeredFloatIn(index = 2) {
-        Md2SettingsCard(title = "连接二维码") {
-            TabRow(
-                selectedTabIndex = qrTab.ordinal,
-                backgroundColor = md2CardContainerColor(),
-                contentColor = MaterialTheme.colorScheme.primary
-            ) {
-                LanCastQrTab.entries.forEach { tab ->
-                    Tab(
-                        selected = qrTab == tab,
-                        onClick = { hapticQrTabChange(tab) },
-                        text = {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                MsIcon(tab.icon, contentDescription = null)
-                                Spacer(Modifier.size(6.dp))
-                                Text(tab.title)
-                            }
-                        }
-                    )
-                }
-            }
-            AnimatedContent(
-                targetState = qrTab,
-                transitionSpec = {
-                    val forward = targetState.ordinal > initialState.ordinal
-                    ContentTransform(
-                        targetContentEnter = fadeIn(tween(180)) +
-                            slideInHorizontally(tween(220, easing = FastOutSlowInEasing)) {
-                                if (forward) it / 7 else -it / 7
-                            },
-                        initialContentExit = fadeOut(tween(120)) +
-                            slideOutHorizontally(tween(160, easing = FastOutSlowInEasing)) {
-                                if (forward) -it / 9 else it / 9
-                            }
-                    )
-                },
-                label = "lan_cast_qr_tab"
-            ) { selectedTab ->
-                Column(
-                    modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    qrBitmap?.let { bitmap ->
-                        Image(
-                            bitmap = bitmap.asImageBitmap(),
-                            contentDescription = selectedTab.title,
-                            modifier = Modifier.size(228.dp)
-                        )
+    TabRow(
+        selectedTabIndex = qrTab.ordinal,
+        backgroundColor = md2CardContainerColor(),
+        contentColor = MaterialTheme.colorScheme.primary
+    ) {
+        LanCastQrTab.entries.forEach { tab ->
+            Tab(
+                selected = qrTab == tab,
+                onClick = { hapticQrTabChange(tab) },
+                text = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        MsIcon(tab.icon, contentDescription = null)
+                        Spacer(Modifier.size(6.dp))
+                        Text(tab.title)
                     }
-                    Text(
-                        text = selectedUrl.orEmpty(),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(4.dp))
-                            .clickable {
-                                hapticCopy()
-                                selectedUrl?.let {
-                                    clipboard.setText(AnnotatedString(it))
-                                    toast(context, "连接地址已复制")
-                                }
-                            }
-                            .padding(8.dp),
-                        textAlign = TextAlign.Center,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                    Text(
-                        if (selectedTab == LanCastQrTab.Display) {
-                            "用于电视或电脑全屏显示字幕。"
-                        } else {
-                            "用于输入字幕、选择快捷文本和控制朗读。"
-                        },
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                }
+            )
+        }
+    }
+    AnimatedContent(
+        targetState = qrTab,
+        transitionSpec = {
+            val forward = targetState.ordinal > initialState.ordinal
+            ContentTransform(
+                targetContentEnter = fadeIn(tween(180)) +
+                    slideInHorizontally(tween(220, easing = FastOutSlowInEasing)) {
+                        if (forward) it / 7 else -it / 7
+                    },
+                initialContentExit = fadeOut(tween(120)) +
+                    slideOutHorizontally(tween(160, easing = FastOutSlowInEasing)) {
+                        if (forward) -it / 9 else it / 9
+                    }
+            )
+        },
+        label = "lan_cast_qr_tab"
+    ) { selectedTab ->
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            if (selectedUrl == null) {
+                Text(
+                    "未检测到局域网地址，请确认手机已连接 Wi-Fi 或局域网。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center
+                )
+            } else {
+                qrBitmap?.let { bitmap ->
+                    Image(
+                        bitmap = bitmap.asImageBitmap(),
+                        contentDescription = selectedTab.title,
+                        modifier = Modifier.size(qrSize)
                     )
                 }
+                Text(
+                    text = selectedUrl,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(4.dp))
+                        .clickable {
+                            hapticCopy()
+                            clipboard.setText(AnnotatedString(selectedUrl))
+                            toast(context, "连接地址已复制")
+                        }
+                        .padding(8.dp),
+                    textAlign = TextAlign.Center,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary
+                )
             }
+            Text(
+                if (selectedTab == LanCastQrTab.Display) {
+                    "用于电视或电脑全屏显示字幕。"
+                } else {
+                    "用于输入字幕、选择快捷文本和控制朗读。"
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
     }
 }

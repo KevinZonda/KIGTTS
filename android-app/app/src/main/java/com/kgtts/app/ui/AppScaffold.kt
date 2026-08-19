@@ -361,7 +361,6 @@ fun AppScaffold(viewModel: MainViewModel) {
     val pageOverlay = 1
     val pageLanCast = 2
     val pageQuickCard = 3
-    val pageVoicePack = 4
     val pageDrawing = 5
     val pageSoundboard = 6
     val pageSettings = 7
@@ -371,6 +370,10 @@ fun AppScaffold(viewModel: MainViewModel) {
     var drawingPaletteEditorOpen by rememberSaveable { mutableStateOf(false) }
     var quickSubtitleFullscreen by rememberSaveable { mutableStateOf(false) }
     var overlaySettingsPage by rememberSaveable { mutableStateOf(OverlaySettingsPage.Main) }
+    val overlayMainScroll = rememberScrollState()
+    val floatingOverlaySettingsScroll = rememberScrollState()
+    val volumeHotkeySettingsScroll = rememberScrollState()
+    var suppressOverlayMainStagger by rememberSaveable { mutableStateOf(false) }
     var runningStripCollapsed by rememberSaveable { mutableStateOf(true) }
     var logTopBarActions by remember { mutableStateOf<LogTopBarActions?>(null) }
     var fontTopBarActions by remember { mutableStateOf<FontTopBarActions?>(null) }
@@ -414,6 +417,9 @@ fun AppScaffold(viewModel: MainViewModel) {
     }
     val settingsBackStackEntry by settingsNavController.currentBackStackEntryAsState()
     val settingsRoute = settingsBackStackEntry?.destination?.route ?: SettingsRoutes.Main
+    val settingsDetailPage = SettingsDetailPage.fromRouteId(
+        settingsBackStackEntry?.arguments?.getString(SettingsRoutes.DetailArg)
+    )
     val state = viewModel.uiState
     val context = LocalContext.current
     val clipboard = LocalClipboardManager.current
@@ -684,6 +690,10 @@ fun AppScaffold(viewModel: MainViewModel) {
         basePage == pageQuickCard && quickCardRoute != QuickCardRoutes.Main
     val settingsLogOpen =
         basePage == pageSettings && settingsRoute == SettingsRoutes.Log
+    val settingsVoicePacksOpen =
+        basePage == pageSettings && settingsRoute == SettingsRoutes.VoicePacks
+    val settingsDetailOpen =
+        basePage == pageSettings && settingsRoute == SettingsRoutes.Detail
     val settingsFontsOpen =
         basePage == pageSettings && settingsRoute == SettingsRoutes.Fonts
     val settingsListeningOpen =
@@ -697,6 +707,13 @@ fun AppScaffold(viewModel: MainViewModel) {
     LaunchedEffect(basePage) {
         if (basePage != pageOverlay) overlaySettingsPage = OverlaySettingsPage.Main
     }
+    LaunchedEffect(basePage, overlaySettingsPage) {
+        if (basePage != pageOverlay) {
+            suppressOverlayMainStagger = false
+        } else if (overlaySettingsPage != OverlaySettingsPage.Main) {
+            suppressOverlayMainStagger = true
+        }
+    }
     var lastTopBarBackClickAtMs by remember { mutableLongStateOf(0L) }
     var drawerExpanded by rememberSaveable { mutableStateOf(false) }
     val runningStripEligible = !(drawingFullscreen && basePage == pageDrawing) && !quickSubtitleLedOpen
@@ -709,9 +726,7 @@ fun AppScaffold(viewModel: MainViewModel) {
         DrawerItem(pageQuickCard, "快捷名片", "id_card"),
         DrawerItem(pageDrawing, "画板", "draw"),
         DrawerItem(pageSoundboard, "音效板", "library_music"),
-        DrawerItem(pageOverlay, "悬浮窗与热键", "open_in_new"),
-        DrawerItem(pageLanCast, "投屏与遥控", "cast"),
-        DrawerItem(pageVoicePack, "语音包", "record_voice_over"),
+        DrawerItem(pageOverlay, "快捷功能", "open_in_new"),
         DrawerItem(pageSettings, "设置", "tune")
     )
     val pendingQuickSubtitleLaunchRequest = viewModel.pendingQuickSubtitleLaunchRequest
@@ -812,7 +827,8 @@ fun AppScaffold(viewModel: MainViewModel) {
                 page = pageOverlay
             }
             OverlayBridge.TARGET_OPEN_LAN_CAST -> {
-                page = pageLanCast
+                page = pageOverlay
+                overlaySettingsPage = OverlaySettingsPage.LanCast
             }
             OverlayBridge.TARGET_OPEN_QUICK_CARD -> {
                 page = pageQuickCard
@@ -839,7 +855,10 @@ fun AppScaffold(viewModel: MainViewModel) {
                 }
             }
             OverlayBridge.TARGET_OPEN_VOICE_PACK -> {
-                page = pageVoicePack
+                page = pageSettings
+                settingsNavController.navigate(SettingsRoutes.VoicePacks) {
+                    launchSingleTop = true
+                }
             }
             OverlayBridge.TARGET_OPEN_SETTINGS -> {
                 page = pageSettings
@@ -871,7 +890,10 @@ fun AppScaffold(viewModel: MainViewModel) {
     }
     LaunchedEffect(pendingVoicePackInstallRequest?.requestId) {
         val request = pendingVoicePackInstallRequest ?: return@LaunchedEffect
-        page = pageVoicePack
+        page = pageSettings
+        settingsNavController.navigate(SettingsRoutes.VoicePacks) {
+            launchSingleTop = true
+        }
         toast(context, request.message)
         viewModel.consumeVoicePackInstallRequest(request.requestId)
         if (!usePermanentDrawer) {
@@ -1014,8 +1036,8 @@ fun AppScaffold(viewModel: MainViewModel) {
             soundboardSubPageOpen -> {
                 soundboardNavController.popBackStack(SoundboardRoutes.Main, inclusive = false)
             }
-            settingsFontsOpen || settingsListeningOpen || settingsLogOpen || settingsLicensesOpen || settingsPrivacyOpen || settingsAgreementOpen -> {
-                settingsNavController.popBackStack(SettingsRoutes.Main, inclusive = false)
+            settingsDetailOpen || settingsVoicePacksOpen || settingsFontsOpen || settingsListeningOpen || settingsLogOpen || settingsLicensesOpen || settingsPrivacyOpen || settingsAgreementOpen -> {
+                settingsNavController.popBackStack()
             }
             quickCardEditorOpen -> {
                 val handledByEditor = quickCardTopBarActions?.onBackRequest != null
@@ -1617,11 +1639,14 @@ fun AppScaffold(viewModel: MainViewModel) {
     val topBar: @Composable ((() -> Unit)) -> Unit = { onNavClick ->
         val currentTitle = if (overlaySubPageOpen) {
             when (overlaySettingsPage) {
+                OverlaySettingsPage.FloatingOverlay -> "悬浮窗"
+                OverlaySettingsPage.LockScreen -> "自定义锁屏"
                 OverlaySettingsPage.QuickTextGestures -> "快捷文本手势"
                 OverlaySettingsPage.KeyboardHotkeys -> "键盘热键"
-                OverlaySettingsPage.LockScreen -> "自定义锁屏"
+                OverlaySettingsPage.VolumeHotkeys -> "音量热键"
+                OverlaySettingsPage.LanCast -> "投屏与遥控"
                 OverlaySettingsPage.ClockFont -> "选择时钟字体"
-                OverlaySettingsPage.Main -> "悬浮窗与热键"
+                OverlaySettingsPage.Main -> "快捷功能"
             }
         } else if (drawingPaletteSubPageOpen) {
             "编辑调色板"
@@ -1641,6 +1666,10 @@ fun AppScaffold(viewModel: MainViewModel) {
             "二维码结果"
         } else if (quickCardWebOpen) {
             "二维码网页"
+        } else if (settingsDetailOpen) {
+            settingsDetailPage?.title ?: "设置"
+        } else if (settingsVoicePacksOpen) {
+            "语音包"
         } else if (settingsFontsOpen) {
             "字体"
         } else if (settingsListeningOpen) {
@@ -1656,10 +1685,9 @@ fun AppScaffold(viewModel: MainViewModel) {
         } else {
             when (basePage) {
                 pageQuickSubtitle -> "便捷字幕"
-                pageOverlay -> "悬浮窗与热键"
+                pageOverlay -> "快捷功能"
                 pageLanCast -> "投屏与遥控"
                 pageQuickCard -> "快捷名片"
-                pageVoicePack -> "语音包"
                 pageDrawing -> "画板"
                 pageSoundboard -> "音效板"
                 pageSettings -> "设置"
@@ -1736,7 +1764,7 @@ fun AppScaffold(viewModel: MainViewModel) {
                             overlaySubPageOpen -> 5
                             quickSubtitleSubPageOpen -> 1
                             soundboardSubPageOpen -> 2
-                            settingsFontsOpen || settingsListeningOpen || settingsLogOpen || settingsLicensesOpen || settingsPrivacyOpen || settingsAgreementOpen -> 3
+                            settingsDetailOpen || settingsVoicePacksOpen || settingsFontsOpen || settingsListeningOpen || settingsLogOpen || settingsLicensesOpen || settingsPrivacyOpen || settingsAgreementOpen -> 3
                             quickCardSubPageOpen -> 4
                             else -> 0
                         },
@@ -1811,7 +1839,7 @@ fun AppScaffold(viewModel: MainViewModel) {
                         basePage == pageQuickCard && quickCardRoute == QuickCardRoutes.Web
                     val showDrawingActions = basePage == pageDrawing && !drawingPaletteSubPageOpen
                     val showDrawingPaletteActions = drawingPaletteSubPageOpen
-                    val showVoicePackActions = basePage == pageVoicePack
+                    val showVoicePackActions = settingsVoicePacksOpen
                     val showSettingsEntryActions =
                         basePage == pageSettings && settingsRoute == SettingsRoutes.Main
                     val showSettingsFontActions =
@@ -2558,6 +2586,8 @@ fun AppScaffold(viewModel: MainViewModel) {
                                         overlaySettingsPage = OverlaySettingsPage.ClockFont
                                     }
                                 )
+                            OverlaySettingsPage.LanCast ->
+                                LanCastScreen(viewModel = viewModel, state = state)
                             OverlaySettingsPage.ClockFont ->
                                 ClockFontSettingsScreen(
                                     selectedFontId = state.lockScreenSettings.clockFontId,
@@ -2573,14 +2603,26 @@ fun AppScaffold(viewModel: MainViewModel) {
                                     onTopBarActionsChange = { fontTopBarActions = it },
                                     useBuiltinFileManager = state.useBuiltinFileManager
                                 )
-                            OverlaySettingsPage.Main -> FloatingOverlayScreen(
+                            OverlaySettingsPage.Main,
+                            OverlaySettingsPage.FloatingOverlay,
+                            OverlaySettingsPage.VolumeHotkeys -> FloatingOverlayScreen(
                                 viewModel = viewModel,
                                 state = state,
+                                contentPage = overlayPage,
+                                scroll = when (overlayPage) {
+                                    OverlaySettingsPage.FloatingOverlay -> floatingOverlaySettingsScroll
+                                    OverlaySettingsPage.VolumeHotkeys -> volumeHotkeySettingsScroll
+                                    else -> overlayMainScroll
+                                },
+                                suppressMainCardEntrance = suppressOverlayMainStagger,
                                 onOpenMainSettings = {
                                     page = pageSettings
                                     if (settingsRoute != SettingsRoutes.Main) {
                                         settingsNavController.popBackStack(SettingsRoutes.Main, inclusive = false)
                                     }
+                                },
+                                onOpenFloatingOverlaySettings = {
+                                    overlaySettingsPage = OverlaySettingsPage.FloatingOverlay
                                 },
                                 onOpenQuickTextGestureSettings = {
                                     overlaySettingsPage = OverlaySettingsPage.QuickTextGestures
@@ -2590,6 +2632,12 @@ fun AppScaffold(viewModel: MainViewModel) {
                                 },
                                 onOpenLockScreenSettings = {
                                     overlaySettingsPage = OverlaySettingsPage.LockScreen
+                                },
+                                onOpenVolumeHotkeySettings = {
+                                    overlaySettingsPage = OverlaySettingsPage.VolumeHotkeys
+                                },
+                                onOpenLanCastSettings = {
+                                    overlaySettingsPage = OverlaySettingsPage.LanCast
                                 }
                             )
                         }
@@ -2632,7 +2680,6 @@ fun AppScaffold(viewModel: MainViewModel) {
                         forceLandscapeLayout = forceLandscapeContentLayout,
                         ultraSmallAdaptiveWindow = ultraSmallAdaptiveWindow
                     )
-                    pageVoicePack -> VoicePackScreen(viewModel, state)
                     pageDrawing -> AnimatedContent(
                         targetState = drawingPaletteEditorOpen,
                         transitionSpec = {
