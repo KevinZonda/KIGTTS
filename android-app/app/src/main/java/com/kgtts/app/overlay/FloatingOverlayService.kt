@@ -305,7 +305,7 @@ open class FloatingOverlayService : Service() {
     private var panelStatusTextView: TextView? = null
     private var panelStatusLogoView: ImageView? = null
     private var panelStatusPrimaryView: FrameLayout? = null
-    private var panelStatusStopView: TextView? = null
+    private var panelStatusStopView: LinearLayout? = null
     private var panelStatusMicContainer: LinearLayout? = null
     private var panelStatusEqContainer: LinearLayout? = null
     private var panelStatusMicSpacerView: View? = null
@@ -345,7 +345,7 @@ open class FloatingOverlayService : Service() {
     private var miniStatusTextView: TextView? = null
     private var miniStatusLogoView: ImageView? = null
     private var miniStatusPrimaryView: FrameLayout? = null
-    private var miniStatusStopView: TextView? = null
+    private var miniStatusStopView: LinearLayout? = null
     private var miniStatusMicContainer: LinearLayout? = null
     private var miniStatusEqContainer: LinearLayout? = null
     private var miniStatusMicSpacerView: View? = null
@@ -1682,6 +1682,9 @@ open class FloatingOverlayService : Service() {
             (params.y + fabExpandedVerticalPaddingPx())
                 .coerceIn(0, max(0, displayHeight() - buttonSize))
         runCatching { windowManager.updateViewLayout(proxy, proxyParams) }
+        if (overlaySoundboardStopCardTargetVisible) {
+            scheduleOverlaySoundboardStopCardPosition()
+        }
     }
 
     private fun healFabInteractionState(reason: String) {
@@ -2580,6 +2583,7 @@ open class FloatingOverlayService : Service() {
         updateOverlayWindowFlags(panelRoot, panelParams)
         updateOverlayWindowFlags(panelPickerOverlay, panelPickerParams, notFocusable = false)
         updateOverlayWindowFlags(miniRoot, miniParams)
+        updateOverlayWindowFlags(overlaySoundboardStopCardView, overlaySoundboardStopCardParams)
         updateOverlayWindowFlags(confirmOverlay, confirmParams, notTouchable = true)
     }
 
@@ -3537,7 +3541,7 @@ open class FloatingOverlayService : Service() {
             alpha = 1f
             visibility = View.VISIBLE
         }
-        panelStatusStopView = symbolTextView("stop_circle", 26f, overlayOnSurfaceColor()).apply {
+        panelStatusStopView = createSoundboardStopActionView().apply {
             contentDescription = "停止当前音效"
             alpha = 0f
             visibility = View.INVISIBLE
@@ -3612,7 +3616,7 @@ open class FloatingOverlayService : Service() {
                     addView(
                         panelStatusPrimaryView,
                         FrameLayout.LayoutParams(
-                            dp(120),
+                            ViewGroup.LayoutParams.MATCH_PARENT,
                             ViewGroup.LayoutParams.WRAP_CONTENT,
                             Gravity.CENTER_VERTICAL or Gravity.START
                         )
@@ -4110,7 +4114,7 @@ open class FloatingOverlayService : Service() {
             alpha = 1f
             visibility = View.VISIBLE
         }
-        miniStatusStopView = symbolTextView("stop_circle", 26f, overlayOnSurfaceColor()).apply {
+        miniStatusStopView = createSoundboardStopActionView().apply {
             contentDescription = "停止当前音效"
             alpha = 0f
             visibility = View.INVISIBLE
@@ -4182,7 +4186,7 @@ open class FloatingOverlayService : Service() {
                     addView(
                         miniStatusPrimaryView,
                         FrameLayout.LayoutParams(
-                            dp(120),
+                            ViewGroup.LayoutParams.MATCH_PARENT,
                             ViewGroup.LayoutParams.WRAP_CONTENT,
                             Gravity.CENTER_VERTICAL or Gravity.START
                         )
@@ -5266,7 +5270,7 @@ open class FloatingOverlayService : Service() {
                 stopAllSoundboardAudio()
             }
             addView(
-                symbolTextView("stop_circle", 26f, overlayOnSurfaceColor()),
+                createSoundboardStopActionView(iconSp = 24f, textSp = 15f),
                 FrameLayout.LayoutParams(
                     ViewGroup.LayoutParams.WRAP_CONTENT,
                     ViewGroup.LayoutParams.WRAP_CONTENT,
@@ -5275,7 +5279,7 @@ open class FloatingOverlayService : Service() {
             )
         }
         overlaySoundboardStopCardParams = WindowManager.LayoutParams(
-            dp(52),
+            dp(164),
             dp(52),
             overlayWindowType(),
             overlayWindowFlags(),
@@ -5375,7 +5379,14 @@ open class FloatingOverlayService : Service() {
             gravity = Gravity.TOP or Gravity.START
         }
         windowManager.addView(confirmOverlay, confirmParams)
-        overlayFontApplier.applyTo(fabRoot, panelRoot, panelPickerOverlay, miniRoot, confirmOverlay)
+        overlayFontApplier.applyTo(
+            fabRoot,
+            panelRoot,
+            panelPickerOverlay,
+            miniRoot,
+            overlaySoundboardStopCardView,
+            confirmOverlay
+        )
         refreshQuickSubtitleUi()
         refreshOverlaySoundboardStopUi(animate = false)
         updateFabUi()
@@ -5832,40 +5843,17 @@ open class FloatingOverlayService : Service() {
     }
 
     private fun showTopStatusLogo() {
-        refreshTopStatusPrimaryActionUi(animate = false)
         val shouldAnimate = topStatusShowingText
-        crossfadeTopStatusViews(
-            incoming = panelStatusPrimaryView,
-            outgoing = panelStatusTextView,
-            outgoingEndVisibility = View.INVISIBLE,
-            animate = shouldAnimate
-        )
-        crossfadeTopStatusViews(
-            incoming = miniStatusPrimaryView,
-            outgoing = miniStatusTextView,
-            outgoingEndVisibility = View.INVISIBLE,
-            animate = shouldAnimate
-        )
         topStatusShowingText = false
+        refreshTopStatusPrimaryActionUi(animate = shouldAnimate)
     }
 
     private fun showTopStatusText(text: String) {
         panelStatusTextView?.text = text
         miniStatusTextView?.text = text
         val shouldAnimate = !topStatusShowingText
-        crossfadeTopStatusViews(
-            incoming = panelStatusTextView,
-            outgoing = panelStatusPrimaryView,
-            outgoingEndVisibility = View.GONE,
-            animate = shouldAnimate
-        )
-        crossfadeTopStatusViews(
-            incoming = miniStatusTextView,
-            outgoing = miniStatusPrimaryView,
-            outgoingEndVisibility = View.GONE,
-            animate = shouldAnimate
-        )
         topStatusShowingText = true
+        refreshTopStatusPrimaryActionUi(animate = shouldAnimate)
     }
 
     private fun refreshTopStatusPrimaryActionUi(animate: Boolean = true) {
@@ -5880,6 +5868,19 @@ open class FloatingOverlayService : Service() {
             incoming = if (playing) miniStatusStopView else miniStatusLogoView,
             outgoing = if (playing) miniStatusLogoView else miniStatusStopView,
             outgoingEndVisibility = View.INVISIBLE,
+            animate = animate
+        )
+        val showStatusText = topStatusShowingText && !playing
+        crossfadeTopStatusViews(
+            incoming = if (showStatusText) panelStatusTextView else panelStatusPrimaryView,
+            outgoing = if (showStatusText) panelStatusPrimaryView else panelStatusTextView,
+            outgoingEndVisibility = if (showStatusText) View.GONE else View.INVISIBLE,
+            animate = animate
+        )
+        crossfadeTopStatusViews(
+            incoming = if (showStatusText) miniStatusTextView else miniStatusPrimaryView,
+            outgoing = if (showStatusText) miniStatusPrimaryView else miniStatusTextView,
+            outgoingEndVisibility = if (showStatusText) View.GONE else View.INVISIBLE,
             animate = animate
         )
         val description = if (playing) "停止当前音效" else "打开 KIGTTS"
@@ -6756,7 +6757,11 @@ open class FloatingOverlayService : Service() {
         refreshTopStatusPrimaryActionUi(animate)
         refreshMiniSoundboardStopCardUi(animate)
         val card = overlaySoundboardStopCardView ?: return
-        val shouldShow = isSoundboardPlaying() && (panelVisible || miniVisible)
+        val shouldShow =
+            isSoundboardPlaying() &&
+                supportsCollapsedFabState() &&
+                !panelVisible &&
+                !miniVisible
         if (overlaySoundboardStopCardTargetVisible == shouldShow &&
             ((shouldShow && card.visibility == View.VISIBLE) ||
                 (!shouldShow && card.visibility != View.VISIBLE))
@@ -6815,35 +6820,26 @@ open class FloatingOverlayService : Service() {
         if (!overlaySoundboardStopCardTargetVisible) return
         val card = overlaySoundboardStopCardView ?: return
         val params = overlaySoundboardStopCardParams ?: return
-        val activeContent = when {
-            listeningOverlayHostedByPanel && panelVisible -> panelContent
-            !listeningOverlayHostedByPanel && miniVisible -> miniContent
-            panelVisible -> panelContent
-            miniVisible -> miniContent
-            else -> null
-        } ?: return
-        if (!activeContent.isAttachedToWindow || activeContent.width <= 0 || activeContent.height <= 0) {
-            activeContent.post { updateOverlaySoundboardStopCardPosition() }
+        val collapsedFab = fabButton ?: fabButtonHost ?: fabRoot ?: return
+        if (!collapsedFab.isAttachedToWindow || collapsedFab.width <= 0 || collapsedFab.height <= 0) {
+            collapsedFab.post { updateOverlaySoundboardStopCardPosition() }
             return
         }
-        val groupBounds = transformedScreenBounds(activeContent)
-        val listeningCard = listeningOverlayCardView
-        if (listeningCard?.visibility == View.VISIBLE && listeningCard.isAttachedToWindow) {
-            groupBounds.union(transformedScreenBounds(listeningCard))
-        }
+        val fabBounds = transformedScreenBounds(collapsedFab)
         val safeBounds = overlaySafeBounds()
-        val cardSize = dp(52)
+        val cardWidth = params.width.takeIf { it > 0 } ?: dp(164)
+        val cardHeight = params.height.takeIf { it > 0 } ?: dp(52)
         val gap = dp(10)
         val dockEdge = fabParams?.let(::resolveCurrentFabDockEdge) ?: FAB_EDGE_RIGHT
         val preferredX = if (dockEdge == FAB_EDGE_RIGHT) {
-            groupBounds.left - cardSize - gap
+            fabBounds.left - cardWidth - gap
         } else {
-            groupBounds.right + gap
+            fabBounds.right + gap
         }
-        val maxX = (safeBounds.right - cardSize).coerceAtLeast(safeBounds.left)
-        val maxY = (safeBounds.bottom - cardSize).coerceAtLeast(safeBounds.top)
+        val maxX = (safeBounds.right - cardWidth).coerceAtLeast(safeBounds.left)
+        val maxY = (safeBounds.bottom - cardHeight).coerceAtLeast(safeBounds.top)
         params.x = preferredX.coerceIn(safeBounds.left, maxX)
-        params.y = (groupBounds.centerY() - cardSize / 2).coerceIn(safeBounds.top, maxY)
+        params.y = (fabBounds.centerY() - cardHeight / 2).coerceIn(safeBounds.top, maxY)
         runCatching { windowManager.updateViewLayout(card, params) }
     }
 
@@ -14921,6 +14917,28 @@ open class FloatingOverlayService : Service() {
                 fontFeatureSettings = "liga"
             }
             includeFontPadding = false
+        }
+
+    private fun createSoundboardStopActionView(
+        iconSp: Float = 24f,
+        textSp: Float = 16f
+    ): LinearLayout =
+        LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            addView(symbolTextView("stop_circle", iconSp, overlayOnSurfaceColor()))
+            addView(spaceView(dp(8), 1))
+            addView(
+                TextView(this@FloatingOverlayService).apply {
+                    text = "停止当前音效"
+                    setTextColor(overlayOnSurfaceColor())
+                    setTextSize(TypedValue.COMPLEX_UNIT_SP, textSp)
+                    typeface = Typeface.DEFAULT_BOLD
+                    includeFontPadding = false
+                    maxLines = 1
+                    ellipsize = TextUtils.TruncateAt.END
+                }
+            )
         }
 
     private fun TextView.setSymbolTextSize(sp: Float) {
