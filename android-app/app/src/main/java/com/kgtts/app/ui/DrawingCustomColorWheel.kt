@@ -2,17 +2,13 @@ package com.lhtstudio.kigtts.app.ui
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.MaterialTheme
 import androidx.compose.material.Surface
-import androidx.compose.material.ripple.rememberRipple
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -40,45 +36,45 @@ internal fun DrawingCustomColorWheel(
     onClick: () -> Unit
 ) {
     val borderColor = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
-    val hapticOnClick = rememberKigttsHapticClick(onClick)
-    Surface(
+    KigttsIconButton(
+        onClick = onClick,
+        tooltip = "自定义颜色",
         modifier = Modifier
             .size(22.dp)
             .semantics { contentDescription = "自定义颜色" }
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = rememberRipple(bounded = true),
-                onClick = hapticOnClick
-            ),
-        shape = CircleShape,
-        color = Color.Transparent,
-        border = BorderStroke(1.5.dp, borderColor)
     ) {
-        Canvas(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(2.5.dp)
+        Surface(
+            modifier = Modifier.fillMaxSize(),
+            shape = CircleShape,
+            color = Color.Transparent,
+            border = BorderStroke(1.5.dp, borderColor)
         ) {
-            val strokeWidth = size.minDimension * 0.14f
-            val arcInset = strokeWidth / 2f
-            val arcSize = Size(size.width - strokeWidth, size.height - strokeWidth)
-            val segment = 360f / DrawingColorWheelColors.size
-            val overlap = 0.75f
-            DrawingColorWheelColors.forEachIndexed { index, segmentColor ->
-                drawArc(
-                    color = segmentColor,
-                    startAngle = -90f + segment * index - overlap / 2f,
-                    sweepAngle = segment + overlap,
-                    useCenter = false,
-                    topLeft = Offset(arcInset, arcInset),
-                    size = arcSize,
-                    style = Stroke(width = strokeWidth, cap = StrokeCap.Butt)
+            Canvas(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(2.5.dp)
+            ) {
+                val strokeWidth = size.minDimension * 0.14f
+                val arcInset = strokeWidth / 2f
+                val arcSize = Size(size.width - strokeWidth, size.height - strokeWidth)
+                val segment = 360f / DrawingColorWheelColors.size
+                val overlap = 0.75f
+                DrawingColorWheelColors.forEachIndexed { index, segmentColor ->
+                    drawArc(
+                        color = segmentColor,
+                        startAngle = -90f + segment * index - overlap / 2f,
+                        sweepAngle = segment + overlap,
+                        useCenter = false,
+                        topLeft = Offset(arcInset, arcInset),
+                        size = arcSize,
+                        style = Stroke(width = strokeWidth, cap = StrokeCap.Butt)
+                    )
+                }
+                drawCircle(
+                    color = color,
+                    radius = size.minDimension * 0.21f
                 )
             }
-            drawCircle(
-                color = color,
-                radius = size.minDimension * 0.21f
-            )
         }
     }
 }

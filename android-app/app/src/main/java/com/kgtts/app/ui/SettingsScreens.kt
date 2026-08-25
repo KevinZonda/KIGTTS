@@ -367,6 +367,7 @@ internal fun SettingsNavHost(
     onOpenKokoroVoiceSettings: () -> Unit
 ) {
     fun isSettingsSubPage(route: String?): Boolean = route != null && route != SettingsRoutes.Main
+    val scrollPositionStore = rememberSettingsScrollPositionStore()
     NavHost(
         navController = navController,
         startDestination = SettingsRoutes.Main,
@@ -429,6 +430,7 @@ internal fun SettingsNavHost(
                 viewModel = viewModel,
                 state = state,
                 detailPage = null,
+                scrollPositionStore = scrollPositionStore,
                 onOpenDetail = { page ->
                     navController.navigate(SettingsRoutes.detail(page)) { launchSingleTop = true }
                 },
@@ -471,6 +473,7 @@ internal fun SettingsNavHost(
                 viewModel = viewModel,
                 state = state,
                 detailPage = detailPage,
+                scrollPositionStore = scrollPositionStore,
                 onOpenDetail = { page ->
                     navController.navigate(SettingsRoutes.detail(page)) { launchSingleTop = true }
                 },
@@ -541,6 +544,7 @@ internal fun SettingsScreen(
     viewModel: MainViewModel,
     state: UiState,
     detailPage: SettingsDetailPage?,
+    scrollPositionStore: SettingsScrollPositionStore,
     onOpenDetail: (SettingsDetailPage) -> Unit,
     onOpenFonts: () -> Unit,
     onOpenVoicePacks: () -> Unit,
@@ -559,7 +563,6 @@ internal fun SettingsScreen(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val scroll = rememberScrollState()
     var speakerEnrollPermissionPurposeOpen by remember { mutableStateOf(false) }
     var pendingSpeakerEnrollPermissionStep by remember { mutableIntStateOf(0) }
     val drawerModeOptions = listOf(
@@ -768,11 +771,22 @@ internal fun SettingsScreen(
     }
     val selectedCategoryName = viewModel.settingsSelectedCategoryName
     val selectedCategory = remember(selectedCategoryName) { SettingsCategory.valueOf(selectedCategoryName) }
+    val scrollPositionKey = settingsScrollPositionKey(detailPage, selectedCategory)
+    val scroll = remember(scrollPositionKey) {
+        ScrollState(scrollPositionStore.positionFor(scrollPositionKey))
+    }
     val isSystemTtsSelected = isSystemTtsVoiceDir(state.voiceDir)
     val isKokoroTtsSelected = isKokoroVoiceDir(state.voiceDir)
 
-    LaunchedEffect(selectedCategory) {
-        scroll.animateScrollTo(0)
+    LaunchedEffect(scrollPositionKey, scroll) {
+        snapshotFlow { scroll.value }.collect { position ->
+            scrollPositionStore.update(scrollPositionKey, position)
+        }
+    }
+    DisposableEffect(scrollPositionKey, scroll) {
+        onDispose {
+            scrollPositionStore.update(scrollPositionKey, scroll.value)
+        }
     }
 
     LaunchedEffect(state.sileroVadThreshold, sileroVadThresholdDragging) {

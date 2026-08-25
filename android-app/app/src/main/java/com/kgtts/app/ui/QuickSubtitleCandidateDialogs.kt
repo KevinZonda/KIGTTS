@@ -13,9 +13,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.MaterialTheme
 import androidx.compose.material.Surface
 import androidx.compose.material.Text
@@ -162,46 +160,38 @@ internal fun QuickSubtitleCandidateMoveDialog(
 ) {
     val targetGroups = groups.filterNot { it.id == target.groupId }
     val performKeyHaptic = rememberKigttsKeyHaptic()
-    KigttsAlertDialog(
+    Md2ScrollableDialog(
         onDismissRequest = onDismissRequest,
         title = { Text("移动到分组") },
-        text = {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(max = 320.dp)
-                    .verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                targetGroups.forEach { group ->
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(UiTokens.Radius))
-                            .clickable {
-                                performKeyHaptic()
-                                onMove(group.id)
-                            }
-                            .padding(horizontal = 12.dp, vertical = 12.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        MsIcon(group.icon, contentDescription = null)
-                        Text(
-                            text = group.title.ifBlank { "未命名分组" },
-                            modifier = Modifier.weight(1f)
-                        )
-                    }
-                }
-            }
-        },
         confirmButton = {},
         dismissButton = {
             Md2TextButton(onClick = onDismissRequest) {
                 Text("取消")
             }
+        },
+        contentSpacing = 4.dp
+    ) {
+        targetGroups.forEach { group ->
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(UiTokens.Radius))
+                    .clickable {
+                        performKeyHaptic()
+                        onMove(group.id)
+                    }
+                    .padding(horizontal = 12.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                MsIcon(group.icon, contentDescription = null)
+                Text(
+                    text = group.title.ifBlank { "未命名分组" },
+                    modifier = Modifier.weight(1f)
+                )
+            }
         }
-    )
+    }
 }
 
 @Composable

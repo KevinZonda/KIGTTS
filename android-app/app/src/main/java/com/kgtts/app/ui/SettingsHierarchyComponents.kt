@@ -199,13 +199,16 @@ internal fun SettingsConnectedEntryAndExpandableCard(
 ) {
     Card(
         modifier = modifier
-            .fillMaxWidth()
-            .animateContentSize(),
+            .fillMaxWidth(),
         shape = RoundedCornerShape(UiTokens.Radius),
         backgroundColor = md2CardContainerColor(),
         elevation = UiTokens.CardElevation
     ) {
-        Column(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .animateContentSize()
+        ) {
             SettingsEntryRow(entry = entry)
             Divider(color = MaterialTheme.colors.onSurface.copy(alpha = 0.14f))
             Row(
@@ -228,13 +231,12 @@ internal fun SettingsConnectedEntryAndExpandableCard(
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = expandedTitle,
-                        style = MaterialTheme.typography.body1,
-                        fontWeight = FontWeight.Medium
+                        style = MaterialTheme.typography.bodyLarge
                     )
                     Spacer(Modifier.height(2.dp))
                     Text(
                         text = expandedSummary,
-                        style = MaterialTheme.typography.body2,
+                        style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colors.onSurface.copy(alpha = 0.68f)
                     )
                 }
@@ -280,13 +282,12 @@ private fun SettingsEntryRow(entry: SettingsEntrySpec) {
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = entry.title,
-                style = MaterialTheme.typography.body1,
-                fontWeight = FontWeight.Medium
+                style = MaterialTheme.typography.bodyLarge
             )
             Spacer(Modifier.height(2.dp))
             Text(
                 text = entry.summary,
-                style = MaterialTheme.typography.body2,
+                style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colors.onSurface.copy(alpha = 0.68f)
             )
         }

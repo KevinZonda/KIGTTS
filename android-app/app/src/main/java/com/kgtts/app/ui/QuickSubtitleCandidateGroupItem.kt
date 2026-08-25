@@ -19,7 +19,6 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.Card
-import androidx.compose.material.IconButton
 import androidx.compose.material.MaterialTheme
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
@@ -135,7 +134,6 @@ private fun QuickSubtitleCandidateGroupActionMenu(
     onDismissRequest: () -> Unit,
     onEdit: () -> Unit
 ) {
-    val performKeyHaptic = rememberKigttsKeyHaptic()
     var rendered by remember { mutableStateOf(expanded) }
     val positionProvider = rememberQuickSubtitleGroupTopEndPopupPositionProvider(2.dp)
     val alpha by animateFloatAsState(
@@ -173,12 +171,10 @@ private fun QuickSubtitleCandidateGroupActionMenu(
             backgroundColor = md2CardContainerColor(),
             elevation = UiTokens.MenuElevation
         ) {
-            IconButton(
-                onClick = {
-                    performKeyHaptic()
-                    onEdit()
-                },
-                modifier = Modifier.size(52.dp)
+            KigttsIconButton(
+                onClick = onEdit,
+                modifier = Modifier.size(52.dp),
+                tooltip = "编辑分组"
             ) {
                 MsIcon("edit", contentDescription = "编辑分组")
             }

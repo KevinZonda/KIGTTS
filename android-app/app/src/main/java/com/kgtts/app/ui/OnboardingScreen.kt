@@ -43,7 +43,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.Card
 import androidx.compose.material.Checkbox
 import androidx.compose.material.Divider
-import androidx.compose.material.IconButton
 import androidx.compose.material.MaterialTheme
 import androidx.compose.material.Surface
 import androidx.compose.material.Text
@@ -685,8 +684,9 @@ private fun OnboardingLegalDialog(
         ) {
             Box(Modifier.fillMaxSize()) {
                 LegalDocumentScreen(assetPath = assetPath)
-                IconButton(
+                KigttsIconButton(
                     onClick = onDismiss,
+                    tooltip = closeDescription,
                     modifier = Modifier
                         .align(Alignment.TopEnd)
                         .statusBarsPadding()

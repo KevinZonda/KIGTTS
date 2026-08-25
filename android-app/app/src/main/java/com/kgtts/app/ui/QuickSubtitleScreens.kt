@@ -1048,22 +1048,42 @@ internal fun QuickSubtitleListDialog(
         ) {
             val horizontalMargin = if (isLandscape) 26.dp else 16.dp
             val verticalMargin = if (isLandscape) 18.dp else 26.dp
-            val popupWidth = (maxWidth - horizontalMargin * 2)
-                .coerceAtMost(if (isLandscape) 760.dp else 520.dp)
-            val popupHeight = (maxHeight - verticalMargin * 2)
-                .coerceAtMost(if (isLandscape) 360.dp else 560.dp)
-            val popupPlacement = with(LocalDensity.current) {
-                QuickSubtitleCandidatePopupPosition.resolve(
-                    tablet = tablet,
-                    landscape = isLandscape,
-                    windowWidth = constraints.maxWidth,
-                    windowHeight = constraints.maxHeight,
-                    popupWidth = popupWidth.roundToPx(),
-                    popupHeight = popupHeight.roundToPx(),
-                    edgeMargin = horizontalMargin.roundToPx(),
-                    anchor = candidateAnchor
-                )
-            }
+            val density = LocalDensity.current
+            val layoutDirection = LocalLayoutDirection.current
+            val safeDrawingInsets = WindowInsets.safeDrawing
+            val safeLeft = safeDrawingInsets.getLeft(density, layoutDirection)
+            val safeTop = safeDrawingInsets.getTop(density)
+            val safeRight = safeDrawingInsets.getRight(density, layoutDirection)
+            val safeBottom = safeDrawingInsets.getBottom(density)
+            val horizontalMarginPx = with(density) { horizontalMargin.roundToPx() }
+            val verticalMarginPx = with(density) { verticalMargin.roundToPx() }
+            val popupWidthPx = minOf(
+                with(density) { (if (isLandscape) 760.dp else 520.dp).roundToPx() },
+                (constraints.maxWidth - safeLeft - safeRight - horizontalMarginPx * 2)
+                    .coerceAtLeast(1)
+            )
+            val popupHeightPx = minOf(
+                with(density) { (if (isLandscape) 360.dp else 560.dp).roundToPx() },
+                (constraints.maxHeight - safeTop - safeBottom - verticalMarginPx * 2)
+                    .coerceAtLeast(1)
+            )
+            val popupWidth = with(density) { popupWidthPx.toDp() }
+            val popupHeight = with(density) { popupHeightPx.toDp() }
+            val popupPlacement = QuickSubtitleCandidatePopupPosition.resolve(
+                tablet = tablet,
+                landscape = isLandscape,
+                windowWidth = constraints.maxWidth,
+                windowHeight = constraints.maxHeight,
+                popupWidth = popupWidthPx,
+                popupHeight = popupHeightPx,
+                edgeMargin = horizontalMarginPx,
+                anchor = candidateAnchor,
+                safeLeft = safeLeft,
+                safeTop = safeTop,
+                safeRight = safeRight,
+                safeBottom = safeBottom,
+                verticalEdgeMargin = verticalMarginPx
+            )
             Box(
                 modifier = Modifier
                     .offset { IntOffset(popupPlacement.left, popupPlacement.top) }
@@ -5258,55 +5278,48 @@ internal fun QuickSubtitleEditorScreen(
     }
 
     if (showBatchMoveDialog) {
-        KigttsAlertDialog(
+        Md2ScrollableDialog(
             onDismissRequest = { showBatchMoveDialog = false },
             title = { Text("移动快捷文本") },
-            text = {
-                LazyColumn(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(max = 320.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    item { Text("选择目标分组") }
-                    itemsIndexed(groups) { idx, group ->
-                        if (idx != selectedGroupIndex) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clip(RoundedCornerShape(UiTokens.Radius))
-                                    .clickable {
-                                        val moved = viewModel.moveQuickSubtitleItemsToGroup(
-                                            selectedGroupIndex,
-                                            selectedItemIndexes,
-                                            idx
-                                        )
-                                        showBatchMoveDialog = false
-                                        clearBatchSelection()
-                                        if (moved > 0) toast(context, "已移动 $moved 条快捷文本")
-                                    }
-                                    .padding(horizontal = 8.dp, vertical = 10.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                MsIcon(group.icon, contentDescription = group.title)
-                                Text(
-                                    text = group.title.ifBlank { "未命名分组" },
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            }
-                        }
-                    }
-                }
-            },
             confirmButton = {},
             dismissButton = {
                 Md2TextButton(onClick = { showBatchMoveDialog = false }) {
                     Text("取消")
                 }
+            },
+            contentSpacing = 4.dp
+        ) {
+            Text("选择目标分组")
+            groups.forEachIndexed { idx, group ->
+                if (idx != selectedGroupIndex) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(UiTokens.Radius))
+                            .clickable {
+                                val moved = viewModel.moveQuickSubtitleItemsToGroup(
+                                    selectedGroupIndex,
+                                    selectedItemIndexes,
+                                    idx
+                                )
+                                showBatchMoveDialog = false
+                                clearBatchSelection()
+                                if (moved > 0) toast(context, "已移动 $moved 条快捷文本")
+                            }
+                            .padding(horizontal = 8.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        MsIcon(group.icon, contentDescription = group.title)
+                        Text(
+                            text = group.title.ifBlank { "未命名分组" },
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
             }
-        )
+        }
     }
 }
 
