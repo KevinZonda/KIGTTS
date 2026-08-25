@@ -17,7 +17,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.Card
 import androidx.compose.material.Divider
-import androidx.compose.material.IconButton
 import androidx.compose.material.MaterialTheme
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
@@ -156,7 +155,6 @@ private fun QuickSubtitleCandidateActionMenu(
     onMove: () -> Unit,
     onDelete: () -> Unit
 ) {
-    val performKeyHaptic = rememberKigttsKeyHaptic()
     var rendered by remember { mutableStateOf(expanded) }
     val positionProvider = rememberCandidateTopEndPopupPositionProvider(verticalMargin = 2.dp)
     val alpha by animateFloatAsState(
@@ -195,32 +193,26 @@ private fun QuickSubtitleCandidateActionMenu(
             elevation = UiTokens.MenuElevation
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(
-                    onClick = {
-                        performKeyHaptic()
-                        onEdit()
-                    },
-                    modifier = Modifier.size(52.dp)
+                KigttsIconButton(
+                    onClick = onEdit,
+                    modifier = Modifier.size(52.dp),
+                    tooltip = "编辑快捷文本"
                 ) {
                     MsIcon("edit", contentDescription = "编辑快捷文本")
                 }
-                IconButton(
-                    onClick = {
-                        performKeyHaptic()
-                        onMove()
-                    },
+                KigttsIconButton(
+                    onClick = onMove,
                     enabled = canMoveToGroup,
-                    modifier = Modifier.size(52.dp)
+                    modifier = Modifier.size(52.dp),
+                    tooltip = "移动到其它分组"
                 ) {
                     MsIcon("drive_file_move", contentDescription = "移动到其它分组")
                 }
-                IconButton(
-                    onClick = {
-                        performKeyHaptic()
-                        onDelete()
-                    },
+                KigttsIconButton(
+                    onClick = onDelete,
                     enabled = canDelete,
-                    modifier = Modifier.size(52.dp)
+                    modifier = Modifier.size(52.dp),
+                    tooltip = "删除快捷文本"
                 ) {
                     MsIcon("delete", contentDescription = "删除快捷文本")
                 }

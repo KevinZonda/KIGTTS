@@ -440,40 +440,9 @@ internal fun PresetGroupExportDialog(
     onConfirm: (Set<Long>) -> Unit
 ) {
     var selectedIds by remember(groups) { mutableStateOf(groups.map { it.first }.toSet()) }
-    KigttsAlertDialog(
+    Md2ScrollableDialog(
         onDismissRequest = onDismiss,
         title = { Text(title) },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(prompt)
-                LazyColumn(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(max = 320.dp)
-                ) {
-                    items(groups, key = { it.first }) { (id, name) ->
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(UiTokens.Radius))
-                                .clickable {
-                                    selectedIds = if (id in selectedIds) selectedIds - id else selectedIds + id
-                                }
-                                .padding(horizontal = 4.dp, vertical = 6.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Checkbox(
-                                checked = id in selectedIds,
-                                onCheckedChange = {
-                                    selectedIds = if (id in selectedIds) selectedIds - id else selectedIds + id
-                                }
-                            )
-                            Text(name, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        }
-                    }
-                }
-            }
-        },
         confirmButton = {
             Md2TextButton(
                 onClick = { onConfirm(selectedIds) },
@@ -486,8 +455,31 @@ internal fun PresetGroupExportDialog(
             Md2TextButton(onClick = onDismiss) {
                 Text("取消")
             }
+        },
+        contentSpacing = 4.dp
+    ) {
+        Text(prompt)
+        groups.forEach { (id, name) ->
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(UiTokens.Radius))
+                    .clickable {
+                        selectedIds = if (id in selectedIds) selectedIds - id else selectedIds + id
+                    }
+                    .padding(horizontal = 4.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Checkbox(
+                    checked = id in selectedIds,
+                    onCheckedChange = {
+                        selectedIds = if (id in selectedIds) selectedIds - id else selectedIds + id
+                    }
+                )
+                Text(name, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
         }
-    )
+    }
 }
 
 @Composable
@@ -1889,55 +1881,48 @@ internal fun SoundboardEditorScreen(
     }
 
     if (showBatchMoveDialog) {
-        KigttsAlertDialog(
+        Md2ScrollableDialog(
             onDismissRequest = { showBatchMoveDialog = false },
             title = { Text("移动音效") },
-            text = {
-                LazyColumn(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(max = 320.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    item { Text("选择目标分组") }
-                    itemsIndexed(groups) { idx, group ->
-                        if (idx != selectedGroupIndex) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clip(RoundedCornerShape(UiTokens.Radius))
-                                    .clickable {
-                                        val moved = viewModel.moveSoundboardItemsToGroup(
-                                            selectedGroupIndex,
-                                            selectedItemIds,
-                                            idx
-                                        )
-                                        showBatchMoveDialog = false
-                                        clearBatchSelection()
-                                        if (moved > 0) toast(context, "已移动 $moved 个音效")
-                                    }
-                                    .padding(horizontal = 8.dp, vertical = 10.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                MsIcon(group.icon, contentDescription = group.title)
-                                Text(
-                                    text = group.title.ifBlank { "未命名分组" },
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            }
-                        }
-                    }
-                }
-            },
             confirmButton = {},
             dismissButton = {
                 Md2TextButton(onClick = { showBatchMoveDialog = false }) {
                     Text("取消")
                 }
+            },
+            contentSpacing = 4.dp
+        ) {
+            Text("选择目标分组")
+            groups.forEachIndexed { idx, group ->
+                if (idx != selectedGroupIndex) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(UiTokens.Radius))
+                            .clickable {
+                                val moved = viewModel.moveSoundboardItemsToGroup(
+                                    selectedGroupIndex,
+                                    selectedItemIds,
+                                    idx
+                                )
+                                showBatchMoveDialog = false
+                                clearBatchSelection()
+                                if (moved > 0) toast(context, "已移动 $moved 个音效")
+                            }
+                            .padding(horizontal = 8.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        MsIcon(group.icon, contentDescription = group.title)
+                        Text(
+                            text = group.title.ifBlank { "未命名分组" },
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
             }
-        )
+        }
     }
 }
 

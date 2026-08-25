@@ -14,7 +14,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.material.IconButton
 import androidx.compose.material.Icon
 import androidx.compose.material.LocalContentColor
 import androidx.compose.material.MaterialTheme
@@ -95,10 +94,10 @@ internal fun LedSubtitleEntryButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val hapticOnClick = rememberKigttsHapticClick(onClick)
-    IconButton(
-        onClick = hapticOnClick,
-        modifier = modifier.size(36.dp)
+    KigttsIconButton(
+        onClick = onClick,
+        modifier = modifier.size(36.dp),
+        tooltip = "LED 字幕"
     ) {
         Icon(
             imageVector = LedSubtitleEntryImageVector,
@@ -121,6 +120,7 @@ internal fun LedOverlayIconButton(
     KigttsIconButton(
         onClick = onClick,
         enabled = enabled,
+        tooltip = description,
         modifier = modifier
             .size(48.dp)
             .graphicsLayer { this.alpha = alpha }

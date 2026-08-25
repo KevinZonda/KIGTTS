@@ -774,17 +774,16 @@ internal fun KigttsIconButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
+    tooltip: String? = null,
+    onLongClick: (() -> Unit)? = null,
     content: @Composable () -> Unit
 ) {
-    val performHaptic = rememberKigttsKeyHaptic()
-    val currentOnClick by rememberUpdatedState(onClick)
-    IconButton(
-        onClick = {
-            performHaptic()
-            currentOnClick()
-        },
+    KigttsTooltipIconButton(
+        onClick = onClick,
         modifier = modifier,
         enabled = enabled,
+        tooltip = tooltip,
+        onLongClick = onLongClick,
         content = content
     )
 }
@@ -821,6 +820,7 @@ internal fun MsIcon(
     tint: Color = LocalContentColor.current,
     iconSize: Dp = 24.dp
 ) {
+    RegisterKigttsTooltipLabel(contentDescription)
     val fontScaleBlockMode = LocalFontScaleBlockMode.current
     val iconTextSize = if (fontScaleBlockMode == UserPrefs.FONT_SCALE_BLOCK_NONE) {
         iconSize.value.sp

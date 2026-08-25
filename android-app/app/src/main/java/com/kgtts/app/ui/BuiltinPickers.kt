@@ -44,7 +44,6 @@ import androidx.compose.animation.core.tween
 import androidx.compose.material.DropdownMenuItem
 import androidx.compose.material.Card
 import androidx.compose.material.Checkbox
-import androidx.compose.material.IconButton
 import androidx.compose.material.MaterialTheme
 import androidx.compose.material.Button
 import androidx.compose.material.OutlinedButton
@@ -731,10 +730,11 @@ private fun BuiltinFlatIconButton(
     contentDescription: String,
     enabled: Boolean = true
 ) {
-    IconButton(
+    KigttsIconButton(
         onClick = onClick,
         enabled = enabled,
-        modifier = Modifier.size(36.dp)
+        modifier = Modifier.size(36.dp),
+        tooltip = contentDescription
     ) {
         BuiltinMsIcon(
             name = iconName,

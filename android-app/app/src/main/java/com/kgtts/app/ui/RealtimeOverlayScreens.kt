@@ -1623,7 +1623,6 @@ internal fun RunningStripTopBarToggle(
     onToggle: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val hapticToggle = rememberKigttsHapticClick(onToggle)
     val micIcon = when {
         pushToTalkMode && pushToTalkPressed -> "settings_voice"
         else -> "mic"
@@ -1632,35 +1631,49 @@ internal fun RunningStripTopBarToggle(
     Surface(
         modifier = Modifier
             .then(modifier)
-            .clip(RoundedCornerShape(4.dp))
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = rememberRipple(bounded = true),
-                onClick = hapticToggle
-            ),
+            .clip(RoundedCornerShape(4.dp)),
         shape = RoundedCornerShape(4.dp),
         color = Color.Transparent,
         elevation = 0.dp
     ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 2.dp, vertical = 2.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        KigttsIconButton(
+            onClick = onToggle,
+            tooltip = if (expanded) "收起音频设置菜单" else "展开音频设置菜单"
         ) {
-            if (recognitionResourceInstalled) {
+            Row(
+                modifier = Modifier.padding(horizontal = 2.dp, vertical = 2.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                if (recognitionResourceInstalled) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(2.dp)
+                    ) {
+                        Crossfade(
+                            targetState = micIcon,
+                            animationSpec = tween(durationMillis = 180),
+                            label = "running_strip_toggle_mic_icon"
+                        ) { icon ->
+                            MsIcon(icon, contentDescription = "麦克风音量", tint = contentColor)
+                        }
+                        LinearProgressIndicator(
+                            progress = micLevel.coerceIn(0f, 1f),
+                            modifier = Modifier
+                                .width(30.dp)
+                                .height(2.dp),
+                            color = contentColor,
+                            backgroundColor = contentColor.copy(alpha = 0.24f)
+                        )
+                    }
+                }
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(2.dp)
                 ) {
-                    Crossfade(
-                        targetState = micIcon,
-                        animationSpec = tween(durationMillis = 180),
-                        label = "running_strip_toggle_mic_icon"
-                    ) { icon ->
-                        MsIcon(icon, contentDescription = "麦克风音量", tint = contentColor)
-                    }
+                    MsIcon(audioIcon, contentDescription = "播放进度", tint = contentColor)
                     LinearProgressIndicator(
-                        progress = micLevel.coerceIn(0f, 1f),
+                        progress = playbackProgress.coerceIn(0f, 1f),
                         modifier = Modifier
                             .width(30.dp)
                             .height(2.dp),
@@ -1668,26 +1681,12 @@ internal fun RunningStripTopBarToggle(
                         backgroundColor = contentColor.copy(alpha = 0.24f)
                     )
                 }
-            }
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(2.dp)
-            ) {
-                MsIcon(audioIcon, contentDescription = "播放进度", tint = contentColor)
-                LinearProgressIndicator(
-                    progress = playbackProgress.coerceIn(0f, 1f),
-                    modifier = Modifier
-                        .width(30.dp)
-                        .height(2.dp),
-                    color = contentColor,
-                    backgroundColor = contentColor.copy(alpha = 0.24f)
+                MsIcon(
+                    name = if (expanded) "expand_less" else "expand_more",
+                    contentDescription = if (expanded) "收起状态条" else "展开状态条",
+                    tint = contentColor
                 )
             }
-            MsIcon(
-                name = if (expanded) "expand_less" else "expand_more",
-                contentDescription = if (expanded) "收起状态条" else "展开状态条",
-                tint = contentColor
-            )
         }
     }
 }

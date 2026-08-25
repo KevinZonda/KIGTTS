@@ -454,11 +454,11 @@ internal fun Md2IconButton(
     modifier: Modifier = Modifier,
     enabled: Boolean = true
 ) {
-    val hapticOnClick = rememberKigttsHapticClick(onClick)
-    IconButton(
-        onClick = hapticOnClick,
+    KigttsIconButton(
+        onClick = onClick,
         enabled = enabled,
-        modifier = modifier.size(36.dp)
+        modifier = modifier.size(36.dp),
+        tooltip = contentDescription
     ) {
         MsIcon(
             name = icon,
@@ -932,7 +932,7 @@ internal fun Md2ClearFieldButton(
     contentDescription: String = "清除",
     onClick: () -> Unit
 ) {
-    IconButton(onClick = onClick) {
+    KigttsIconButton(onClick = onClick, tooltip = contentDescription) {
         MsIcon("close", contentDescription = contentDescription)
     }
 }

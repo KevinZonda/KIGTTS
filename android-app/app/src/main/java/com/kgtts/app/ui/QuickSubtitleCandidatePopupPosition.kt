@@ -41,12 +41,31 @@ internal object QuickSubtitleCandidatePopupPosition {
         popupWidth: Int,
         popupHeight: Int,
         edgeMargin: Int,
-        anchor: QuickSubtitleCandidatePopupAnchor?
+        anchor: QuickSubtitleCandidatePopupAnchor?,
+        safeLeft: Int = 0,
+        safeTop: Int = 0,
+        safeRight: Int = 0,
+        safeBottom: Int = 0,
+        verticalEdgeMargin: Int = edgeMargin
     ): QuickSubtitleCandidatePopupPlacement {
+        val minimumLeft = safeLeft + edgeMargin
+        val minimumTop = safeTop + verticalEdgeMargin
+        val maximumRight = windowWidth - safeRight - edgeMargin
+        val maximumBottom = windowHeight - safeBottom - verticalEdgeMargin
         if (!tablet || anchor == null) {
             return QuickSubtitleCandidatePopupPlacement(
-                left = ((windowWidth - popupWidth) / 2).coerceAtLeast(edgeMargin),
-                top = ((windowHeight - popupHeight) / 2).coerceAtLeast(edgeMargin)
+                left = clampOrigin(
+                    requested = minimumLeft + (maximumRight - minimumLeft - popupWidth) / 2,
+                    extent = popupWidth,
+                    minimum = minimumLeft,
+                    maximumExclusive = maximumRight
+                ),
+                top = clampOrigin(
+                    requested = minimumTop + (maximumBottom - minimumTop - popupHeight) / 2,
+                    extent = popupHeight,
+                    minimum = minimumTop,
+                    maximumExclusive = maximumBottom
+                )
             )
         }
         val requestedLeft = if (landscape) {
@@ -60,19 +79,19 @@ internal object QuickSubtitleCandidatePopupPosition {
             anchor.panelBottom - popupHeight
         }
         return QuickSubtitleCandidatePopupPlacement(
-            left = clampOrigin(requestedLeft, popupWidth, windowWidth, edgeMargin),
-            top = clampOrigin(requestedTop, popupHeight, windowHeight, edgeMargin)
+            left = clampOrigin(requestedLeft, popupWidth, minimumLeft, maximumRight),
+            top = clampOrigin(requestedTop, popupHeight, minimumTop, maximumBottom)
         )
     }
 
     private fun clampOrigin(
         requested: Int,
         extent: Int,
-        available: Int,
-        margin: Int
+        minimum: Int,
+        maximumExclusive: Int
     ): Int {
-        val maximum = (available - extent - margin).coerceAtLeast(margin)
-        return requested.coerceIn(margin, maximum)
+        val maximum = (maximumExclusive - extent).coerceAtLeast(minimum)
+        return requested.coerceIn(minimum, maximum)
     }
 }
 

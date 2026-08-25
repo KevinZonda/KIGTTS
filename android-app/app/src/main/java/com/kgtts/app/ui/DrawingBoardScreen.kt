@@ -256,6 +256,7 @@ import com.lhtstudio.kigtts.app.data.SYSTEM_TTS_VOICE_NAME
 import com.lhtstudio.kigtts.app.data.VoicePackInfo
 import com.lhtstudio.kigtts.app.data.UserPrefs
 import com.lhtstudio.kigtts.app.data.VoicePackMeta
+import com.lhtstudio.kigtts.app.data.WindowsColorNamesZhCn
 import com.lhtstudio.kigtts.app.data.defaultSoundboardGroups
 import com.lhtstudio.kigtts.app.data.isKokoroVoiceDir
 import com.lhtstudio.kigtts.app.data.isSystemTtsVoiceDir
@@ -1160,17 +1161,16 @@ internal fun Md2ToolToggle(
     Surface(
         modifier = Modifier
             .size(36.dp)
-            .graphicsLayer { alpha = if (enabled) 1f else 0.38f }
-            .clickable(
-                enabled = enabled,
-                interactionSource = remember { MutableInteractionSource() },
-                indication = rememberRipple(bounded = true),
-                onClick = onClick
-            ),
+            .graphicsLayer { alpha = if (enabled) 1f else 0.38f },
         color = bg,
         shape = CircleShape
     ) {
-        Box(contentAlignment = Alignment.Center) {
+        KigttsIconButton(
+            onClick = onClick,
+            enabled = enabled,
+            tooltip = contentDescription,
+            modifier = Modifier.fillMaxSize()
+        ) {
             MsIcon(icon, contentDescription = contentDescription)
         }
     }
@@ -1183,18 +1183,19 @@ internal fun Md2ColorDot(
     onClick: () -> Unit
 ) {
     val borderColor = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
-    Surface(
-        modifier = Modifier
-            .size(22.dp)
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = rememberRipple(bounded = true),
-                onClick = onClick
-            ),
-        shape = CircleShape,
-        color = color,
-        border = BorderStroke(1.5.dp, borderColor)
-    ) {}
+    val colorName = WindowsColorNamesZhCn.displayName(color.toArgb())
+    KigttsIconButton(
+        onClick = onClick,
+        tooltip = "选择$colorName",
+        modifier = Modifier.size(22.dp)
+    ) {
+        Surface(
+            modifier = Modifier.fillMaxSize(),
+            shape = CircleShape,
+            color = color,
+            border = BorderStroke(1.5.dp, borderColor)
+        ) {}
+    }
 }
 
 @Composable

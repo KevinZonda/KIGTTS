@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.Card
-import androidx.compose.material.IconButton
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -45,7 +44,6 @@ internal fun SoundboardItemActionMenu(
     onEdit: () -> Unit,
     onDelete: () -> Unit
 ) {
-    val performKeyHaptic = rememberKigttsKeyHaptic()
     var rendered by remember { mutableStateOf(expanded) }
     val positionProvider = rememberSoundboardTopEndPopupPositionProvider(2.dp)
     val alpha by animateFloatAsState(
@@ -87,21 +85,17 @@ internal fun SoundboardItemActionMenu(
             elevation = UiTokens.MenuElevation
         ) {
             Row {
-                IconButton(
-                    onClick = {
-                        performKeyHaptic()
-                        onEdit()
-                    },
-                    modifier = Modifier.size(52.dp)
+                KigttsIconButton(
+                    onClick = onEdit,
+                    modifier = Modifier.size(52.dp),
+                    tooltip = "编辑音效"
                 ) {
                     MsIcon("edit", contentDescription = "编辑音效")
                 }
-                IconButton(
-                    onClick = {
-                        performKeyHaptic()
-                        onDelete()
-                    },
-                    modifier = Modifier.size(52.dp)
+                KigttsIconButton(
+                    onClick = onDelete,
+                    modifier = Modifier.size(52.dp),
+                    tooltip = "删除音效"
                 ) {
                     MsIcon("delete", contentDescription = "删除音效")
                 }
