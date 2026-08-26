@@ -314,6 +314,7 @@ import androidx.recyclerview.widget.ItemTouchHelper
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.DefaultItemAnimator
 import androidx.recyclerview.widget.DiffUtil
+import androidx.recyclerview.widget.ListUpdateCallback
 import androidx.recyclerview.widget.RecyclerView
 import androidx.recyclerview.widget.SimpleItemAnimator
 import androidx.viewpager2.widget.ViewPager2
@@ -507,48 +508,48 @@ fun VoicePackScreen(viewModel: MainViewModel, state: UiState) {
         maxWidth = UiTokens.WideListMaxWidth,
         contentSpacing = 0.dp
     ) {
+        if (state.voicePacks.isEmpty()) {
             Spacer(Modifier.height(UiTokens.PageTopBlank))
             SettingsPageIntroduction(
                 title = "语音包",
                 description = "管理朗读使用的语音包"
             )
             Spacer(Modifier.height(8.dp))
-            if (state.voicePacks.isEmpty()) {
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxWidth(),
-                    contentAlignment = Alignment.TopStart
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth(),
+                contentAlignment = Alignment.TopStart
+            ) {
+                Column(
+                    modifier = Modifier.fillMaxSize()
                 ) {
-                    Column(
-                        modifier = Modifier.fillMaxSize()
-                    ) {
-                        Text("还没有语音包。点击右上角的导入按钮添加。")
-                        Spacer(Modifier.height(pageBottomBlankPadding()))
-                    }
+                    Text("还没有语音包。点击右上角的导入按钮添加。")
+                    Spacer(Modifier.height(pageBottomBlankPadding()))
                 }
-            } else {
-                VoicePackRecyclerList(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxWidth(),
-                    packs = state.voicePacks,
-                    currentVoicePath = state.voiceDir?.absolutePath,
-                    topBlankHeight = 0.dp,
-                    bottomBlankHeight = pageBottomBlankPadding(),
-                    onSelect = { viewModel.selectVoice(it.dir) },
-                    onTogglePin = { viewModel.toggleVoicePin(it) },
-                    onDetail = { pack ->
-                        detailPackPath = pack.dir.absolutePath
-                        detailName = pack.meta.name
-                        detailRemark = pack.meta.remark
-                        detailEditing = false
-                    },
-                    onShare = { viewModel.shareVoice(it) },
-                    onDelete = { deletePack = it },
-                    onReorder = { newOrder -> viewModel.reorderVoicePacks(newOrder) }
-                )
             }
+        } else {
+            VoicePackRecyclerList(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth(),
+                packs = state.voicePacks,
+                currentVoicePath = state.voiceDir?.absolutePath,
+                topBlankHeight = 0.dp,
+                bottomBlankHeight = pageBottomBlankPadding(),
+                onSelect = { viewModel.selectVoice(it.dir) },
+                onTogglePin = { viewModel.toggleVoicePin(it) },
+                onDetail = { pack ->
+                    detailPackPath = pack.dir.absolutePath
+                    detailName = pack.meta.name
+                    detailRemark = pack.meta.remark
+                    detailEditing = false
+                },
+                onShare = { viewModel.shareVoice(it) },
+                onDelete = { deletePack = it },
+                onReorder = { newOrder -> viewModel.reorderVoicePacks(newOrder) }
+            )
+        }
     }
 
     if (detailPack != null && isKokoroVoiceDir(detailPack.dir)) {
@@ -910,11 +911,17 @@ internal class VoicePackRecyclerAdapter(
     }
 
     override fun getItemId(position: Int): Long {
-        if (position !in items.indices) return RecyclerView.NO_ID
-        return stableIdForPath(items[position].dir.absolutePath)
+        if (position == HEADER_POSITION) return HEADER_ID
+        val dataIndex = position - HEADER_COUNT
+        if (dataIndex !in items.indices) return RecyclerView.NO_ID
+        return stableIdForPath(items[dataIndex].dir.absolutePath)
     }
 
-    override fun getItemViewType(position: Int): Int = 1
+    override fun getItemViewType(position: Int): Int = if (position == HEADER_POSITION) {
+        VIEW_TYPE_HEADER
+    } else {
+        VIEW_TYPE_PACK
+    }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RecyclerView.ViewHolder {
         val composeView = ComposeView(parent.context).apply {
@@ -925,10 +932,18 @@ internal class VoicePackRecyclerAdapter(
             setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnDetachedFromWindowOrReleasedFromPool)
             setParentCompositionContext(parentComposition)
         }
-        return VoicePackViewHolder(composeView)
+        return if (viewType == VIEW_TYPE_HEADER) {
+            VoicePackHeaderViewHolder(composeView)
+        } else {
+            VoicePackViewHolder(composeView)
+        }
     }
 
     override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
+        if (holder is VoicePackHeaderViewHolder) {
+            holder.bind()
+            return
+        }
         holder as VoicePackViewHolder
         if (!isDragging) {
             holder.itemView.translationZ = 0f
@@ -937,7 +952,7 @@ internal class VoicePackRecyclerAdapter(
         val shouldStagger = runStaggerOnNextBind && !stagedAppearedIds.contains(itemId)
         if (shouldStagger) {
             stagedAppearedIds.add(itemId)
-            val dataIndex = position.coerceAtLeast(0)
+            val dataIndex = (position - HEADER_COUNT).coerceAtLeast(0)
             animateVoicePackStaggerEnter(holder.itemView, dataIndex)
             if (!staggerReleaseScheduled) {
                 staggerReleaseScheduled = true
@@ -952,7 +967,7 @@ internal class VoicePackRecyclerAdapter(
             holder.itemView.translationY = 0f
         }
         holder.setDragged(false)
-        val dataIndex = position
+        val dataIndex = position - HEADER_COUNT
         if (dataIndex !in items.indices) return
         val pack = items[dataIndex]
         holder.bind(
@@ -971,7 +986,7 @@ internal class VoicePackRecyclerAdapter(
         )
     }
 
-    override fun getItemCount(): Int = items.size
+    override fun getItemCount(): Int = items.size + HEADER_COUNT
 
     override fun onViewRecycled(holder: RecyclerView.ViewHolder) {
         if (holder is VoicePackViewHolder) {
@@ -1047,7 +1062,23 @@ internal class VoicePackRecyclerAdapter(
                         old.meta.pinned == new.meta.pinned
             }
         })
-        diff.dispatchUpdatesTo(this)
+        diff.dispatchUpdatesTo(object : ListUpdateCallback {
+            override fun onInserted(position: Int, count: Int) {
+                notifyItemRangeInserted(position + HEADER_COUNT, count)
+            }
+
+            override fun onRemoved(position: Int, count: Int) {
+                notifyItemRangeRemoved(position + HEADER_COUNT, count)
+            }
+
+            override fun onMoved(fromPosition: Int, toPosition: Int) {
+                notifyItemMoved(fromPosition + HEADER_COUNT, toPosition + HEADER_COUNT)
+            }
+
+            override fun onChanged(position: Int, count: Int, payload: Any?) {
+                notifyItemRangeChanged(position + HEADER_COUNT, count, payload)
+            }
+        })
     }
 
     fun updateCurrentVoicePath(path: String?) {
@@ -1057,8 +1088,8 @@ internal class VoicePackRecyclerAdapter(
         if (isDragging) return
         val oldIdx = oldPath?.let { p -> items.indexOfFirst { it.dir.absolutePath == p } } ?: -1
         val newIdx = path?.let { p -> items.indexOfFirst { it.dir.absolutePath == p } } ?: -1
-        if (oldIdx >= 0) notifyItemChanged(oldIdx)
-        if (newIdx >= 0 && newIdx != oldIdx) notifyItemChanged(newIdx)
+        if (oldIdx >= 0) notifyItemChanged(oldIdx + HEADER_COUNT)
+        if (newIdx >= 0 && newIdx != oldIdx) notifyItemChanged(newIdx + HEADER_COUNT)
     }
 
     fun snapshot(): List<VoicePackInfo> = items.toList()
@@ -1070,15 +1101,15 @@ internal class VoicePackRecyclerAdapter(
 
     fun isDraggableAdapterPosition(position: Int): Boolean {
         if (position == RecyclerView.NO_POSITION) return false
-        return position in items.indices
+        return position - HEADER_COUNT in items.indices
     }
 
     fun moveWithinPinnedGroupAdapterPositions(fromAdapter: Int, toAdapter: Int): Boolean {
         if (!isDraggableAdapterPosition(fromAdapter) || !isDraggableAdapterPosition(toAdapter)) {
             return false
         }
-        val from = fromAdapter
-        val to = toAdapter
+        val from = fromAdapter - HEADER_COUNT
+        val to = toAdapter - HEADER_COUNT
         if (from == to || from !in items.indices || to !in items.indices) return false
         val fromPinned = items[from].meta.pinned
         val toPinned = items[to].meta.pinned
@@ -1090,6 +1121,25 @@ internal class VoicePackRecyclerAdapter(
 
     private fun stableIdForPath(path: String): Long {
         return stableIdsByPath.getOrPut(path) { nextStableId++ }
+    }
+
+    class VoicePackHeaderViewHolder(
+        private val composeView: ComposeView
+    ) : RecyclerView.ViewHolder(composeView) {
+        fun bind() {
+            composeView.setContent {
+                KigttsFontScaleProvider {
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        Spacer(Modifier.height(UiTokens.PageTopBlank))
+                        SettingsPageIntroduction(
+                            title = "语音包",
+                            description = "管理朗读使用的语音包"
+                        )
+                        Spacer(Modifier.height(8.dp))
+                    }
+                }
+            }
+        }
     }
 
     class VoicePackViewHolder(
@@ -1127,6 +1177,14 @@ internal class VoicePackRecyclerAdapter(
                 }
             }
         }
+    }
+
+    private companion object {
+        const val HEADER_POSITION = 0
+        const val HEADER_COUNT = 1
+        const val VIEW_TYPE_HEADER = 0
+        const val VIEW_TYPE_PACK = 1
+        const val HEADER_ID = Long.MIN_VALUE
     }
 }
 

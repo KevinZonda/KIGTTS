@@ -2,16 +2,17 @@
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/widget_candidate_root"
     android:layout_width="match_parent"
-    android:layout_height="0dp"
-    android:layout_weight="1"
+    android:layout_height="60dp"
     android:background="@drawable/bg_widget_section"
     android:gravity="center_vertical"
     android:orientation="horizontal">
+
     <TextView
         android:id="@+id/widget_candidate_color"
         android:layout_width="3dp"
         android:layout_height="match_parent"
         android:background="#038387" />
+
     <TextView
         android:id="@+id/widget_candidate_text"
         android:layout_width="0dp"

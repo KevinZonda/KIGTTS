@@ -1545,3 +1545,44 @@
 - 原生 Android Debug 与 Release 的版本更新为 `0.1.9 (10)`，可从 `0.1.8 (9)` 保留数据覆盖升级；Flutter 重写目录不纳入本次版本更迭。
 - README 的 GitHub 发行页、版本徽章和 APK 直链同步更新为 `APP0.1.9`，设置层级临时原型中的关于页版本同步为 `0.1.9`。
 - 验证：`:app:testDebugUnitTest :app:assembleRelease :app:lintVitalRelease` 与 `git diff --check` 通过，73 个测试套件共 320 项，0 失败、0 错误、0 跳过。Release APK 为 `98,360,385` 字节，SHA-256 `7071057FE3FA084BF664F5A9B9BFA47D2D3FCA2E989E4355214693B06E03BD50`；包内版本为 `0.1.9 (10)`，APK Signature Scheme v2 有效，正式证书 SHA-256 为 `3193AF87840D767843E42770C92823B20DF10B5EDF03A7D618CE9F4DA0F5E197`。
+
+### Compose 弹出菜单阴影动画实验（2026-08-26）
+
+- 实验范围仅限原生 Android 主软件通用的 `Md2AnimatedOptionMenu`，悬浮窗、锁屏内嵌悬浮窗和其它弹窗未修改；现有菜单调用接口、尺寸、内容与交互行为保持不变。
+- Popup 根容器改为固定预留 `12dp` 阴影空间，缩放与透明度动画下移到菜单卡片本体，避免阴影与菜单内容一起受外层动画边界裁剪。
+- 透明度动画使用 `CompositingStrategy.ModulateAlpha`，减少整块菜单离屏合成造成的阴影硬边和裁剪风险；菜单仍使用 MD2 `8dp` 海拔、`4dp` 圆角和原有 `180ms` 淡入缩放动画。
+- 实机检查发现 `ModulateAlpha` 不会调制 Compose `Card` 的系统海拔阴影，导致阴影在 Popup 挂载和移除时瞬间出现、消失；菜单海拔现改为随展开状态在 `0dp` 与 `8dp` 之间使用同一 `180ms` MD2 easing 过渡，使阴影本身与卡片同步进出场。
+- 第二次实机检查发现海拔降至 `0dp` 前，阴影模糊半径会收缩为尖锐暗边。最终实验实现保持 `8dp` 阴影半径不变，改为随菜单透明度渐变 ambient/spot 阴影颜色；菜单内容透明度与整体缩放分层处理，使阴影跟随卡片缩放、淡入淡出，同时不再通过收缩模糊半径退出。
+- 第三次实机检查发现分层透明度会让阴影在动画中透过半透明卡片。新实验结构恢复固定 `8dp` Card 阴影和不透明卡片表面，将阴影、背景与内容先在含 `12dp` 阴影留白的 `CompositingStrategy.Offscreen` 图层中合成，再对合成结果统一执行透明度与缩放；这样卡片会先遮住其内部阴影，再由整体图层淡入淡出。
+- `:app:compileDebugKotlin`、`:app:testDebugUnitTest` 与 `git diff --check` 通过；73 个测试套件共 320 项，0 失败、0 错误、0 跳过，仅保留仓库已有的图片裁剪库弃用警告。该改动为实验版本，阴影完整度、弹出位置及动画手感仍需实机视觉确认。
+- 原目录 `:app:assembleRelease` 构建通过；Release APK 为 `98,360,385` 字节，SHA-256 `6EE6995ED5083C18241FED9A8C13353DF589F7C62E6754299ABAE94BCB195FE1`。已通过 USB ADB 保留数据覆盖安装到 Redmi K70，安装返回 `Success`，设备包版本确认为 `0.1.9 (10)`；按用户要求未启动应用、未执行烟测，供手动检查菜单阴影与动画。
+- 阴影海拔同步动画修复后重新通过 `:app:assembleRelease` 与 `lintVitalRelease`；Release APK 为 `98,360,385` 字节，SHA-256 `35157D62C13BE2158BED9E61591D9B419CCD958B6795F0B03A852E2D018309FA`。已再次保留数据覆盖安装到 Redmi K70，安装返回 `Success`；未启动应用，等待手动复测阴影进出场是否连续。
+- 固定阴影半径、渐变阴影颜色的第三版实现通过 `:app:compileDebugKotlin`、`:app:assembleRelease` 与 `lintVitalRelease`；Release APK 为 `98,360,385` 字节，SHA-256 `C0DE073A8DEB58AF3E32A9A448C2A81EB00D5F3DB9811838041D00F923C671C9`。已再次保留数据覆盖安装到 Redmi K70，安装返回 `Success`；未启动应用，等待手动复测阴影末段是否仍有锐边。
+- Offscreen 整体合成版通过 `:app:compileDebugKotlin`、`:app:assembleRelease` 与 `lintVitalRelease`；Release APK 为 `98,360,385` 字节，SHA-256 `0DC6716B4C7083B65BBD947AB6F4CA0414A02A51671DDCB64CB57BB443F8F418`。设备重新连接后已通过 USB ADB 保留数据覆盖安装到 Redmi K70，安装返回 `Success`；未启动应用，等待手动复测整体合成后的菜单阴影动画。
+
+### 语音包页面标题滚动修复（2026-08-26）
+
+- 语音包页面的页内标题原本位于 `CenteredPageColumn`，而语音包条目由下方独立 `RecyclerView` 滚动，导致标题固定不动。标题现改为语音包 RecyclerView 的稳定首项，会与列表内容同步滚动。
+- 标题首项不可拖动，并使用独立稳定 ID；语音包数据索引、当前语音包局部刷新、DiffUtil 更新和拖动排序统一增加首项偏移，原有置顶分组限制、拖动海拔与列表入场动画保持不变。空列表状态继续显示标题和导入提示。
+- `:app:compileDebugKotlin`、`:app:testDebugUnitTest`、`:app:assembleRelease`、`lintVitalRelease` 与 `git diff --check` 通过；73 个测试套件共 320 项全部通过，仅保留仓库已有的图片裁剪库弃用警告。Release APK 为 `98,360,385` 字节，SHA-256 `FD30F1E1FA11757E25BA8E8E70B601A8E193567F2FE1E70F9C01B59093AB0B46`；已通过 USB ADB 保留数据覆盖安装到 Redmi K70，安装返回 `Success`，未启动应用。
+
+### 快捷文本列表弹窗方向同步修复（2026-08-26）
+
+- 便捷字幕快捷文本列表弹窗不再单独读取系统方向，而是直接继承便捷字幕页面当前使用的横竖屏布局状态，包含宽屏下的强制横向排版，避免页面已经切换而弹窗仍保留旧方向样式。
+- 横竖屏切换时重建弹窗窗口，使弹窗宽高、边距、横向分组栏与纵向底部分组栏立即按新方向重新布局；当前分组和列表/宫格选择继续保留。
+- 旋转后清除长按或滑动打开弹窗时记录的旧屏幕坐标，防止旧方向锚点将新弹窗定位到错误区域。
+- `:app:compileDebugKotlin`、`:app:testDebugUnitTest`、`:app:assembleRelease` 与 `git diff --check` 通过；73 个测试套件共 320 项全部通过。Release APK 为 `98,360,385` 字节，SHA-256 `DDF761D83D1849348153B289C1BD8C3024D9C934ED5C1ABCF6DB387EF2696BA5`；已通过 USB ADB 保留数据覆盖安装到 Redmi K70，安装返回 `Success`，未启动应用。
+
+### Android 小工具集合视图与切换动画（2026-08-26）
+
+- 快捷名片小工具由手动上一张/下一张按钮改为系统 `StackView`，通过独立 `RemoteViewsService` 按需提供名片卡片；保留现有名片背景渲染、标题、备注、二维码、打开入口、亮暗前景色和独立 `:widgets` 进程，支持上下甩动、系统堆叠过渡与循环浏览。空名片时仍显示“点击新建快捷名片”。
+- 快捷字幕小工具的分组页和左右分页按钮保持原样；进入分组后的快捷文本改为 `ListView` 集合视图，可直接纵向滚动，不再按小工具高度切分文本页。切换分组时列表刷新并回到顶部，条目颜色标记和点击后替换小工具字幕的行为保持不变。
+- 页面总览/快捷文本详情、分组分页和字幕文本分别使用独立 `ViewFlipper`。页面与分组切换增加淡入淡出过渡；字幕更新使用双文本槽，先淡出旧字幕再淡入新字幕，避免一次 `RemoteViews` 更新造成内容硬切。
+- 新增名片与快捷文本集合服务，均使用 `android.permission.BIND_REMOTEVIEWS` 并运行在 `:widgets` 进程；集合条目点击通过显式可变 `PendingIntent` 模板和 fill-in 参数路由，未启动主进程中的音频或悬浮窗运行时。
+- 验证：`:app:processDebugResources :app:compileDebugKotlin`、`:app:testDebugUnitTest :app:assembleDebug :app:lintVitalRelease` 与 `git diff --check` 通过；73 个测试套件共 320 项，0 失败、0 错误、0 跳过。Debug APK 为 `103,250,657` 字节，SHA-256 `27A4B2FA9F72B135CA4546C4203FAF0C8C3A425D3224974D25920DEB446852C5`。本轮未安装到设备，小工具宿主的 StackView 手势、滚动惯性和桌面动画仍需实机核对。
+
+### 快捷名片小工具分页回退（2026-08-26）
+
+- 根据实机体验撤回快捷名片小工具的 `StackView` 集合视图，恢复此前的单张名片渲染与左下角上一张/下一张按钮；每个小工具继续独立记忆当前名片页，空名片时仍可点击新建。
+- 删除名片专用 `RemoteViewsService`、集合条目布局与可变 PendingIntent 模板，并保留快捷字幕小工具的纵向滚动列表、分组/页面切换动画和独立 `:widgets` 集合服务。
+- `:app:processDebugResources :app:compileDebugKotlin :app:testDebugUnitTest`、`:app:assembleRelease`、`lintVitalRelease` 与 `git diff --check` 通过；73 个测试套件共 320 项全部通过。Release APK 为 `98,363,738` 字节，SHA-256 `B7DF522547A60241FCFF163D5302E486F24E192E17AA3E522836D9C9E6A87501`；已通过 USB ADB 保留数据覆盖安装到 Redmi K70，安装返回 `Success`，未启动应用。

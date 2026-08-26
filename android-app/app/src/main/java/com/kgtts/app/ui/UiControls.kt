@@ -131,6 +131,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Outline
 import androidx.compose.ui.graphics.SolidColor
@@ -999,6 +1000,7 @@ internal fun Md2AnimatedOptionMenu(
     if (!rendered) return
     val maxMenuHeight = (LocalConfiguration.current.screenHeightDp.dp - 96.dp)
         .coerceAtLeast(160.dp)
+    val menuShape = RoundedCornerShape(4.dp)
     Popup(
         popupPositionProvider = popupPositionProvider,
         onDismissRequest = onDismissRequest,
@@ -1007,20 +1009,21 @@ internal fun Md2AnimatedOptionMenu(
         KigttsFontScaleProvider {
             Box(
                 modifier = Modifier
-                    .padding(8.dp)
                     .graphicsLayer {
                         alpha = menuAlpha
                         scaleX = menuScale
                         scaleY = menuScale
                         transformOrigin = TransformOrigin(1f, 0f)
+                        compositingStrategy = CompositingStrategy.Offscreen
                         clip = false
                     }
+                    .padding(12.dp)
             ) {
                 Card(
                     modifier = Modifier
                         .widthIn(min = 196.dp, max = 216.dp)
                         .then(modifier),
-                    shape = RoundedCornerShape(4.dp),
+                    shape = menuShape,
                     backgroundColor = md2CardContainerColor(),
                     elevation = UiTokens.MenuElevation
                 ) {
