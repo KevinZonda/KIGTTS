@@ -7,6 +7,7 @@ import com.lhtstudio.kigtts.app.overlay.OverlayBridge
 
 internal object WidgetPendingIntents {
     private const val FLAG = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+    private const val COLLECTION_FLAG = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE
 
     fun openPage(context: Context, target: String, requestCode: Int): PendingIntent =
         PendingIntent.getActivity(
@@ -31,6 +32,20 @@ internal object WidgetPendingIntents {
             },
             FLAG
         )
+
+    fun selectWidgetSubtitleTemplate(
+        context: Context,
+        widgetId: Int,
+        requestCode: Int
+    ): PendingIntent = PendingIntent.getBroadcast(
+        context,
+        requestCode,
+        Intent(context, QuickSubtitleWidgetProvider::class.java).apply {
+            action = QuickSubtitleWidgetProvider.ACTION_SELECT_SUBTITLE
+            putExtra(android.appwidget.AppWidgetManager.EXTRA_APPWIDGET_ID, widgetId)
+        },
+        COLLECTION_FLAG
+    )
 
     fun openWidgetSubtitleGroup(
         context: Context,

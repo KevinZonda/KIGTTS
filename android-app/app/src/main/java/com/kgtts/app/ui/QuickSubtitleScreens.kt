@@ -892,6 +892,7 @@ internal fun QuickSubtitleListDialog(
     groups: List<QuickSubtitleGroup>,
     initialGroupIndex: Int,
     layoutMode: QuickSubtitleListPopupLayout,
+    landscapeLayout: Boolean,
     forceFullWidthTabsOnPhone: Boolean,
     candidateAnchor: QuickSubtitleCandidatePopupAnchor?,
     frequencySortEnabled: Boolean,
@@ -909,7 +910,7 @@ internal fun QuickSubtitleListDialog(
 ) {
     if (groups.isEmpty()) return
     val configuration = LocalConfiguration.current
-    val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+    val isLandscape = landscapeLayout
     val screenLongSideDp = maxOf(configuration.screenWidthDp, configuration.screenHeightDp)
     val screenShortSideDp = minOf(configuration.screenWidthDp, configuration.screenHeightDp)
     val phoneUa = screenShortSideDp < 600 || screenLongSideDp < 900
@@ -1035,17 +1036,18 @@ internal fun QuickSubtitleListDialog(
         }
     }
 
-    Dialog(
-        onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false)
-    ) {
-        BoxWithConstraints(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(Color.Black.copy(alpha = 0.36f))
-                .clickable(onClick = onDismiss),
-            contentAlignment = Alignment.TopStart
+    key(isLandscape) {
+        Dialog(
+            onDismissRequest = onDismiss,
+            properties = DialogProperties(usePlatformDefaultWidth = false)
         ) {
+            BoxWithConstraints(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.36f))
+                    .clickable(onClick = onDismiss),
+                contentAlignment = Alignment.TopStart
+            ) {
             val horizontalMargin = if (isLandscape) 26.dp else 16.dp
             val verticalMargin = if (isLandscape) 18.dp else 26.dp
             val density = LocalDensity.current
@@ -1084,17 +1086,17 @@ internal fun QuickSubtitleListDialog(
                 safeBottom = safeBottom,
                 verticalEdgeMargin = verticalMarginPx
             )
-            Box(
-                modifier = Modifier
-                    .offset { IntOffset(popupPlacement.left, popupPlacement.top) }
-                    .size(popupWidth, popupHeight)
-                    .onGloballyPositioned { popupBodyBounds = it.boundsInWindow() }
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null
-                    ) {}
-            ) {
-                if (isLandscape) {
+                Box(
+                    modifier = Modifier
+                        .offset { IntOffset(popupPlacement.left, popupPlacement.top) }
+                        .size(popupWidth, popupHeight)
+                        .onGloballyPositioned { popupBodyBounds = it.boundsInWindow() }
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null
+                        ) {}
+                ) {
+                    if (isLandscape) {
                     Row(
                         modifier = Modifier.fillMaxSize(),
                         horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -1152,7 +1154,7 @@ internal fun QuickSubtitleListDialog(
                                 .padding(end = landscapeTabRailWidth + 10.dp)
                         }
                     )
-                } else {
+                    } else {
                     Column(
                         modifier = Modifier.fillMaxSize(),
                         verticalArrangement = Arrangement.spacedBy(10.dp)
@@ -1179,6 +1181,7 @@ internal fun QuickSubtitleListDialog(
                             },
                             modifier = Modifier.fillMaxWidth()
                         )
+                    }
                     }
                 }
             }
@@ -1952,6 +1955,9 @@ fun QuickSubtitleScreen(
     var quickSubtitleListDialogGroups by remember { mutableStateOf(displayGroups) }
     var quickSubtitleCandidatePopupAnchor by remember {
         mutableStateOf<QuickSubtitleCandidatePopupAnchor?>(null)
+    }
+    LaunchedEffect(isLandscape) {
+        quickSubtitleCandidatePopupAnchor = null
     }
     fun refreshQuickSubtitleListDialogGroups() {
         quickSubtitleListDialogGroups =
@@ -3944,6 +3950,7 @@ fun QuickSubtitleScreen(
                 groups = quickSubtitleListDialogGroups,
                 initialGroupIndex = selectedGroupIndex,
                 layoutMode = quickSubtitleListDialogLayoutMode,
+                landscapeLayout = isLandscape,
                 forceFullWidthTabsOnPhone = state.forceFullWidthTabsOnPhone && !ultraSmallAdaptiveWindow,
                 candidateAnchor = quickSubtitleCandidatePopupAnchor,
                 frequencySortEnabled = state.quickSubtitleFrequencySortEnabled,
