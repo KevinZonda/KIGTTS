@@ -34,4 +34,48 @@ class RealtimeTtsPolicyTest {
             )
         )
     }
+
+    @Test
+    fun ttsDisabledAlwaysSuppressesAsrAutoSpeak() {
+        assertTrue(
+            RealtimeTtsPolicy.shouldSuppressAsrAutoSpeak(
+                ttsDisabled = true,
+                pushToTalkMode = false,
+                pushToTalkConfirmInput = false
+            )
+        )
+    }
+
+    @Test
+    fun confirmedPushToTalkSuppressesAsrAutoSpeak() {
+        assertTrue(
+            RealtimeTtsPolicy.shouldSuppressAsrAutoSpeak(
+                ttsDisabled = false,
+                pushToTalkMode = true,
+                pushToTalkConfirmInput = true
+            )
+        )
+    }
+
+    @Test
+    fun normalRecognitionKeepsAsrAutoSpeakEnabled() {
+        assertFalse(
+            RealtimeTtsPolicy.shouldSuppressAsrAutoSpeak(
+                ttsDisabled = false,
+                pushToTalkMode = false,
+                pushToTalkConfirmInput = false
+            )
+        )
+    }
+
+    @Test
+    fun pushToTalkWithoutConfirmationKeepsAsrAutoSpeakEnabled() {
+        assertFalse(
+            RealtimeTtsPolicy.shouldSuppressAsrAutoSpeak(
+                ttsDisabled = false,
+                pushToTalkMode = true,
+                pushToTalkConfirmInput = false
+            )
+        )
+    }
 }

@@ -237,6 +237,7 @@ import com.lhtstudio.kigtts.app.audio.AudioRoutePreference
 import com.lhtstudio.kigtts.app.audio.AudioDenoiserMode
 import com.lhtstudio.kigtts.app.audio.AudioLoopbackTester
 import com.lhtstudio.kigtts.app.audio.AudioTestConfig
+import com.lhtstudio.kigtts.app.audio.RealtimeTtsPolicy
 import com.lhtstudio.kigtts.app.audio.SoundboardManager
 import com.lhtstudio.kigtts.app.audio.shouldSuppressTtsForSoundboardTrigger
 import com.lhtstudio.kigtts.app.audio.toRealtimeSynthesisConfig
@@ -4063,8 +4064,11 @@ class MainViewModel(
             setPiperNoiseW(defaults.piperNoiseW)
             setPiperSentenceSilenceSec(defaults.piperSentenceSilence)
             setSuppressAsrAutoSpeak(
-                defaults.ttsDisabled ||
-                    (uiState.pushToTalkMode && uiState.pushToTalkConfirmInputMode)
+                RealtimeTtsPolicy.shouldSuppressAsrAutoSpeak(
+                    ttsDisabled = defaults.ttsDisabled,
+                    pushToTalkMode = uiState.pushToTalkMode,
+                    pushToTalkConfirmInput = uiState.pushToTalkConfirmInputMode
+                )
             )
         }
         viewModelScope.launch {
@@ -4122,7 +4126,13 @@ class MainViewModel(
         )
         realtimeHost?.setSpeechButtonActionMode(mode)
         realtimeHost?.setPushToTalkStreamingEnabled(false)
-        realtimeHost?.setSuppressAsrAutoSpeak(uiState.ttsDisabled || confirmEnabled)
+        realtimeHost?.setSuppressAsrAutoSpeak(
+            RealtimeTtsPolicy.shouldSuppressAsrAutoSpeak(
+                ttsDisabled = uiState.ttsDisabled,
+                pushToTalkMode = enabled,
+                pushToTalkConfirmInput = confirmEnabled
+            )
+        )
         viewModelScope.launch {
             UserPrefs.setSpeechButtonActionMode(appContext, mode)
         }
@@ -4421,7 +4431,11 @@ class MainViewModel(
         uiState = uiState.copy(ttsDisabled = enabled)
         realtimeHost?.setTtsDisabled(enabled)
         realtimeHost?.setSuppressAsrAutoSpeak(
-            enabled || (uiState.pushToTalkMode && uiState.pushToTalkConfirmInputMode)
+            RealtimeTtsPolicy.shouldSuppressAsrAutoSpeak(
+                ttsDisabled = enabled,
+                pushToTalkMode = uiState.pushToTalkMode,
+                pushToTalkConfirmInput = uiState.pushToTalkConfirmInputMode
+            )
         )
         viewModelScope.launch {
             UserPrefs.setTtsDisabled(appContext, enabled)
@@ -5685,7 +5699,11 @@ class MainViewModel(
                 confirmationSpeakerProfileVectors()
             )
             host.setSuppressAsrAutoSpeak(
-                uiState.pushToTalkMode && uiState.pushToTalkConfirmInputMode
+                RealtimeTtsPolicy.shouldSuppressAsrAutoSpeak(
+                    ttsDisabled = settings.ttsDisabled,
+                    pushToTalkMode = settings.pushToTalkMode,
+                    pushToTalkConfirmInput = settings.pushToTalkConfirmInput
+                )
             )
             host.setPushToTalkStreamingEnabled(
                 uiState.pushToTalkMode &&
