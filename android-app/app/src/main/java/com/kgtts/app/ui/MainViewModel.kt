@@ -239,6 +239,7 @@ import com.lhtstudio.kigtts.app.audio.AudioLoopbackTester
 import com.lhtstudio.kigtts.app.audio.AudioTestConfig
 import com.lhtstudio.kigtts.app.audio.SoundboardManager
 import com.lhtstudio.kigtts.app.audio.shouldSuppressTtsForSoundboardTrigger
+import com.lhtstudio.kigtts.app.audio.toRealtimeSynthesisConfig
 import com.lhtstudio.kigtts.app.audio.SoundboardPlaybackState
 import com.lhtstudio.kigtts.app.audio.SpeechEnhancementMode
 import com.lhtstudio.kigtts.app.audio.SpeakerEnrollResult
@@ -5652,15 +5653,16 @@ class MainViewModel(
 
     private fun applySettingsToController(settings: UserPrefs.AppSettings) {
         realtimeHost?.let { host ->
+            val synthesis = settings.toRealtimeSynthesisConfig()
             host.setSuppressWhilePlaying(settings.muteWhilePlaying)
             host.setSuppressDelaySec(settings.muteWhilePlayingDelaySec)
             host.setMinVolumePercent(settings.minVolumePercent)
             host.setPlaybackGainPercent(settings.playbackGainPercent)
             host.setAudioFocusAvoidanceMode(settings.audioFocusAvoidanceMode)
-            host.setPiperNoiseScale(settings.piperNoiseScale)
-            host.setPiperLengthScale(settings.piperLengthScale)
-            host.setPiperNoiseW(0.8f)
-            host.setPiperSentenceSilenceSec(settings.piperSentenceSilence)
+            host.setPiperNoiseScale(synthesis.noiseScale)
+            host.setPiperLengthScale(synthesis.lengthScale)
+            host.setPiperNoiseW(synthesis.noiseW)
+            host.setPiperSentenceSilenceSec(synthesis.sentenceSilenceSec)
             host.setUseAec3(settings.aec3Enabled)
             host.setUseVoiceCommunication(settings.echoSuppression)
             host.setCommunicationMode(settings.communicationMode)
