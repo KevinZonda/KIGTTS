@@ -383,7 +383,11 @@ class RealtimeHostService : Service(), RealtimeRuntimeBridge.AppDelegate, LanCas
     fun setTtsDisabled(enabled: Boolean) {
         currentSettings = currentSettings.copy(ttsDisabled = enabled)
         controller?.setSuppressAsrAutoSpeak(
-            enabled || (currentSettings.pushToTalkMode && currentSettings.pushToTalkConfirmInput)
+            RealtimeTtsPolicy.shouldSuppressAsrAutoSpeak(
+                ttsDisabled = enabled,
+                pushToTalkMode = currentSettings.pushToTalkMode,
+                pushToTalkConfirmInput = currentSettings.pushToTalkConfirmInput
+            )
         )
     }
 
@@ -544,7 +548,13 @@ class RealtimeHostService : Service(), RealtimeRuntimeBridge.AppDelegate, LanCas
             finishSimplePttRelease()
             updateState { it.copy(pushToTalkPressed = false, pushToTalkStreamingText = "") }
         }
-        controller?.setSuppressAsrAutoSpeak(currentSettings.ttsDisabled || (pushToTalk && confirm))
+        controller?.setSuppressAsrAutoSpeak(
+            RealtimeTtsPolicy.shouldSuppressAsrAutoSpeak(
+                ttsDisabled = currentSettings.ttsDisabled,
+                pushToTalkMode = pushToTalk,
+                pushToTalkConfirmInput = confirm
+            )
+        )
         synchronizeRecognitionOwnership()
         AppLogger.i("Speech button mode synchronized mode=$mode")
     }
@@ -1416,8 +1426,11 @@ class RealtimeHostService : Service(), RealtimeRuntimeBridge.AppDelegate, LanCas
                     )
         )
         created.setSuppressAsrAutoSpeak(
-            currentSettings.ttsDisabled ||
-                (currentSettings.pushToTalkMode && currentSettings.pushToTalkConfirmInput)
+            RealtimeTtsPolicy.shouldSuppressAsrAutoSpeak(
+                ttsDisabled = currentSettings.ttsDisabled,
+                pushToTalkMode = currentSettings.pushToTalkMode,
+                pushToTalkConfirmInput = currentSettings.pushToTalkConfirmInput
+            )
         )
         created.setMainRecognitionEnabled(
             !currentSettings.listeningModeSettings.enabled ||
@@ -1615,7 +1628,11 @@ class RealtimeHostService : Service(), RealtimeRuntimeBridge.AppDelegate, LanCas
             speakerProfiles.map { it.confirmationVector?.copyOf() }
         )
         controller?.setSuppressAsrAutoSpeak(
-            settings.ttsDisabled || (settings.pushToTalkMode && settings.pushToTalkConfirmInput)
+            RealtimeTtsPolicy.shouldSuppressAsrAutoSpeak(
+                ttsDisabled = settings.ttsDisabled,
+                pushToTalkMode = settings.pushToTalkMode,
+                pushToTalkConfirmInput = settings.pushToTalkConfirmInput
+            )
         )
         controller?.setPushToTalkStreamingEnabled(
             settings.pushToTalkMode &&
