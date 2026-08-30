@@ -3444,13 +3444,13 @@ class RealtimeController(
         }
     }
 
-    suspend fun startMic(): Boolean {
+    suspend fun startMic(requireTts: Boolean = !listeningRecognitionEnabled): Boolean {
         return recorderMutex.withLock {
             if (asr == null) {
                 notifyError("语音识别资源未就绪，请先安装语音识别资源")
                 return@withLock false
             }
-            if (tts == null && !listeningRecognitionEnabled) {
+            if (tts == null && requireTts) {
                 notifyError("语音合成未就绪，请先选择语音包")
                 return@withLock false
             }
