@@ -9,6 +9,10 @@ internal object RealtimeTtsPolicy {
     fun shouldSuppressAsrAutoSpeak(
         ttsDisabled: Boolean,
         pushToTalkMode: Boolean,
-        pushToTalkConfirmInput: Boolean
-    ): Boolean = ttsDisabled || (pushToTalkMode && pushToTalkConfirmInput)
+        pushToTalkConfirmInput: Boolean,
+        ttsReady: Boolean = true
+    ): Boolean =
+        ttsDisabled ||
+            (pushToTalkMode && pushToTalkConfirmInput) ||
+            !ttsReady
 }

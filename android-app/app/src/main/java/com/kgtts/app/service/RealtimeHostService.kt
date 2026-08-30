@@ -86,6 +86,7 @@ class RealtimeHostService : Service(), RealtimeRuntimeBridge.AppDelegate, LanCas
     private var controller: RealtimeController? = null
     private var settingsJob: Job? = null
     private var initializationJob: Job? = null
+    private var ttsEnableRecoveryJob: Job? = null
     private val listeningConfigurationMutex = Mutex()
     @Volatile
     private var currentSettings = UserPrefs.AppSettings()
@@ -183,6 +184,8 @@ class RealtimeHostService : Service(), RealtimeRuntimeBridge.AppDelegate, LanCas
         settingsJob = null
         initializationJob?.cancel()
         initializationJob = null
+        ttsEnableRecoveryJob?.cancel()
+        ttsEnableRecoveryJob = null
         listeningPreviewCommitJob?.cancel()
         listeningPreviewCommitJob = null
         RealtimeRuntimeBridge.unregisterAppDelegate(this)
@@ -301,6 +304,8 @@ class RealtimeHostService : Service(), RealtimeRuntimeBridge.AppDelegate, LanCas
     }
 
     suspend fun updateSelectedVoiceDir(dir: File?, status: String? = null, preload: Boolean = true) {
+        ttsEnableRecoveryJob?.cancel()
+        ttsEnableRecoveryJob = null
         updateState {
             it.copy(
                 voiceDir = dir,
@@ -308,7 +313,11 @@ class RealtimeHostService : Service(), RealtimeRuntimeBridge.AppDelegate, LanCas
             )
         }
         if (preload && dir != null) {
-            val loaded = withContext(Dispatchers.IO) { ensureController().loadTts(dir) }
+            val activeController = ensureController()
+            val loaded = withContext(Dispatchers.IO) { activeController.loadTts(dir) }
+            if (currentState().voiceDir?.absolutePath == dir.absolutePath) {
+                applyAsrAutoSpeakPolicy(activeController = activeController)
+            }
             if (!loaded && currentState().voiceDir?.absolutePath == dir.absolutePath) {
                 updateStatus(
                     if (isSystemTtsVoiceDir(dir)) {
@@ -318,6 +327,8 @@ class RealtimeHostService : Service(), RealtimeRuntimeBridge.AppDelegate, LanCas
                     }
                 )
             }
+        } else {
+            applyAsrAutoSpeakPolicy()
         }
     }
 
@@ -334,6 +345,9 @@ class RealtimeHostService : Service(), RealtimeRuntimeBridge.AppDelegate, LanCas
             ) ?: return null
             serviceScope.launch(Dispatchers.IO) {
                 val loaded = activeController.loadTts(voice)
+                if (currentState().voiceDir?.absolutePath == voice.absolutePath) {
+                    applyAsrAutoSpeakPolicy(activeController = activeController)
+                }
                 if (!loaded && currentState().voiceDir?.absolutePath == voice.absolutePath) {
                     updateStatus(
                         if (isSystemTtsVoiceDir(voice)) {
@@ -382,13 +396,66 @@ class RealtimeHostService : Service(), RealtimeRuntimeBridge.AppDelegate, LanCas
 
     fun setTtsDisabled(enabled: Boolean) {
         currentSettings = currentSettings.copy(ttsDisabled = enabled)
-        controller?.setSuppressAsrAutoSpeak(
+        if (enabled) {
+            ttsEnableRecoveryJob?.cancel()
+            ttsEnableRecoveryJob = null
+            applyAsrAutoSpeakPolicy()
+        } else {
+            recoverTtsAfterEnabling()
+        }
+    }
+
+    private fun selectedTtsReady(activeController: RealtimeController? = controller): Boolean {
+        val voice = currentState().voiceDir ?: return false
+        return activeController?.isTtsReadyFor(voice) == true
+    }
+
+    private fun applyAsrAutoSpeakPolicy(
+        settings: UserPrefs.AppSettings = currentSettings,
+        activeController: RealtimeController? = controller
+    ) {
+        activeController?.setSuppressAsrAutoSpeak(
             RealtimeTtsPolicy.shouldSuppressAsrAutoSpeak(
-                ttsDisabled = enabled,
-                pushToTalkMode = currentSettings.pushToTalkMode,
-                pushToTalkConfirmInput = currentSettings.pushToTalkConfirmInput
+                ttsDisabled = settings.ttsDisabled,
+                pushToTalkMode = settings.pushToTalkMode,
+                pushToTalkConfirmInput = settings.pushToTalkConfirmInput,
+                ttsReady = selectedTtsReady(activeController)
             )
         )
+    }
+
+    private fun recoverTtsAfterEnabling() {
+        ttsEnableRecoveryJob?.cancel()
+        ttsEnableRecoveryJob = null
+        applyAsrAutoSpeakPolicy()
+        if (currentSettings.ttsDisabled) return
+
+        val voice = currentState().voiceDir
+        if (voice == null) {
+            updateStatus("语音朗读暂不可用，请先选择语音包或系统语音合成")
+            return
+        }
+        if (selectedTtsReady()) return
+
+        ttsEnableRecoveryJob = serviceScope.launch {
+            val activeController = ensureController()
+            applyAsrAutoSpeakPolicy(activeController = activeController)
+            val loaded = withContext(Dispatchers.IO) { activeController.loadTts(voice) }
+            val selectionUnchanged =
+                currentState().voiceDir?.absolutePath == voice.absolutePath
+            if (controller !== activeController || !selectionUnchanged) return@launch
+
+            applyAsrAutoSpeakPolicy(activeController = activeController)
+            if (!loaded && !currentSettings.ttsDisabled) {
+                updateStatus(
+                    if (isSystemTtsVoiceDir(voice)) {
+                        "系统语音合成初始化失败，请先完成系统语音合成设置"
+                    } else {
+                        "语音包加载失败，语音识别仍可继续使用"
+                    }
+                )
+            }
+        }
     }
 
     fun setSuppressWhilePlaying(enabled: Boolean) {
@@ -548,13 +615,7 @@ class RealtimeHostService : Service(), RealtimeRuntimeBridge.AppDelegate, LanCas
             finishSimplePttRelease()
             updateState { it.copy(pushToTalkPressed = false, pushToTalkStreamingText = "") }
         }
-        controller?.setSuppressAsrAutoSpeak(
-            RealtimeTtsPolicy.shouldSuppressAsrAutoSpeak(
-                ttsDisabled = currentSettings.ttsDisabled,
-                pushToTalkMode = pushToTalk,
-                pushToTalkConfirmInput = confirm
-            )
-        )
+        applyAsrAutoSpeakPolicy()
         synchronizeRecognitionOwnership()
         AppLogger.i("Speech button mode synchronized mode=$mode")
     }
@@ -564,7 +625,14 @@ class RealtimeHostService : Service(), RealtimeRuntimeBridge.AppDelegate, LanCas
     }
 
     fun setSuppressAsrAutoSpeak(enabled: Boolean) {
-        controller?.setSuppressAsrAutoSpeak(enabled)
+        val activeController = controller ?: return
+        val policyRequiresSuppression = RealtimeTtsPolicy.shouldSuppressAsrAutoSpeak(
+            ttsDisabled = currentSettings.ttsDisabled,
+            pushToTalkMode = currentSettings.pushToTalkMode,
+            pushToTalkConfirmInput = currentSettings.pushToTalkConfirmInput,
+            ttsReady = selectedTtsReady(activeController)
+        )
+        activeController.setSuppressAsrAutoSpeak(enabled || policyRequiresSuppression)
     }
 
     fun setSpeakerVerifyEnabled(enabled: Boolean) {
@@ -1070,6 +1138,7 @@ class RealtimeHostService : Service(), RealtimeRuntimeBridge.AppDelegate, LanCas
                 val loaded = withContext(Dispatchers.IO) {
                     ensureController().loadTts(voiceDir)
                 }
+                applyAsrAutoSpeakPolicy()
                 if (!loaded) {
                     updateStatus(
                         if (isSystemTtsVoiceDir(voiceDir)) {
@@ -1152,6 +1221,10 @@ class RealtimeHostService : Service(), RealtimeRuntimeBridge.AppDelegate, LanCas
             UserPrefs.observeSettings(this@RealtimeHostService).collectLatest { next ->
                 val previous = currentSettings
                 currentSettings = next
+                if (next.ttsDisabled) {
+                    ttsEnableRecoveryJob?.cancel()
+                    ttsEnableRecoveryJob = null
+                }
                 if (
                     committedQuickSubtitleText == previous.quickSubtitleClearedPlaceholderText &&
                     next.quickSubtitleClearedPlaceholderText !=
@@ -1179,6 +1252,9 @@ class RealtimeHostService : Service(), RealtimeRuntimeBridge.AppDelegate, LanCas
                     UserPrefs.parseSpeakerVerifyProfiles(next.speakerVerifyProfileCsv).toMutableList()
                 }
                 applySettingsToController(next)
+                if (previous.ttsDisabled && !next.ttsDisabled) {
+                    recoverTtsAfterEnabling()
+                }
                 if (previous.listeningModeSettings != next.listeningModeSettings) {
                     if (
                         listeningEngineSettingsChanged(
@@ -1425,13 +1501,7 @@ class RealtimeHostService : Service(), RealtimeRuntimeBridge.AppDelegate, LanCas
                         simplePttReleasePending
                     )
         )
-        created.setSuppressAsrAutoSpeak(
-            RealtimeTtsPolicy.shouldSuppressAsrAutoSpeak(
-                ttsDisabled = currentSettings.ttsDisabled,
-                pushToTalkMode = currentSettings.pushToTalkMode,
-                pushToTalkConfirmInput = currentSettings.pushToTalkConfirmInput
-            )
-        )
+        applyAsrAutoSpeakPolicy(activeController = created)
         created.setMainRecognitionEnabled(
             !currentSettings.listeningModeSettings.enabled ||
                 currentState().pushToTalkPressed ||
@@ -1540,6 +1610,7 @@ class RealtimeHostService : Service(), RealtimeRuntimeBridge.AppDelegate, LanCas
             val activeController = ensureController()
             if (!activeController.loadAsr(asr)) return@withContext false
             if (requireVoice && voice != null && !activeController.loadTts(voice)) return@withContext false
+            applyAsrAutoSpeakPolicy(activeController = activeController)
             activeController.startMic(requireTts = requireVoice)
         }
         if (started && currentState().running) {
@@ -1627,13 +1698,7 @@ class RealtimeHostService : Service(), RealtimeRuntimeBridge.AppDelegate, LanCas
             speakerProfiles.map { it.neuralVector?.copyOf() },
             speakerProfiles.map { it.confirmationVector?.copyOf() }
         )
-        controller?.setSuppressAsrAutoSpeak(
-            RealtimeTtsPolicy.shouldSuppressAsrAutoSpeak(
-                ttsDisabled = settings.ttsDisabled,
-                pushToTalkMode = settings.pushToTalkMode,
-                pushToTalkConfirmInput = settings.pushToTalkConfirmInput
-            )
-        )
+        applyAsrAutoSpeakPolicy(settings = settings)
         controller?.setPushToTalkStreamingEnabled(
             settings.pushToTalkMode &&
                 settings.pushToTalkConfirmInput &&

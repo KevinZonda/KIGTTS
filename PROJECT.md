@@ -1586,3 +1586,10 @@
 - 根据实机体验撤回快捷名片小工具的 `StackView` 集合视图，恢复此前的单张名片渲染与左下角上一张/下一张按钮；每个小工具继续独立记忆当前名片页，空名片时仍可点击新建。
 - 删除名片专用 `RemoteViewsService`、集合条目布局与可变 PendingIntent 模板，并保留快捷字幕小工具的纵向滚动列表、分组/页面切换动画和独立 `:widgets` 集合服务。
 - `:app:processDebugResources :app:compileDebugKotlin :app:testDebugUnitTest`、`:app:assembleRelease`、`lintVitalRelease` 与 `git diff --check` 通过；73 个测试套件共 320 项全部通过。Release APK 为 `98,363,738` 字节，SHA-256 `B7DF522547A60241FCFF163D5302E486F24E192E17AA3E522836D9C9E6A87501`；已通过 USB ADB 保留数据覆盖安装到 Redmi K70，安装返回 `Success`，未启动应用。
+
+### PR #39 合并与语音朗读恢复边界修复（2026-08-30）
+
+- 合并 KevinZonda 的 PR #39 `fix(realtime): keep recognition and TTS settings consistent`：关闭语音朗读后，语音识别不再强制要求语音包；确认式按住说话与关闭朗读统一通过 `RealtimeTtsPolicy` 控制自动朗读；Piper `noiseW`、语速、噪声和句间停顿均使用持久化设置，不再在服务同步时把 `noiseW` 固定覆盖为 `0.8`。
+- 修复识别运行期间重新开启朗读的边界状态。当前语音包尚未加载时，识别结果继续正常输出，但自动朗读保持暂停；服务会异步加载当前语音包，加载成功后才恢复自动朗读。没有选择语音包、系统语音合成初始化失败或语音包加载失败时会显示明确状态，不再把识别结果静默送入空的 TTS 队列。
+- 主界面直接切换、悬浮窗写入偏好设置、服务冷启动和重新选择语音包均使用同一 TTS 就绪判断；加载任务在重新关闭朗读、切换语音包或服务销毁时取消，避免旧任务恢复错误的语音包或朗读状态。
+- `:app:compileDebugKotlin`、定向 `RealtimeTtsPolicyTest`、`:app:testDebugUnitTest`、`:app:assembleRelease`、`:app:lintVitalRelease` 与 `git diff --check` 通过；75 个测试套件共 330 项，0 失败、0 错误、0 跳过。Release APK 为 `98,363,738` 字节，SHA-256 `6051BDA5624DA239FE7CE87C3B6FAB08BEED0774152B4F98A75CC4198E51B687`；仅保留仓库已有的图片裁剪库弃用警告，本轮未安装或执行实机烟测。
